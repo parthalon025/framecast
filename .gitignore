@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App runtime
+*.log
+*.pid
+/media/
+
+# Generated files
+app/static/welcome.png
+thumbnails/
+
+# Environment
+.env
+app/.env
+
+# Temporary
+*.tmp
+*.bak

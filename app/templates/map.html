@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map - Pi Photo Display</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f1117">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        *:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #58a6ff;
+            color: #0f1117;
+            padding: 8px 16px;
+            z-index: 1000;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 0 0 4px 0;
+        }
+        .skip-link:focus { top: 0; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #2d333b;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        h1 { font-size: 24px; font-weight: 600; }
+        h1 span { color: #58a6ff; }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #a2abb4;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #161b22;
+            border: 1px solid #2d333b;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #484f58;
+            transition: background 0.3s;
+        }
+        .status-dot.playing { background: #3fb950; }
+        .status-dot.stopped { background: #f85149; }
+
+        nav { display: flex; gap: 8px; flex-wrap: wrap; }
+        nav a {
+            color: #a2abb4;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 12px 16px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            border-radius: 6px;
+            border: 1px solid #2d333b;
+            transition: all 0.2s;
+        }
+        nav a:hover { color: #58a6ff; border-color: #58a6ff; }
+
+        /* Stats bar */
+        .map-stats {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: #161b22;
+            border: 1px solid #2d333b;
+            border-radius: 8px;
+            padding: 12px 20px;
+            text-align: center;
+            min-width: 100px;
+        }
+        .stat-value { font-size: 28px; font-weight: 700; color: #58a6ff; }
+        .stat-label { font-size: 12px; color: #a2abb4; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Map container */
+        .map-wrapper {
+            background: #161b22;
+            border: 1px solid #2d333b;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .map-container {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+        .map-container svg {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Map dots */
+        .map-dot {
+            cursor: pointer;
+            transition: r 0.15s ease, fill-opacity 0.15s ease;
+        }
+        .map-dot:hover {
+            fill-opacity: 1;
+        }
+        .map-dot-ring {
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        /* Tooltip */
+        .map-tooltip {
+            position: absolute;
+            background: #1c2128;
+            border: 1px solid #444c56;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #e1e4e8;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 10;
+            white-space: nowrap;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .map-tooltip.visible { opacity: 1; }
+        .map-tooltip-name {
+            font-weight: 600;
+            color: #58a6ff;
+        }
+        .map-tooltip-coords {
+            color: #a2abb4;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #a2abb4;
+        }
+        .empty-state-icon { margin-bottom: 16px; }
+        .empty-state h3 {
+            margin-bottom: 8px;
+            color: #c9d1d9;
+            font-size: 20px;
+        }
+        .empty-state p {
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Loading state */
+        .loading-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #a2abb4;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            border: 3px solid #2d333b;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Error state */
+        .error-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #f85149;
+            background: #3a1a1a;
+            border: 1px solid #da3633;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        /* Legend */
+        .map-legend {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 0 0;
+            font-size: 12px;
+            color: #a2abb4;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #58a6ff;
+        }
+        .legend-land {
+            width: 14px;
+            height: 10px;
+            border-radius: 2px;
+            background: #21262d;
+            border: 1px solid #2d333b;
+        }
+
+        /* Footer */
+        .site-footer {
+            text-align: center;
+            padding: 32px 0 16px;
+            margin-top: 40px;
+            border-top: 1px solid #2d333b;
+            font-size: 12px;
+            color: #484f58;
+        }
+        .site-footer a {
+            color: #484f58;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .site-footer a:hover { color: #58a6ff; }
+
+        @media (max-width: 600px) {
+            .container { padding: 12px; }
+            .map-wrapper { padding: 12px; }
+            .stat { min-width: 80px; padding: 8px 12px; }
+            .stat-value { font-size: 22px; }
+            header { gap: 8px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <main class="container" id="main-content">
+        <header>
+            <div class="header-left">
+                <h1><span>Pi</span> Map</h1>
+                <div class="status-indicator" id="statusIndicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Checking...</span>
+                </div>
+            </div>
+            <nav>
+                <a href="/">Gallery</a>
+                <a href="/settings">Settings</a>
+            </nav>
+        </header>
+
+        <div class="map-stats" id="mapStats" style="display: none;">
+            <div class="stat">
+                <div class="stat-value" id="statLocated">0</div>
+                <div class="stat-label">With GPS</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Total Photos</div>
+            </div>
+        </div>
+
+        <div id="loadingState" class="loading-state">
+            <div class="loading-spinner" role="status" aria-label="Loading map data"></div>
+            <p>Loading photo locations...</p>
+        </div>
+
+        <div id="errorState" class="error-state" style="display: none;">
+            <p id="errorMessage">Failed to load location data.</p>
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#484f58" stroke-width="1.2">
+                    <circle cx="12" cy="10" r="3"/>
+                    <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/>
+                </svg>
+            </div>
+            <h3>No location data found</h3>
+            <p>Photos taken with a phone camera usually include GPS coordinates.
+               Upload some geotagged photos and they will appear on this map.</p>
+        </div>
+
+        <div id="mapSection" style="display: none;">
+            <div class="map-wrapper">
+                <div class="map-container" id="mapContainer">
+                    <div class="map-tooltip" id="mapTooltip">
+                        <div class="map-tooltip-name" id="tooltipName"></div>
+                        <div class="map-tooltip-coords" id="tooltipCoords"></div>
+                    </div>
+                </div>
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <div class="legend-dot"></div>
+                        <span>Photo location</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-land"></div>
+                        <span>Land</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="site-footer">
+            <a href="https://github.com/bobburgers7/pi-video-photo-slideshow" target="_blank" rel="noopener">Pi Photo Display v1.0</a>
+        </footer>
+    </main>
+
+    <script>
+        // --- Status polling (matches index.html and settings.html) ---
+        function pollStatus() {
+            fetch('/api/status')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var dot = document.getElementById('statusDot');
+                    var text = document.getElementById('statusText');
+                    if (d.slideshow_running) {
+                        dot.className = 'status-dot playing';
+                        text.textContent = 'Playing';
+                    } else {
+                        dot.className = 'status-dot stopped';
+                        text.textContent = 'Stopped';
+                    }
+                })
+                .catch(function() {
+                    document.getElementById('statusDot').className = 'status-dot';
+                    document.getElementById('statusText').textContent = 'Offline';
+                });
+        }
+        pollStatus();
+        setInterval(pollStatus, 10000);
+
+        // --- Simplified world continent outlines ---
+        // Stylized infographic paths, Equirectangular projection
+        // viewBox: 0 0 1000 500  =>  x = (lon+180)*(1000/360), y = (90-lat)*(500/180)
+        var CONTINENT_PATHS = [
+            // North America (mainland)
+            'M130,80 L148,74 168,70 190,72 210,80 228,90 242,96 252,104 258,115' +
+            ' 252,128 245,140 238,155 230,168 218,174 205,172 195,178 188,192' +
+            ' 178,205 168,215 158,228 150,235 142,232 135,222 130,210 132,198' +
+            ' 140,188 142,178 136,168 125,170 112,168 100,160 92,148 88,135' +
+            ' 90,120 98,108 110,96 122,86Z',
+
+            // Greenland
+            'M358,28 L382,22 402,28 412,38 408,52 396,58 378,60 362,54 354,42 354,34Z',
+
+            // Central America and Caribbean
+            'M155,232 L164,228 172,235 180,244 184,248 178,252 170,248 162,242 156,237Z',
+            'M188,210 L204,208 210,213 204,218 192,216Z',
+            'M212,212 L222,210 226,215 220,220 214,217Z',
+
+            // South America
+            'M196,242 L208,238 218,244 226,254 232,268 232,282 228,298' +
+            ' 224,315 218,330 210,348 202,362 194,375 188,390 184,398' +
+            ' 178,394 174,382 178,365 180,348 176,332 172,315 170,298' +
+            ' 172,282 176,268 182,254 190,246Z',
+
+            // Europe
+            'M468,68 L485,64 500,70 512,80 520,92 516,102 508,110' +
+            ' 498,118 490,125 480,130 470,126 462,118 456,108 455,98' +
+            ' 458,88 464,78Z',
+
+            // Scandinavia
+            'M488,40 L498,36 506,42 510,54 512,66 506,72 498,74' +
+            ' 490,70 484,60 484,48Z',
+
+            // UK and Ireland
+            'M466,78 L473,75 477,80 475,88 470,91 464,86Z',
+            'M458,80 L464,78 466,84 463,89 458,86Z',
+
+            // Iceland
+            'M430,52 L442,48 450,52 448,60 440,64 430,60Z',
+
+            // Africa
+            'M453,138 L470,136 484,142 496,150 508,162 518,178' +
+            ' 524,196 526,214 522,232 516,250 510,265 502,280' +
+            ' 494,294 484,305 474,310 466,304 460,292 456,275' +
+            ' 452,258 448,240 446,222 444,205 442,188 440,172' +
+            ' 442,155 448,145Z',
+
+            // Madagascar
+            'M538,292 L544,286 550,292 550,310 546,320 540,316 536,304Z',
+
+            // Arabian Peninsula
+            'M544,152 L562,148 575,158 580,172 576,186 568,194' +
+            ' 556,190 546,180 540,168 540,160Z',
+
+            // Asia (mainland)
+            'M520,58 L548,52 578,48 612,46 645,48 678,54 710,62' +
+            ' 738,70 758,78 772,88 780,100 778,115 770,126 758,135' +
+            ' 745,145 732,155 718,162 702,168 686,170 670,168' +
+            ' 655,162 642,158 630,162 618,168 605,170 590,168' +
+            ' 575,164 562,158 548,150 538,140 528,130 522,118' +
+            ' 520,105 520,90 522,72Z',
+
+            // India
+            'M636,160 L652,162 662,172 666,186 662,200 656,214' +
+            ' 648,224 638,228 630,220 626,206 624,192 628,178 632,168Z',
+
+            // Sri Lanka
+            'M654,230 L660,226 664,232 660,240 655,237Z',
+
+            // Southeast Asia mainland
+            'M718,162 L728,158 738,165 742,178 738,190 730,196' +
+            ' 720,192 714,182 714,172Z',
+
+            // Philippines
+            'M754,182 L762,176 766,184 764,196 758,200 752,194Z',
+
+            // Taiwan
+            'M768,152 L774,148 776,156 772,164 768,160Z',
+
+            // Indonesia (Sumatra, Java, Borneo, Sulawesi)
+            'M718,210 L734,206 748,212 752,224 745,232 732,228 720,220Z',
+            'M725,235 L745,232 760,238 758,248 745,250 728,245Z',
+            'M762,218 L778,215 788,225 784,238 774,240 764,232Z',
+            'M790,222 L802,218 812,226 814,238 806,245 795,240 790,230Z',
+
+            // Japan
+            'M792,100 L798,95 804,100 802,112 796,118 790,112Z',
+            'M796,84 L803,80 808,88 804,98 798,102 793,95Z',
+
+            // Australia
+            'M772,288 L800,278 828,276 850,282 862,296 866,312' +
+            ' 860,328 848,340 832,348 812,350 795,346 782,336' +
+            ' 774,322 770,308 768,298Z',
+
+            // New Zealand
+            'M892,338 L900,332 904,340 902,354 896,362 888,356 890,344Z',
+            'M886,364 L896,362 900,372 894,382 886,378 882,370Z',
+
+            // Papua New Guinea
+            'M828,242 L848,236 860,242 864,254 854,260 840,256 832,250Z'
+        ];
+
+        // --- Map constants ---
+        var MAP_W = 1000;
+        var MAP_H = 500;
+
+        function lonLatToXY(lon, lat) {
+            return {
+                x: (lon + 180) * (MAP_W / 360),
+                y: (90 - lat) * (MAP_H / 180)
+            };
+        }
+
+        function buildMapSVG(locations) {
+            var ns = 'http://www.w3.org/2000/svg';
+            var svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('viewBox', '0 0 ' + MAP_W + ' ' + MAP_H);
+            svg.setAttribute('xmlns', ns);
+            svg.setAttribute('role', 'img');
+            svg.setAttribute('aria-label',
+                'World map showing ' + locations.length + ' photo location' +
+                (locations.length !== 1 ? 's' : ''));
+
+            // Ocean background
+            var ocean = document.createElementNS(ns, 'rect');
+            ocean.setAttribute('width', MAP_W);
+            ocean.setAttribute('height', MAP_H);
+            ocean.setAttribute('fill', '#0d1117');
+            ocean.setAttribute('rx', '4');
+            svg.appendChild(ocean);
+
+            // Graticule grid
+            var grat = document.createElementNS(ns, 'g');
+            grat.setAttribute('stroke', '#161b22');
+            grat.setAttribute('stroke-width', '0.5');
+            grat.setAttribute('fill', 'none');
+            var lon, lat, gx, gy, line;
+            for (lon = -150; lon <= 180; lon += 30) {
+                gx = (lon + 180) * (MAP_W / 360);
+                line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', gx); line.setAttribute('y1', 0);
+                line.setAttribute('x2', gx); line.setAttribute('y2', MAP_H);
+                grat.appendChild(line);
+            }
+            for (lat = -60; lat <= 60; lat += 30) {
+                gy = (90 - lat) * (MAP_H / 180);
+                line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', 0); line.setAttribute('y1', gy);
+                line.setAttribute('x2', MAP_W); line.setAttribute('y2', gy);
+                grat.appendChild(line);
+            }
+            svg.appendChild(grat);
+
+            // Land masses
+            var land = document.createElementNS(ns, 'g');
+            land.setAttribute('fill', '#21262d');
+            land.setAttribute('stroke', '#2d333b');
+            land.setAttribute('stroke-width', '0.8');
+            land.setAttribute('stroke-linejoin', 'round');
+            for (var i = 0; i < CONTINENT_PATHS.length; i++) {
+                var p = document.createElementNS(ns, 'path');
+                p.setAttribute('d', CONTINENT_PATHS[i]);
+                land.appendChild(p);
+            }
+            svg.appendChild(land);
+
+            // Equator (dashed)
+            var eq = document.createElementNS(ns, 'line');
+            eq.setAttribute('x1', 0); eq.setAttribute('y1', MAP_H / 2);
+            eq.setAttribute('x2', MAP_W); eq.setAttribute('y2', MAP_H / 2);
+            eq.setAttribute('stroke', '#1f6feb');
+            eq.setAttribute('stroke-width', '0.5');
+            eq.setAttribute('stroke-dasharray', '6 4');
+            eq.setAttribute('opacity', '0.25');
+            svg.appendChild(eq);
+
+            // Photo dots
+            var dots = document.createElementNS(ns, 'g');
+            for (var j = 0; j < locations.length; j++) {
+                var loc = locations[j];
+                var pos = lonLatToXY(loc.lon, loc.lat);
+
+                // Glow ring (appears on hover via CSS)
+                var ring = document.createElementNS(ns, 'circle');
+                ring.setAttribute('cx', pos.x);
+                ring.setAttribute('cy', pos.y);
+                ring.setAttribute('r', '10');
+                ring.setAttribute('fill', 'rgba(88,166,255,0.12)');
+                ring.setAttribute('stroke', '#58a6ff');
+                ring.setAttribute('stroke-width', '1');
+                ring.setAttribute('class', 'map-dot-ring');
+                ring.id = 'ring-' + j;
+                dots.appendChild(ring);
+
+                // Dot
+                var dot = document.createElementNS(ns, 'circle');
+                dot.setAttribute('cx', pos.x);
+                dot.setAttribute('cy', pos.y);
+                dot.setAttribute('r', '4');
+                dot.setAttribute('fill', '#58a6ff');
+                dot.setAttribute('fill-opacity', '0.85');
+                dot.setAttribute('stroke', '#0d1117');
+                dot.setAttribute('stroke-width', '1');
+                dot.setAttribute('class', 'map-dot');
+                dot.setAttribute('tabindex', '0');
+                dot.setAttribute('role', 'button');
+                dot.setAttribute('aria-label',
+                    loc.name + ' at ' + loc.lat.toFixed(2) + ', ' + loc.lon.toFixed(2));
+                dot.dataset.name = loc.name;
+                dot.dataset.lat = loc.lat;
+                dot.dataset.lon = loc.lon;
+                dot.dataset.ring = 'ring-' + j;
+                dots.appendChild(dot);
+            }
+            svg.appendChild(dots);
+
+            return svg;
+        }
+
+        // --- Tooltip and interaction ---
+        function setupInteractions(container) {
+            var tooltip = document.getElementById('mapTooltip');
+            var tooltipName = document.getElementById('tooltipName');
+            var tooltipCoords = document.getElementById('tooltipCoords');
+            var activeRing = null;
+
+            function showRing(dot) {
+                hideRing();
+                var ringId = dot.dataset.ring;
+                if (ringId) {
+                    activeRing = document.getElementById(ringId);
+                    if (activeRing) activeRing.style.opacity = '1';
+                }
+            }
+
+            function hideRing() {
+                if (activeRing) {
+                    activeRing.style.opacity = '0';
+                    activeRing = null;
+                }
+            }
+
+            function positionTooltip(clientX, clientY) {
+                var rect = container.getBoundingClientRect();
+                var x = clientX - rect.left + 14;
+                var y = clientY - rect.top - 10;
+                var tw = tooltip.offsetWidth;
+                var th = tooltip.offsetHeight;
+                if (x + tw > rect.width - 8) x = clientX - rect.left - tw - 14;
+                if (y + th > rect.height - 8) y = clientY - rect.top - th - 10;
+                if (y < 4) y = 4;
+                if (x < 4) x = 4;
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+            }
+
+            // Mouse events
+            container.addEventListener('mouseover', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (!dot) return;
+                showRing(dot);
+                tooltipName.textContent = dot.dataset.name;
+                tooltipCoords.textContent =
+                    parseFloat(dot.dataset.lat).toFixed(4) + ', ' +
+                    parseFloat(dot.dataset.lon).toFixed(4);
+                tooltip.classList.add('visible');
+            });
+
+            container.addEventListener('mousemove', function(e) {
+                if (!tooltip.classList.contains('visible')) return;
+                positionTooltip(e.clientX, e.clientY);
+            });
+
+            container.addEventListener('mouseout', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (dot) {
+                    tooltip.classList.remove('visible');
+                    hideRing();
+                }
+            });
+
+            // Click to navigate
+            container.addEventListener('click', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (dot) navigateToPhoto(dot.dataset.name);
+            });
+
+            // Keyboard support
+            container.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    var dot = e.target.closest('.map-dot');
+                    if (dot) {
+                        e.preventDefault();
+                        navigateToPhoto(dot.dataset.name);
+                    }
+                }
+            });
+
+            // Focus events for accessibility
+            container.addEventListener('focusin', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (!dot) return;
+                showRing(dot);
+                tooltipName.textContent = dot.dataset.name;
+                tooltipCoords.textContent =
+                    parseFloat(dot.dataset.lat).toFixed(4) + ', ' +
+                    parseFloat(dot.dataset.lon).toFixed(4);
+                tooltip.classList.add('visible');
+                // Position tooltip near the dot
+                var svgRect = container.querySelector('svg').getBoundingClientRect();
+                var cx = parseFloat(dot.getAttribute('cx'));
+                var cy = parseFloat(dot.getAttribute('cy'));
+                var scaleX = svgRect.width / MAP_W;
+                var scaleY = svgRect.height / MAP_H;
+                var absX = svgRect.left + cx * scaleX;
+                var absY = svgRect.top + cy * scaleY;
+                positionTooltip(absX, absY);
+            });
+
+            container.addEventListener('focusout', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (dot) {
+                    tooltip.classList.remove('visible');
+                    hideRing();
+                }
+            });
+
+            // Touch: tap to show tooltip, double-tap to navigate
+            var lastTapped = null;
+            var lastTapTime = 0;
+            container.addEventListener('touchstart', function(e) {
+                var dot = e.target.closest('.map-dot');
+                if (!dot) {
+                    tooltip.classList.remove('visible');
+                    hideRing();
+                    return;
+                }
+                e.preventDefault();
+                var now = Date.now();
+                if (lastTapped === dot && now - lastTapTime < 400) {
+                    navigateToPhoto(dot.dataset.name);
+                    return;
+                }
+                lastTapped = dot;
+                lastTapTime = now;
+                showRing(dot);
+                tooltipName.textContent = dot.dataset.name;
+                tooltipCoords.textContent =
+                    parseFloat(dot.dataset.lat).toFixed(4) + ', ' +
+                    parseFloat(dot.dataset.lon).toFixed(4);
+                tooltip.classList.add('visible');
+                var touch = e.touches[0];
+                positionTooltip(touch.clientX, touch.clientY - 40);
+            }, { passive: false });
+        }
+
+        function navigateToPhoto(filename) {
+            window.location.href = '/media/photos/' + encodeURIComponent(filename);
+        }
+
+        // --- Load data and render ---
+        function loadMap() {
+            fetch('/api/locations')
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function(data) {
+                    document.getElementById('loadingState').style.display = 'none';
+
+                    // Support both {locations: [...], total_photos: N} and plain array
+                    var locations = Array.isArray(data) ? data : (data.locations || []);
+                    var totalPhotos = data.total_photos || locations.length;
+
+                    // Update stats
+                    document.getElementById('statLocated').textContent = locations.length;
+                    document.getElementById('statTotal').textContent = totalPhotos;
+                    document.getElementById('mapStats').style.display = 'flex';
+
+                    if (locations.length === 0) {
+                        document.getElementById('emptyState').style.display = 'block';
+                        return;
+                    }
+
+                    // Build and insert SVG
+                    var container = document.getElementById('mapContainer');
+                    var svg = buildMapSVG(locations);
+                    container.appendChild(svg);
+                    setupInteractions(container);
+                    document.getElementById('mapSection').style.display = 'block';
+                })
+                .catch(function(err) {
+                    document.getElementById('loadingState').style.display = 'none';
+                    document.getElementById('errorState').style.display = 'block';
+                    document.getElementById('errorMessage').textContent =
+                        'Failed to load location data: ' + err.message;
+                });
+        }
+
+        loadMap();
+    </script>
+</body>
+</html>

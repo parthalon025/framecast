@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Pi Photo Display</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f1117">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* Fix 4: Focus indicators */
+        *:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            min-height: 100vh;
+        }
+        .container { max-width: 720px; margin: 0 auto; padding: 20px; }
+
+        /* Fix 3: Skip navigation */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #58a6ff;
+            color: #0f1117;
+            padding: 8px 16px;
+            z-index: 1000;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 0 0 4px 0;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #2d333b;
+            margin-bottom: 24px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        h1 { font-size: 24px; font-weight: 600; }
+        h1 span { color: #58a6ff; }
+
+        /* Status indicator */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #a2abb4;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #161b22;
+            border: 1px solid #2d333b;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #484f58;
+            transition: background 0.3s;
+        }
+        .status-dot.playing { background: #3fb950; }
+        .status-dot.stopped { background: #f85149; }
+
+        nav a {
+            color: #58a6ff;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 12px 16px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            border-radius: 6px;
+            border: 1px solid #2d333b;
+            transition: all 0.2s;
+        }
+        nav a:hover { color: #58a6ff; border-color: #58a6ff; }
+
+        .flash {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .flash-success { background: #1a3a2a; border: 1px solid #238636; color: #56d364; }
+        .flash-error { background: #3a1a1a; border: 1px solid #da3633; color: #f85149; }
+        .flash-warning { background: #3a2e1a; border: 1px solid #d29922; color: #e3b341; }
+
+        .section {
+            background: #161b22;
+            border: 1px solid #2d333b;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #58a6ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #21262d;
+            gap: 16px;
+        }
+        .field:last-child { border-bottom: none; }
+
+        .field-label {
+            flex: 1;
+        }
+        .field-label label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .field-label .hint {
+            font-size: 12px;
+            color: #a2abb4;
+            margin-top: 2px;
+        }
+
+        .field-input {
+            flex: 0 0 auto;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="time"] {
+            background: #0d1117;
+            border: 1px solid #2d333b;
+            border-radius: 6px;
+            color: #e1e4e8;
+            padding: 8px 12px;
+            font-size: 14px;
+            width: 160px;
+        }
+        input:focus {
+            border-color: #58a6ff;
+        }
+
+        select {
+            background: #0d1117;
+            border: 1px solid #2d333b;
+            border-radius: 6px;
+            color: #e1e4e8;
+            padding: 8px 12px;
+            font-size: 14px;
+            width: 160px;
+            cursor: pointer;
+        }
+        select:focus { border-color: #58a6ff; }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 24px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #238636; color: #fff; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #363b42; }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-danger { background: #da3633; color: #fff; }
+        .btn-danger:hover { background: #f85149; }
+        .btn-warning { background: #9e6a03; color: #fff; }
+        .btn-warning:hover { background: #bb8009; }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            align-items: center;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        .restart-notice {
+            background: #1a2a3a;
+            border: 1px solid #1f6feb;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #79c0ff;
+            margin-bottom: 20px;
+        }
+
+        /* Auto-restart checkbox */
+        .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #a2abb4;
+            margin-right: auto;
+        }
+        .checkbox-field input[type="checkbox"] {
+            accent-color: #238636;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .checkbox-field label {
+            cursor: pointer;
+        }
+
+        /* Collapsible advanced settings using native details/summary */
+        details#advancedDetails {
+            margin-bottom: 20px;
+        }
+        .advanced-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #161b22;
+            border: 1px solid #2d333b;
+            border-radius: 10px;
+            padding: 16px 24px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #a2abb4;
+            transition: color 0.2s;
+            user-select: none;
+            list-style: none;
+        }
+        .advanced-toggle::-webkit-details-marker { display: none; }
+        .advanced-toggle::before {
+            content: "\25B6";
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+        details[open] > .advanced-toggle::before {
+            transform: rotate(90deg);
+        }
+        .advanced-toggle:hover { color: #e1e4e8; }
+
+        /* Device actions section */
+        .device-section {
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid #2d333b;
+        }
+        .device-section h2 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #a2abb4;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .device-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #161b22;
+            border: 1px solid #2d333b;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .modal h3 { margin-bottom: 12px; }
+        .modal h3.danger { color: #f85149; }
+        .modal h3.warning { color: #e3b341; }
+        .modal p { margin-bottom: 16px; font-size: 14px; color: #a2abb4; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+        /* Footer */
+        .site-footer {
+            text-align: center;
+            padding: 32px 0 16px;
+            margin-top: 40px;
+            border-top: 1px solid #2d333b;
+            font-size: 12px;
+            color: #484f58;
+        }
+        .site-footer a {
+            color: #484f58;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .site-footer a:hover { color: #58a6ff; }
+
+        /* Flash auto-dismiss */
+        .flash {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .flash.fade-out {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+
+        @media (max-width: 600px) {
+            .field { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .field-input { width: 100%; }
+            input[type="text"], input[type="number"], input[type="time"], select {
+                width: 100%;
+                font-size: 16px;
+            }
+            .actions { flex-direction: column; align-items: stretch; }
+            .checkbox-field { margin-right: 0; }
+        }
+
+        /* Fix 5: Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Fix 3: Skip navigation -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <div class="container" id="main-content">
+        <header>
+            <div class="header-left">
+                <h1><span>Pi</span> Settings</h1>
+                <div class="status-indicator" id="statusIndicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Checking...</span>
+                </div>
+            </div>
+            <nav><a href="/">Back to Gallery</a></nav>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="restart-notice">
+            After saving, your changes are applied automatically if the checkbox below is checked.
+        </div>
+
+        <form method="post" action="/settings">
+            <!-- Slideshow -->
+            <div class="section">
+                <h2>Slideshow</h2>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="PHOTO_DURATION">Photo Duration</label>
+                        <div class="hint">Seconds each photo is displayed</div>
+                    </div>
+                    <div class="field-input">
+                        <input type="number" id="PHOTO_DURATION" name="PHOTO_DURATION" min="1" max="3600"
+                               value="{{ env.get('PHOTO_DURATION', '10') }}">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="SHUFFLE">Shuffle Order</label>
+                        <div class="hint">Randomize playback order</div>
+                    </div>
+                    <div class="field-input">
+                        <select id="SHUFFLE" name="SHUFFLE">
+                            <option value="yes" {% if env.get('SHUFFLE', 'yes') == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if env.get('SHUFFLE', 'yes') == 'no' %}selected{% endif %}>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="LOOP">Loop</label>
+                        <div class="hint">Loop slideshow continuously</div>
+                    </div>
+                    <div class="field-input">
+                        <select id="LOOP" name="LOOP">
+                            <option value="yes" {% if env.get('LOOP', 'yes') == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if env.get('LOOP', 'yes') == 'no' %}selected{% endif %}>No</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HDMI Schedule -->
+            <div class="section">
+                <h2>HDMI Schedule</h2>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="HDMI_SCHEDULE_ENABLED">Enable Schedule</label>
+                        <div class="hint">Auto turn display off/on at set times</div>
+                    </div>
+                    <div class="field-input">
+                        <select id="HDMI_SCHEDULE_ENABLED" name="HDMI_SCHEDULE_ENABLED">
+                            <option value="yes" {% if env.get('HDMI_SCHEDULE_ENABLED', 'no') == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if env.get('HDMI_SCHEDULE_ENABLED', 'no') == 'no' %}selected{% endif %}>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="HDMI_OFF_TIME">Turn Off At</label>
+                    </div>
+                    <div class="field-input">
+                        <input type="time" id="HDMI_OFF_TIME" name="HDMI_OFF_TIME"
+                               value="{{ env.get('HDMI_OFF_TIME', '22:00') }}">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <label for="HDMI_ON_TIME">Turn On At</label>
+                    </div>
+                    <div class="field-input">
+                        <input type="time" id="HDMI_ON_TIME" name="HDMI_ON_TIME"
+                               value="{{ env.get('HDMI_ON_TIME', '08:00') }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fix 8: Advanced Settings wrapped in native details -->
+            <details id="advancedDetails">
+                <summary class="advanced-toggle">Advanced Settings</summary>
+                <div class="advanced-content" style="display: block;">
+                <!-- Upload Settings -->
+                <div class="section">
+                    <h2>Upload Settings</h2>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <label for="MAX_UPLOAD_MB">Max Upload Size (MB)</label>
+                            <div class="hint">Maximum file upload size</div>
+                        </div>
+                        <div class="field-input">
+                            <input type="number" id="MAX_UPLOAD_MB" name="MAX_UPLOAD_MB" min="1" max="4096"
+                                   value="{{ env.get('MAX_UPLOAD_MB', '200') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Extensions -->
+                <div class="section">
+                    <h2>File Extensions</h2>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <label for="IMAGE_EXTENSIONS">Image Formats</label>
+                            <div class="hint">Comma-separated, include the dot</div>
+                        </div>
+                        <div class="field-input">
+                            <input type="text" id="IMAGE_EXTENSIONS" name="IMAGE_EXTENSIONS" style="width: 280px;"
+                                   value="{{ env.get('IMAGE_EXTENSIONS', '.jpg,.jpeg,.png,.bmp,.gif,.webp,.tiff') }}">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <label for="VIDEO_EXTENSIONS">Video Formats</label>
+                            <div class="hint">Comma-separated, include the dot</div>
+                        </div>
+                        <div class="field-input">
+                            <input type="text" id="VIDEO_EXTENSIONS" name="VIDEO_EXTENSIONS" style="width: 280px;"
+                                   value="{{ env.get('VIDEO_EXTENSIONS', '.mp4,.mkv,.avi,.mov,.webm,.m4v,.mpg,.mpeg') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System -->
+                <div class="section">
+                    <h2>System</h2>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <label for="AUTO_REFRESH">Auto-Refresh Slideshow</label>
+                            <div class="hint">Restart slideshow when new files are detected</div>
+                        </div>
+                        <div class="field-input">
+                            <select id="AUTO_REFRESH" name="AUTO_REFRESH">
+                                <option value="yes" {% if env.get('AUTO_REFRESH', 'yes') == 'yes' %}selected{% endif %}>Yes</option>
+                                <option value="no" {% if env.get('AUTO_REFRESH', 'yes') == 'no' %}selected{% endif %}>No</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <label for="REFRESH_INTERVAL">Refresh Interval</label>
+                            <div class="hint">Seconds between checking for new files</div>
+                        </div>
+                        <div class="field-input">
+                            <input type="number" id="REFRESH_INTERVAL" name="REFRESH_INTERVAL" min="5" max="3600"
+                                   value="{{ env.get('REFRESH_INTERVAL', '30') }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </details>
+
+            <div class="actions">
+                <div class="checkbox-field">
+                    <input type="checkbox" id="autoRestart" name="auto_restart" value="1" checked>
+                    <label for="autoRestart">Apply immediately (restarts slideshow)</label>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="restartServices()">
+                    Restart Services
+                </button>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+
+        <!-- Device Actions -->
+        <div class="device-section">
+            <h2>Device Power</h2>
+            <div class="device-actions">
+                <button type="button" class="btn btn-warning" onclick="showModal('rebootModal')">
+                    Reboot Device
+                </button>
+                <button type="button" class="btn btn-danger" onclick="showModal('shutdownModal')">
+                    Shut Down
+                </button>
+            </div>
+        </div>
+        <footer class="site-footer">
+            <a href="https://github.com/bobburgers7/pi-video-photo-slideshow" target="_blank" rel="noopener">Pi Photo Display v1.0</a>
+        </footer>
+    </div>
+
+    <!-- Reboot Modal -->
+    <div class="modal-overlay" id="rebootModal" role="dialog" aria-modal="true" aria-labelledby="rebootModalTitle">
+        <div class="modal">
+            <h3 class="warning" id="rebootModalTitle">Reboot Device</h3>
+            <p>The device will restart. The web interface will be unavailable for about a minute. Continue?</p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('rebootModal')">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="deviceAction('/api/reboot', 'rebootModal')">Reboot</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shutdown Modal -->
+    <div class="modal-overlay" id="shutdownModal" role="dialog" aria-modal="true" aria-labelledby="shutdownModalTitle">
+        <div class="modal">
+            <h3 class="danger" id="shutdownModalTitle">Shut Down Device</h3>
+            <p>The device will power off completely. You will need physical access to turn it back on. Continue?</p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('shutdownModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="deviceAction('/api/shutdown', 'shutdownModal')">Shut Down</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Status polling ---
+        function pollStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(d => {
+                    const dot = document.getElementById('statusDot');
+                    const text = document.getElementById('statusText');
+                    if (d.slideshow_running) {
+                        dot.className = 'status-dot playing';
+                        text.textContent = 'Playing';
+                    } else {
+                        dot.className = 'status-dot stopped';
+                        text.textContent = 'Stopped';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('statusDot').className = 'status-dot';
+                    document.getElementById('statusText').textContent = 'Offline';
+                });
+        }
+        pollStatus();
+        setInterval(pollStatus, 10000);
+
+        // --- Auto-dismiss flash messages ---
+        document.querySelectorAll('.flash').forEach(flash => {
+            let timer = setTimeout(() => dismissFlash(flash), 5000);
+            flash.addEventListener('mouseenter', () => clearTimeout(timer));
+            flash.addEventListener('mouseleave', () => {
+                timer = setTimeout(() => dismissFlash(flash), 3000);
+            });
+        });
+        function dismissFlash(el) {
+            el.classList.add('fade-out');
+            setTimeout(() => el.remove(), 400);
+        }
+
+        // --- Restart services ---
+        function restartServices() {
+            if (!confirm('Restart the slideshow and apply current settings?')) return;
+            fetch('/api/restart-slideshow', { method: 'POST' })
+                .then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(d => {
+                    alert(d.message);
+                    pollStatus();
+                })
+                .catch(() => alert('Failed to restart services. Check the Pi.'));
+        }
+
+        // --- Modal helpers ---
+        function showModal(id) {
+            document.getElementById(id).classList.add('active');
+        }
+        function hideModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+        // Close modal on backdrop click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) overlay.classList.remove('active');
+            });
+        });
+        // Close modals on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+            }
+        });
+
+        // --- Device actions (reboot / shutdown) ---
+        function deviceAction(url, modalId) {
+            hideModal(modalId);
+            fetch(url, { method: 'POST' })
+                .then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(d => alert(d.message))
+                .catch(() => alert('Command failed. Check the device.'));
+        }
+    </script>
+</body>
+</html>
