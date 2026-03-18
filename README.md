@@ -85,7 +85,15 @@ FrameCast runs on a Raspberry Pi connected to your TV or monitor over HDMI. Anyo
 ### Step 1: Flash the SD Card
 
 1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/) on your computer
-2. Choose **Raspberry Pi OS with Desktop** and your SD card
+2. Choose **Raspberry Pi OS with Desktop (Bookworm, 32-bit)** -- this is the recommended OS for FrameCast:
+
+   | Pi Model | Recommended OS | Why |
+   |----------|---------------|-----|
+   | Pi 3B / 3B+ | **Raspberry Pi OS with Desktop (32-bit, Bookworm)** | Best compatibility. 64-bit works but uses more RAM on the 1GB Pi 3B. |
+   | Pi 4 / Pi 5 | **Raspberry Pi OS with Desktop (64-bit, Bookworm)** | Takes advantage of the extra RAM and 64-bit CPU. |
+
+   > **Important:** Do NOT use "Raspberry Pi OS Lite" -- FrameCast needs the desktop version because VLC requires a display server to show photos on the screen.
+
 3. Click the gear icon and set:
    - **Hostname:** `photoframe`
    - **Enable SSH:** Yes
