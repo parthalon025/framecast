@@ -84,37 +84,35 @@ FrameCast runs on a Raspberry Pi connected to your TV or monitor over HDMI. Anyo
 
 ### Step 1: Flash the SD Card
 
-Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/) and install **Raspberry Pi OS with Desktop** (32-bit or 64-bit) to your microSD card.
-
-Before writing, click the gear icon (or "Edit Settings") and set:
-- **Hostname:** `photoframe`
-- **Enable SSH:** Yes
-- **Username and password:** Choose something you will remember
-- **WiFi:** Enter your home network name and password
-
-Insert the card into your Pi and power it on.
+1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/) on your computer
+2. Choose **Raspberry Pi OS with Desktop** and your SD card
+3. Click the gear icon and set:
+   - **Hostname:** `photoframe`
+   - **Enable SSH:** Yes
+   - **Username and password:** Choose something you will remember
+   - **WiFi:** Enter your home network name and password
+4. Click Write, then insert the card into your Pi
 
 ### Step 2: Install FrameCast
 
-Wait about two minutes for the Pi to boot. From another computer on the same network, open a terminal and run:
+Plug in your Pi and wait 2 minutes for it to boot. Then from any computer on the same WiFi, open a terminal and paste these 4 lines:
 
 ```bash
 ssh your-username@photoframe.local
-```
-
-Then install:
-
-```bash
-git clone https://github.com/bobburgers7/pi-video-photo-slideshow.git
-cd pi-video-photo-slideshow
+git clone https://github.com/parthalon025/framecast.git
+cd framecast
 sudo bash install.sh
 ```
 
-The installer takes a few minutes and reboots the Pi automatically when finished.
+That's it. The installer does everything and reboots the Pi when done.
 
 ### Step 3: Add Your Photos
 
-Open **http://photoframe.local:8080** on your phone or computer. Drag and drop your photos, or tap Browse Files to select them. They appear on the TV within about 30 seconds.
+Open this on your phone: **http://photoframe.local:8080**
+
+Tap **Browse Files**, pick your photos, done. They show up on the TV in about 30 seconds.
+
+> **Don't have WiFi configured?** No problem -- FrameCast creates its own WiFi hotspot called **PiPhotoFrame** (password: `photoframe`). Connect to it and go to **http://192.168.4.1:8080**.
 
 ---
 
