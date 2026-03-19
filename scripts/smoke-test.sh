@@ -1,16 +1,17 @@
 #!/bin/bash
-# smoke-test.sh - Quick validation of Pi Photo Display installation
+# smoke-test.sh — Quick validation of FrameCast installation
 #
 # Run on the Pi after installation to verify everything is working.
 # Usage: bash scripts/smoke-test.sh
 #
 # Exit codes:
 #   0 - All checks passed
-#   1 - One or more checks failed
+#   1 - Warnings only (non-critical issues)
+#   2 - Critical failures detected
 
 set -euo pipefail
 
-INSTALL_DIR="/opt/pi-photo-display"
+INSTALL_DIR="/opt/framecast"
 PASS=0
 FAIL=0
 WARN=0
@@ -44,7 +45,7 @@ warn() {
 }
 
 echo "========================================"
-echo "  Pi Photo Display - Smoke Test"
+echo "  FrameCast — Smoke Test"
 echo "========================================"
 echo ""
 
@@ -60,24 +61,24 @@ else
 fi
 
 if [ -f "$INSTALL_DIR/app/web_upload.py" ]; then
-    pass "Web upload script present"
+    pass "Web upload module present"
 else
-    fail "Web upload script missing: $INSTALL_DIR/app/web_upload.py"
+    fail "Web upload module missing: $INSTALL_DIR/app/web_upload.py"
 fi
 
-if [ -f "$INSTALL_DIR/app/slideshow.sh" ]; then
-    pass "Slideshow script present"
+if [ -f "$INSTALL_DIR/kiosk/kiosk.sh" ]; then
+    pass "Kiosk launcher present"
 else
-    fail "Slideshow script missing: $INSTALL_DIR/app/slideshow.sh"
+    fail "Kiosk launcher missing: $INSTALL_DIR/kiosk/kiosk.sh"
 fi
 
-if [ -x "$INSTALL_DIR/app/slideshow.sh" ]; then
-    pass "Slideshow script is executable"
+if [ -x "$INSTALL_DIR/kiosk/kiosk.sh" ]; then
+    pass "Kiosk launcher is executable"
 else
-    fail "Slideshow script is not executable"
+    fail "Kiosk launcher is not executable"
 fi
 
-if [ -x "$INSTALL_DIR/app/hdmi-control.sh" ]; then
+if [ -x "$INSTALL_DIR/scripts/hdmi-control.sh" ]; then
     pass "HDMI control script is executable"
 else
     fail "HDMI control script missing or not executable"
@@ -86,9 +87,61 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
-# 2. Configuration
+# 2. Frontend assets
+# -----------------------------------------------------------------------
+echo "--- Frontend Assets ---"
+
+JS_COUNT=0
+if [ -d "$INSTALL_DIR/app/static/js" ]; then
+    JS_COUNT=$(find "$INSTALL_DIR/app/static/js" -name '*.js' -type f 2>/dev/null | wc -l)
+fi
+if [ "$JS_COUNT" -gt 0 ]; then
+    pass "Frontend JS assets: $JS_COUNT file(s) in app/static/js/"
+else
+    fail "No JS assets found in app/static/js/ — run npm run build"
+fi
+
+CSS_COUNT=0
+if [ -d "$INSTALL_DIR/app/static/css" ]; then
+    CSS_COUNT=$(find "$INSTALL_DIR/app/static/css" -name '*.css' -type f 2>/dev/null | wc -l)
+fi
+if [ "$CSS_COUNT" -gt 0 ]; then
+    pass "Frontend CSS assets: $CSS_COUNT file(s) in app/static/css/"
+else
+    fail "No CSS assets found in app/static/css/ — run npm run build"
+fi
+
+echo ""
+
+# -----------------------------------------------------------------------
+# 3. Python syntax check
+# -----------------------------------------------------------------------
+echo "--- Python Syntax ---"
+
+PY_ERRORS=0
+if [ -d "$INSTALL_DIR/app" ]; then
+    while IFS= read -r pyfile; do
+        if ! python3 -m py_compile "$pyfile" 2>/dev/null; then
+            fail "Syntax error: $pyfile"
+            PY_ERRORS=$((PY_ERRORS + 1))
+        fi
+    done < <(find "$INSTALL_DIR/app" -name '*.py' -type f 2>/dev/null)
+
+    if [ "$PY_ERRORS" -eq 0 ]; then
+        pass "All Python files pass syntax check"
+    fi
+else
+    fail "App directory not found for syntax check"
+fi
+
+echo ""
+
+# -----------------------------------------------------------------------
+# 4. Configuration
 # -----------------------------------------------------------------------
 echo "--- Configuration ---"
+
+MEDIA_DIR=""
 
 if [ -f "$INSTALL_DIR/app/.env" ]; then
     pass ".env config file exists"
@@ -121,7 +174,7 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
-# 3. Media directory
+# 5. Media directory
 # -----------------------------------------------------------------------
 echo "--- Media Directory ---"
 
@@ -153,11 +206,11 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
-# 4. Systemd services
+# 6. Systemd services
 # -----------------------------------------------------------------------
 echo "--- Systemd Services ---"
 
-for SVC in slideshow photo-upload wifi-manager; do
+for SVC in framecast framecast-kiosk wifi-manager; do
     if systemctl is-enabled "$SVC" &>/dev/null; then
         pass "$SVC service is enabled"
     else
@@ -175,7 +228,7 @@ done
 echo ""
 
 # -----------------------------------------------------------------------
-# 5. Web server
+# 7. Web server
 # -----------------------------------------------------------------------
 echo "--- Web Server ---"
 
@@ -207,28 +260,7 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
-# 6. VLC process
-# -----------------------------------------------------------------------
-echo "--- VLC Process ---"
-
-if pgrep -x vlc &>/dev/null || pgrep -x cvlc &>/dev/null; then
-    pass "VLC process is running"
-else
-    MEDIA_COUNT=0
-    if [ -n "${MEDIA_DIR:-}" ] && [ -d "${MEDIA_DIR:-}" ]; then
-        MEDIA_COUNT=$(find "$MEDIA_DIR" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.avi' -o -iname '*.mov' -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.bmp' \) 2>/dev/null | wc -l)
-    fi
-    if [ "$MEDIA_COUNT" -eq 0 ]; then
-        warn "VLC not running (no media files found - this is expected)"
-    else
-        fail "VLC not running but $MEDIA_COUNT media files exist"
-    fi
-fi
-
-echo ""
-
-# -----------------------------------------------------------------------
-# 7. Hardware watchdog
+# 8. Hardware watchdog
 # -----------------------------------------------------------------------
 echo "--- Hardware Watchdog ---"
 
@@ -244,20 +276,14 @@ else
     warn "Watchdog device not found (/dev/watchdog)"
 fi
 
-if [ -f /etc/watchdog.conf ]; then
-    pass "Watchdog config exists (/etc/watchdog.conf)"
-else
-    warn "Watchdog config missing (/etc/watchdog.conf)"
-fi
-
 echo ""
 
 # -----------------------------------------------------------------------
-# 8. System dependencies
+# 9. System dependencies
 # -----------------------------------------------------------------------
 echo "--- System Dependencies ---"
 
-for CMD in vlc cvlc python3 ffmpeg xdotool qrencode; do
+for CMD in python3 gunicorn ffmpeg qrencode cage; do
     if command -v "$CMD" &>/dev/null; then
         pass "$CMD is installed"
     else
@@ -275,13 +301,13 @@ fi
 if python3 -c "from PIL import Image" &>/dev/null; then
     pass "Python Pillow module available"
 else
-    warn "Python Pillow module not available (welcome screen generation may fail)"
+    warn "Python Pillow module not available (image validation may fail)"
 fi
 
 echo ""
 
 # -----------------------------------------------------------------------
-# 9. Network / mDNS
+# 10. Network / mDNS
 # -----------------------------------------------------------------------
 echo "--- Network ---"
 
@@ -289,12 +315,6 @@ if systemctl is-active avahi-daemon &>/dev/null; then
     pass "Avahi (mDNS) daemon is active"
 else
     warn "Avahi (mDNS) daemon is not active"
-fi
-
-if [ -f /etc/avahi/services/pi-photo-display.service ]; then
-    pass "Avahi service advertisement configured"
-else
-    warn "Avahi service advertisement not configured"
 fi
 
 IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -307,14 +327,20 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
-# 10. Sudoers
+# 11. Permissions
 # -----------------------------------------------------------------------
 echo "--- Permissions ---"
 
-if [ -f /etc/sudoers.d/pi-photo-display ]; then
+if [ -d "/var/lib/framecast" ]; then
+    pass "State directory exists: /var/lib/framecast"
+else
+    warn "State directory missing: /var/lib/framecast"
+fi
+
+if [ -f /etc/sudoers.d/framecast ]; then
     pass "Sudoers file exists for service control"
 else
-    warn "Sudoers file missing (/etc/sudoers.d/pi-photo-display)"
+    warn "Sudoers file missing (/etc/sudoers.d/framecast)"
 fi
 
 echo ""
@@ -329,16 +355,15 @@ echo "========================================"
 
 if [ "$FAIL" -gt 0 ]; then
     echo ""
-    echo "  Some checks failed. Review the output above for details."
+    echo "  CRITICAL: Some checks failed. Review the output above."
     echo "  Try re-running the installer: sudo bash install.sh"
+    exit 2
+elif [ "$WARN" -gt 0 ]; then
+    echo ""
+    echo "  All critical checks passed with some warnings."
     exit 1
 else
-    if [ "$WARN" -gt 0 ]; then
-        echo ""
-        echo "  All critical checks passed with some warnings."
-    else
-        echo ""
-        echo "  All checks passed. Installation looks good."
-    fi
+    echo ""
+    echo "  All checks passed. Installation looks good."
     exit 0
 fi
