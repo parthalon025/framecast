@@ -161,9 +161,20 @@ _SETTINGS_ENV_MAP = {
 
 @api.route("/photos")
 def list_photos():
-    """Return all media files as JSON from database."""
+    """Return media files as JSON from database.
+
+    Query params:
+        filter: 'favorites' | 'hidden' | omit for default (non-hidden, non-quarantined)
+    """
     try:
-        photos = db.get_photos()
+        photo_filter = request.args.get("filter", "")
+        favorite_only = photo_filter == "favorites"
+        include_hidden = photo_filter == "hidden"
+
+        photos = db.get_photos(
+            favorite_only=favorite_only,
+            include_hidden=include_hidden,
+        )
         # Augment with human-readable size for frontend compatibility
         for photo in photos:
             photo["name"] = photo["filename"]
@@ -382,6 +393,26 @@ def delete_album_endpoint(album_id):
     return jsonify({"status": "ok"})
 
 
+@api.route("/albums/<int:album_id>/photos")
+def list_album_photos(album_id):
+    """Return all photos in an album."""
+    photos = db.get_album_photos(album_id)
+    for photo in photos:
+        photo["name"] = photo["filename"]
+        photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+    return jsonify(photos)
+
+
+@api.route("/albums/smart/<smart_key>/photos")
+def list_smart_album_photos(smart_key):
+    """Return photos matching a smart album query."""
+    photos = db.get_smart_album_photos(smart_key)
+    for photo in photos:
+        photo["name"] = photo["filename"]
+        photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+    return jsonify(photos)
+
+
 @api.route("/albums/<int:album_id>/photos", methods=["POST"])
 @require_pin
 def add_photo_to_album(album_id):
@@ -409,6 +440,13 @@ def remove_photo_from_album(album_id, photo_id):
 # ---------------------------------------------------------------------------
 # Tag endpoints
 # ---------------------------------------------------------------------------
+
+
+@api.route("/tags")
+def list_all_tags():
+    """Return all tags for autocomplete."""
+    tags = db.get_all_tags()
+    return jsonify(tags)
 
 
 @api.route("/photos/<int:photo_id>/tags")

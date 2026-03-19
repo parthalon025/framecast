@@ -404,10 +404,13 @@ def create_album(name, description=None):
 
 
 def get_albums():
-    """Return all albums as a list of dicts."""
+    """Return all albums as a list of dicts, including photo_count."""
     with closing(get_db()) as conn:
         rows = conn.execute(
-            "SELECT * FROM albums ORDER BY sort_order, name"
+            """SELECT a.*,
+                      (SELECT COUNT(*) FROM album_photos ap WHERE ap.album_id = a.id) AS photo_count
+               FROM albums a
+               ORDER BY a.sort_order, a.name"""
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -505,6 +508,15 @@ def get_tags(photo_id):
                WHERE pt.photo_id = ?
                ORDER BY t.name""",
             (photo_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_tags():
+    """Return all tags in the system (for autocomplete)."""
+    with closing(get_db()) as conn:
+        rows = conn.execute(
+            "SELECT id, name FROM tags ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
 

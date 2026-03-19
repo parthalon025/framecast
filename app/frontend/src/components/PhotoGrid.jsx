@@ -13,8 +13,10 @@ const deleting = signal(false);
  * @param {object}   props
  * @param {Array}    props.photos   - Array of photo objects from /api/photos
  * @param {Function} [props.onDelete] - Called with filename after successful delete
+ * @param {Function} [props.onToggleFavorite] - Called to toggle favorite on a photo
+ * @param {Function} [props.onSelect] - Called when a photo is tapped (opens lightbox)
  */
-export function PhotoGrid({ photos = [], onDelete }) {
+export function PhotoGrid({ photos = [], onDelete, onToggleFavorite, onSelect }) {
   function openDeleteModal(photo) {
     deleteTarget.value = photo;
   }
@@ -30,12 +32,12 @@ export function PhotoGrid({ photos = [], onDelete }) {
     deleting.value = true;
 
     const form = new FormData();
-    form.append("filename", photo.name);
+    form.append("filename", photo.name || photo.filename);
 
     fetch("/delete", { method: "POST", body: form })
       .then((resp) => {
         if (resp.ok || resp.redirected) {
-          onDelete?.(photo.name);
+          onDelete?.(photo.name || photo.filename);
         }
       })
       .catch((err) => {
@@ -55,7 +57,7 @@ export function PhotoGrid({ photos = [], onDelete }) {
     return (
       <div class="sh-frame" data-label="MEDIA">
         <div style="padding: 32px; text-align: center;">
-          <div class="sh-ansi-dim">NO ACTIVE PHOTOS</div>
+          <div class="sh-ansi-dim">NO DATA</div>
         </div>
       </div>
     );
@@ -66,9 +68,11 @@ export function PhotoGrid({ photos = [], onDelete }) {
       <div class="sh-grid sh-grid-3">
         {photos.map((photo) => (
           <PhotoCard
-            key={photo.name}
+            key={photo.name || photo.id}
             photo={photo}
             onDelete={openDeleteModal}
+            onToggleFavorite={onToggleFavorite}
+            onSelect={onSelect}
           />
         ))}
       </div>
@@ -76,7 +80,7 @@ export function PhotoGrid({ photos = [], onDelete }) {
       <ShModal
         open={!!target}
         title="CONFIRM: DELETE FILE"
-        body={target ? `Remove "${target.name}" (${target.size_human})? This cannot be undone.` : ""}
+        body={target ? `Remove "${target.name || target.filename}" (${target.size_human || ""})? This cannot be undone.` : ""}
         confirmLabel={isDeleting ? "DELETING..." : "DELETE"}
         cancelLabel="CANCEL"
         onConfirm={confirmDelete}
