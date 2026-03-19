@@ -34,7 +34,7 @@ def subscribe():
     with _clients_lock:
         if len(_clients) >= _MAX_CLIENTS:
             log.warning("SSE connection rejected: max clients (%d) reached", _MAX_CLIENTS)
-            yield f"event: error\ndata: {{\"error\": \"Too many connections\"}}\n\n"
+            yield "event: error\ndata: {\"error\": \"Too many connections\"}\n\n"
             return
         _clients.append(q)
         count = len(_clients)

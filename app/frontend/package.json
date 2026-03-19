@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "cp src/app.css ../static/css/app.css",
+    "prebuild": "mkdir -p ../static/css ../static/js && cp src/app.css ../static/css/app.css",
     "build": "node esbuild.config.js",
     "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css",
     "dev": "node esbuild.config.js --watch"

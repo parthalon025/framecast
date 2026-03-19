@@ -1,6 +1,5 @@
 """Gunicorn configuration for FrameCast web server."""
 
-import multiprocessing
 import os
 
 # Bind to all interfaces on WEB_PORT (default 8080)
