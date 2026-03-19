@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-19
+
+### Added
+- Flash-and-go OS image (pi-gen based, arm64)
+- Browser-based slideshow with CSS transitions (fade, slide, Ken Burns)
+- superhot-ui frontend with green phosphor terminal aesthetic
+- WiFi captive portal with onboarding wizard
+- Server-Sent Events for real-time display updates
+- OTA update system with health-check rollback
+- PIN authentication for web UI
+- Photo map with GPS EXIF data
+- Wayland kiosk display (cage + GTK-WebKit, no X11)
+- HDMI schedule via wlr-randr
+- GitHub Actions CI/CD pipeline
+
+### Changed
+- Replaced VLC slideshow with browser-based engine
+- Replaced X11/openbox with Wayland/cage
+- Flask behind gunicorn with multi-core support
+- Rewrote frontend as Preact SPA
+
+### Removed
+- VLC dependency
+- X11/openbox dependency
+- Server-rendered Jinja2 templates (replaced by SPA)
+
 ## [1.0.0] - 2026-03-18
 
 ### Added
