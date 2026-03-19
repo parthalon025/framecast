@@ -1,6 +1,7 @@
 /** @fileoverview FrameCast application root — routes phone UI and TV display. */
 import { render } from "preact";
 import { Router, route, navigate } from "./components/Router.jsx";
+import { PhoneLayout } from "./components/PhoneLayout.jsx";
 import { detectCapability, applyCapability } from "superhot-ui";
 
 // --- Surface detection ---
@@ -48,7 +49,11 @@ function App() {
   if (isDisplay()) {
     return <Router routes={displayRoutes} />;
   }
-  return <Router routes={phoneRoutes} />;
+  return (
+    <PhoneLayout>
+      <Router routes={phoneRoutes} />
+    </PhoneLayout>
+  );
 }
 
 // --- Init ---
