@@ -1,0 +1,48 @@
+/**
+ * FrameCast — Photos
+ * Favorites, Albums, PhotoCard, Context Menu, Lightbox.
+ */
+
+/* Favorite card — phosphor left border */
+.fc-card--favorite {
+  border-left: 2px solid var(--sh-phosphor);
+}
+
+/* Context menu items */
+.fc-ctx-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 8px 14px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.fc-ctx-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 2px solid var(--sh-phosphor);
+}
+
+.fc-ctx-item--danger {
+  color: var(--sh-threat, #ff4444);
+}
+
+/* Lightbox action buttons */
+.fc-action-btn {
+  font-family: var(--font-mono, monospace);
+}
+
+.fc-action-btn--active {
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+}
+
+.fc-action-btn--danger {
+  color: var(--sh-threat, #ff4444);
+  border-color: var(--sh-threat, #ff4444);
+}

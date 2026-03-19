@@ -1,0 +1,25 @@
+/**
+ * FrameCast — Design Tokens
+ * Green phosphor overrides + safe area inset.
+ */
+
+html {
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) 0 env(safe-area-inset-left, 0);
+}
+
+:root,
+[data-sh-monitor="green"] {
+  --sh-phosphor: oklch(85% 0.18 145);
+  --sh-phosphor-glow: oklch(85% 0.18 145 / 0.2);
+
+  /* Override accent to match phosphor (nav active state, links) */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+
+  /* Explicit status overrides for consumers that read these directly */
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}

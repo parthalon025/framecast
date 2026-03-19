@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import { ShCollapsible, ShModal, ShToast, ShSkeleton } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { navigate } from "../components/Router.jsx";
 
 const TRANSITION_OPTIONS = ["fade", "slide", "zoom", "dissolve", "none"];
 const TRANSITION_MODE_OPTIONS = [
@@ -476,6 +477,26 @@ export function Settings() {
                 disabled={restarting}
               >
                 {restarting ? "STANDBY" : "RESTART"}
+              </button>
+            </SettingRow>
+
+            <SettingRow label="STATS">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px;"
+                onClick={() => navigate("/stats")}
+              >
+                VIEW STATS
+              </button>
+            </SettingRow>
+
+            <SettingRow label="UPDATES">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px;"
+                onClick={() => navigate("/update")}
+              >
+                SYSTEM UPDATE
               </button>
             </SettingRow>
           </div>

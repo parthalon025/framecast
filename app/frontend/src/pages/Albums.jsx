@@ -320,11 +320,18 @@ export function Albums() {
               {album.cover_photo_id ? (
                 <div style="width: 100%; aspect-ratio: 1; background: var(--surface-void, #111); display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 4px;">
                   <img
-                    src={`/media/${album.cover_filename || ""}`}
+                    src={`/thumbnail/${album.cover_filename || ""}`}
                     alt=""
                     loading="lazy"
                     style="width: 100%; height: 100%; object-fit: cover;"
-                    onError={(evt) => { evt.target.style.display = "none"; }}
+                    onError={(evt) => {
+                      if (!evt.target.dataset.fallback) {
+                        evt.target.dataset.fallback = "1";
+                        evt.target.src = `/media/${album.cover_filename || ""}`;
+                      } else {
+                        evt.target.style.display = "none";
+                      }
+                    }}
                   />
                 </div>
               ) : (

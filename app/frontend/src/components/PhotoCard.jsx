@@ -139,7 +139,8 @@ export function PhotoCard({
       </button>
 
       <img
-        src={photo.is_video ? `/thumbnail/${photo.name || photo.filename}` : `/media/${photo.name || photo.filename}`}
+        src={`/thumbnail/${photo.name || photo.filename}`}
+        onError={(evt) => { evt.target.src = `/media/${photo.name || photo.filename}`; evt.target.onerror = null; }}
         alt={photo.name || photo.filename}
         loading="lazy"
         style="width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-radius: 4px;"
