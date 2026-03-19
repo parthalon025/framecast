@@ -6,12 +6,14 @@ read/write settings, and retrieve GPS locations.
 
 import logging
 import re
+import subprocess
+import threading
 from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
 import sse
-from modules import config, media, wifi
+from modules import config, media, updater, wifi
 from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
@@ -240,3 +242,34 @@ def wifi_ap_stop():
     success, message = wifi.stop_ap()
     status_code = 200 if success else 502
     return jsonify({"success": success, "message": message}), status_code
+
+
+# ---------------------------------------------------------------------------
+# OTA Update endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/update/check", methods=["POST"])
+@require_pin
+def check_update():
+    """Check GitHub for a newer version."""
+    result = updater.check_for_update()
+    return jsonify(result)
+
+
+@api.route("/update/apply", methods=["POST"])
+@require_pin
+def apply_update():
+    """Apply the specified update tag. Reboots on success."""
+    data = request.get_json(silent=True) or {}
+    tag = data.get("tag")
+    if not tag:
+        return jsonify({"error": "No tag specified"}), 400
+
+    success, message = updater.apply_update(tag)
+    if success:
+        sse.notify("update:rebooting", {"version": tag})
+        # Schedule reboot in 5 seconds (let the HTTP response return first)
+        threading.Timer(5.0, lambda: subprocess.run(["sudo", "reboot"])).start()
+
+    return jsonify({"success": success, "message": message})
