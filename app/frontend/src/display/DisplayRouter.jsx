@@ -15,7 +15,10 @@ import { Slideshow } from "./Slideshow.jsx";
 /** Current display state -- exported for other components to read. */
 export const displayState = signal("boot");
 
-// --- Placeholder components (filled in Batch 5) ---
+/** Access PIN fetched from /api/status -- shown on TV screens. */
+const accessPin = signal("");
+
+// --- Screen components ---
 
 function BootScreen() {
   return (
@@ -26,11 +29,28 @@ function BootScreen() {
   );
 }
 
+/** PIN display shown on Setup and Welcome screens. */
+function PinDisplay() {
+  const pin = accessPin.value;
+  if (!pin || pin === "0000") return null;
+  return (
+    <div style="margin-top: 24px;">
+      <span
+        class="sh-label"
+        style="font-size: 1.1rem; letter-spacing: 0.2em; opacity: 0.85;"
+      >
+        ACCESS PIN: {pin}
+      </span>
+    </div>
+  );
+}
+
 function SetupScreen() {
   return (
     <div class="boot-screen">
       <div class="boot-logo">FrameCast</div>
       <div class="boot-status">Setup required</div>
+      <PinDisplay />
     </div>
   );
 }
@@ -42,6 +62,7 @@ function WelcomeScreen() {
       <div class="boot-status">
         No photos yet. Upload photos from your phone to get started.
       </div>
+      <PinDisplay />
     </div>
   );
 }
@@ -72,6 +93,11 @@ export function DisplayRouter() {
         const res = await fetch("/api/status");
         if (cancelled) return;
         const data = await res.json();
+
+        // Store PIN for display on TV screens
+        if (data.access_pin) {
+          accessPin.value = data.access_pin;
+        }
 
         const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
         if (totalMedia > 0) {
