@@ -4,7 +4,7 @@ import { useEffect } from "preact/hooks";
 import { ShStatsGrid } from "superhot-ui/preact";
 import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
-import { formatTime } from "superhot-ui";
+import { fmtDateTime } from "../lib/format.js";
 
 /** Reactive state */
 const stats = signal(null);
@@ -29,14 +29,6 @@ function fetchStats() {
       error.value = "FETCH FAILED";
       loading.value = false;
     });
-}
-
-/** Format an ISO datetime string to piOS display format. */
-function fmtDate(isoStr) {
-  if (!isoStr) return "\u2014";
-  const ts = new Date(isoStr).getTime();
-  if (isNaN(ts)) return "\u2014";
-  return formatTime(ts, "date") + " " + formatTime(ts, "compact");
 }
 
 /**
@@ -95,7 +87,7 @@ export function Stats() {
   ];
   const userRows = (data.by_user || []).map((row) => ({
     ...row,
-    last_upload_fmt: fmtDate(row.last_upload),
+    last_upload_fmt: fmtDateTime(row.last_upload),
   }));
 
   // Most shown table
@@ -106,7 +98,7 @@ export function Stats() {
   ];
   const mostShownRows = (data.most_shown || []).map((row) => ({
     ...row,
-    last_shown_fmt: fmtDate(row.last_shown_at),
+    last_shown_fmt: fmtDateTime(row.last_shown_at),
   }));
 
   // Least shown table (NEGLECTED)
@@ -117,7 +109,7 @@ export function Stats() {
   ];
   const leastShownRows = (data.least_shown || []).map((row) => ({
     ...row,
-    uploaded_at_fmt: fmtDate(row.uploaded_at),
+    uploaded_at_fmt: fmtDateTime(row.uploaded_at),
   }));
 
   return (

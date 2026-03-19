@@ -72,23 +72,16 @@ def get_full_stats():
     Includes totals, per-user breakdown, most/least shown, and upload timeline.
     """
     with closing(db.get_db()) as conn:
-        # Total photos (non-quarantined)
-        total_photos = conn.execute(
-            "SELECT COUNT(*) AS c FROM photos WHERE quarantined = 0"
-        ).fetchone()["c"]
-
-        # Total videos
-        total_videos = conn.execute(
-            "SELECT COUNT(*) AS c FROM photos "
-            "WHERE quarantined = 0 AND is_video = 1"
-        ).fetchone()["c"]
-
-        # Total storage (sum of file_size)
-        storage_row = conn.execute(
-            "SELECT COALESCE(SUM(file_size), 0) AS total "
+        # Totals: photos, videos, storage in one scan
+        totals = conn.execute(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN is_video = 1 THEN 1 ELSE 0 END) AS videos, "
+            "COALESCE(SUM(file_size), 0) AS storage "
             "FROM photos WHERE quarantined = 0"
         ).fetchone()
-        storage_bytes = storage_row["total"]
+        total_photos = totals["total"]
+        total_videos = totals["videos"]
+        storage_bytes = totals["storage"]
 
         # Photos by user
         by_user = [dict(r) for r in conn.execute(

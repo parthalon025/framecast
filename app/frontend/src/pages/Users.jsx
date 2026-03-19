@@ -3,7 +3,7 @@ import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { ShModal } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
-import { formatTime } from "superhot-ui";
+import { fmtDateTime } from "../lib/format.js";
 
 /** Reactive state */
 const userList = signal([]);
@@ -90,14 +90,6 @@ function confirmDelete() {
     });
 }
 
-/** Format an ISO datetime string to piOS display format. */
-function fmtDate(isoStr) {
-  if (!isoStr) return "\u2014";
-  const ts = new Date(isoStr).getTime();
-  if (isNaN(ts)) return "\u2014";
-  return formatTime(ts, "date") + " " + formatTime(ts, "compact");
-}
-
 /**
  * Users — user management page.
  * Lists all users with upload counts, allows create and delete.
@@ -124,7 +116,7 @@ export function Users() {
 
   const rows = userList.value.map((user) => ({
     ...user,
-    last_upload_fmt: fmtDate(user.last_upload_at),
+    last_upload_fmt: fmtDateTime(user.last_upload_at),
     actions: user.name === "default" ? "" : (
       <button
         class="sh-btn sh-btn-sm"
