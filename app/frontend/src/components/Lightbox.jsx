@@ -54,7 +54,8 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
         allTags.value = all;
         tagSuggestions.value = current;
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn("Lightbox: tag fetch failed", err);
         allTags.value = [];
         tagSuggestions.value = [];
       });
@@ -140,7 +141,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
           fetchWithTimeout(`/api/photos/${photo.id}/tags`)
             .then((resp) => resp.ok ? resp.json() : [])
             .then((data) => { tagSuggestions.value = data; })
-            .catch(() => {});
+            .catch((err) => console.warn("Lightbox: tag refresh failed", err));
         }, 300);
       }
     }
@@ -154,7 +155,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
         fetchWithTimeout(`/api/photos/${photo.id}/tags`)
           .then((resp) => resp.ok ? resp.json() : [])
           .then((data) => { tagSuggestions.value = data; })
-          .catch(() => {});
+          .catch((err) => console.warn("Lightbox: tag refresh failed", err));
       }, 300);
     }
   }
@@ -370,7 +371,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                           fetchWithTimeout(`/api/photos/${photo.id}/tags`)
                             .then((resp) => resp.ok ? resp.json() : [])
                             .then((data) => { tagSuggestions.value = data; })
-                            .catch(() => {});
+                            .catch((err) => console.warn("Lightbox: tag refresh failed", err));
                         }, 300);
                       }}
                       style="font-size: 0.75rem;"

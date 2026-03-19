@@ -114,8 +114,9 @@ def _hmac_sign(data: str) -> str:
     """Compute HMAC-SHA256 of *data* using FLASK_SECRET_KEY."""
     secret = config.get("FLASK_SECRET_KEY", "")
     if not secret:
-        log.warning("FLASK_SECRET_KEY not set — rollback signature will be weak")
-        secret = "framecast-fallback"
+        log.error("FLASK_SECRET_KEY not set — generating ephemeral key for rollback signature")
+        import secrets as _secrets
+        secret = _secrets.token_hex(24)
     return hmac.new(
         secret.encode(), data.encode(), hashlib.sha256
     ).hexdigest()

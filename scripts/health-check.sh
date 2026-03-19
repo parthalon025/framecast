@@ -37,8 +37,9 @@ if [ -f "$ENV_FILE" ]; then
     SECRET=$(grep "^FLASK_SECRET_KEY=" "$ENV_FILE" 2>/dev/null | cut -d= -f2 || true)
 fi
 if [ -z "$SECRET" ]; then
-    echo "WARNING: FLASK_SECRET_KEY not found — using fallback"
-    SECRET="framecast-fallback"
+    echo "ERROR: FLASK_SECRET_KEY not found in $ENV_FILE — cannot validate rollback signature"
+    rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"
+    exit 1
 fi
 
 EXPECTED_SIG=$(echo -n "$PREV_TAG" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $NF}')
