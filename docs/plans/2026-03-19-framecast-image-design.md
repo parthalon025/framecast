@@ -62,11 +62,36 @@ Eliminate the install step. User flashes an SD card, boots the Pi, and FrameCast
 No VLC. No mpv. No separate slideshow engine. Photo transitions are CSS animations.
 Video playback via HTML5 `<video>` element.
 
+### Multi-Core Utilization
+
+Flask behind **gunicorn** with multiple workers to use all Pi cores effectively:
+
+```
+Pi 4/5 (4 cores):
+  Core 0: gunicorn worker 1 (TV display API, WebSocket)
+  Core 1: gunicorn worker 2 (phone uploads, settings)
+  Core 2: kiosk browser (GTK-WebKit rendering, CSS transitions)
+  Core 3: system (cage, avahi, watchdog) + ProcessPoolExecutor overflow
+```
+
+| Component | Strategy | Cores |
+|-----------|----------|-------|
+| Flask serving | **gunicorn** `--workers=2` (prevents upload blocking TV) | 2 |
+| Image processing | `ProcessPoolExecutor` for Pillow resize + EXIF extract | spreads |
+| CSS transitions | GPU-accelerated compositing, not CPU-bound | GPU |
+| Kiosk browser | GTK-WebKit, mostly idle between transitions | 1 |
+
+**Pi 3 (4 cores, 1GB RAM):** Reduce to `--workers=1` + `--threads=2` to save memory.
+Worker count configurable via `.env` (`GUNICORN_WORKERS`), auto-detected default: `min(nproc, 2)`.
+
+**Why gunicorn matters:** Without it, a large batch upload from the phone blocks the TV display's
+API calls (photo list, WebSocket events). With 2 workers, uploads and display run independently.
+
 ### Systemd Services
 
 | Service | Purpose | Type |
 |---------|---------|------|
-| `framecast` | Flask web app (both phone UI and TV display) | rewritten |
+| `framecast` | gunicorn + Flask web app (both phone UI and TV display) | rewritten |
 | `framecast-kiosk` | Kiosk browser pointed at `localhost:8080/display` | new |
 | `wifi-manager` | NetworkManager WiFi provisioning (forked from comitup) | new |
 | `framecast-update.timer` | OTA checker (daily, opt-in) | new |
@@ -271,7 +296,7 @@ stage2-framecast/
   EXPORT_IMAGE                   # triggers .img export
   00-packages/
     00-packages                  # cage, gjs, gir1.2-webkit2-4.0,
-                                 # python3-flask, ffmpeg, watchdog,
+                                 # python3-flask, gunicorn, ffmpeg, watchdog,
                                  # qrencode, avahi-daemon, network-manager,
                                  # python3-pil, python3-pip, nodejs (for esbuild)
   01-config/
