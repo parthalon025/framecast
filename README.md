@@ -108,6 +108,9 @@ All settings are in `/opt/framecast/app/.env` and can be changed from the web UI
 | `PHOTO_DURATION` | `10` | Seconds each photo is displayed |
 | `SHUFFLE` | `yes` | Randomize photo order |
 | `TRANSITION_TYPE` | `fade` | Effect: `fade`, `slide`, `zoom`, `dissolve`, `none` |
+| `TRANSITION_MODE` | `single` | `single` (one type) or `random` (mix transitions) |
+| `TRANSITION_DURATION_MS` | `1000` | Transition speed in milliseconds (500-3000) |
+| `KENBURNS_INTENSITY` | `moderate` | Ken Burns zoom: `subtle`, `moderate`, `dramatic` |
 | `PHOTO_ORDER` | `shuffle` | Order: `shuffle`, `newest`, `oldest`, `alphabetical` |
 | `QR_DISPLAY_SECONDS` | `30` | How long the QR code shows on boot (0 to disable) |
 
@@ -133,8 +136,9 @@ All settings are in `/opt/framecast/app/.env` and can be changed from the web UI
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `HDMI_SCHEDULE_ENABLED` | `no` | Enable automatic TV on/off schedule |
-| `HDMI_OFF_TIME` | `22:00` | Time to turn TV off (HH:MM, 24-hour) |
 | `HDMI_ON_TIME` | `08:00` | Time to turn TV on (HH:MM, 24-hour) |
+| `HDMI_OFF_TIME` | `22:00` | Time to turn TV off (HH:MM, 24-hour) |
+| `DISPLAY_SCHEDULE_DAYS` | `mon,tue,wed,thu,fri,sat,sun` | Days schedule is active |
 
 ### Updates
 
@@ -197,28 +201,36 @@ Output lands in `pi-gen/deploy/`. Takes 20-60 minutes depending on your machine.
 framecast/
 |-- app/
 |   |-- web_upload.py            # Flask web server (entry point)
-|   |-- api.py                   # REST API endpoints + rate limiting
-|   |-- sse.py                   # Server-Sent Events
-|   |-- gunicorn.conf.py         # Gunicorn configuration
+|   |-- api.py                   # REST API (30+ endpoints) + rate limiting
+|   |-- sse.py                   # Server-Sent Events with reconnection
+|   |-- gunicorn.conf.py         # Gunicorn (workers=1, gthread)
 |   |-- modules/
-|   |   |-- auth.py              # PIN authentication + rate limiting
-|   |   |-- config.py            # .env configuration management
-|   |   |-- db.py                # SQLite content model
-|   |   |-- media.py             # Image/video processing + GPS
-|   |   |-- rotation.py          # Weighted slideshow rotation
-|   |   |-- updater.py           # OTA updates with SHA verification
-|   |   |-- wifi.py              # WiFi provisioning (nmcli)
+|   |   |-- db.py                # SQLite content model (photos, albums, tags, users, stats)
+|   |   |-- rotation.py          # Weighted slideshow playlist (recency, favorites, diversity)
+|   |   |-- users.py             # Multi-user management + stats aggregation
+|   |   |-- cec.py               # HDMI-CEC TV control (cec-ctl)
+|   |   |-- auth.py              # PIN authentication (4/6 digit) + CSRF
+|   |   |-- rate_limiter.py      # Shared rate limiter (API + PIN)
+|   |   |-- config.py            # .env configuration (atomic writes)
+|   |   |-- media.py             # Image/video processing + GPS extraction
+|   |   |-- updater.py           # OTA updates with SHA256 verification
+|   |   |-- wifi.py              # WiFi provisioning (nmcli, AP mode)
 |   |-- frontend/
-|   |   |-- src/                 # Preact + superhot-ui JSX components
+|   |   |-- src/
+|   |   |   |-- styles/          # CSS architecture (8 files)
+|   |   |   |-- lib/             # Shared JS (sse.js, fetch.js, format.js)
+|   |   |   |-- components/      # Reusable (PhotoCard, Lightbox, PinGate, etc.)
+|   |   |   |-- pages/           # Phone UI (Upload, Albums, Settings, Map, Stats, etc.)
+|   |   |   |-- display/         # TV display (Slideshow, Boot, Setup, Welcome)
 |   |   |-- esbuild.config.js    # Build configuration
 |   |-- static/                  # Built CSS/JS assets
-|   |-- templates/               # HTML templates
-|-- pi-gen/
-|   |-- build.sh                 # Image build script
-|   |-- config                   # pi-gen configuration
-|   |-- stage2-framecast/        # Custom pi-gen stage
+|   |-- templates/               # HTML templates (SPA shell, legacy pages)
+|-- pi-gen/                      # OS image build (Docker-based)
 |-- scripts/                     # Health check, HDMI control, smoke tests
-|-- systemd/                     # Service definitions
+|-- systemd/                     # 6 service/timer definitions
+|-- tests/                       # 129 tests (db, rotation, users, cec, albums)
+|-- API.md                       # Full endpoint documentation
+|-- CONTRIBUTING.md              # Dev setup + PR guidelines
 |-- VERSION                      # Current version (semver)
 ```
 
