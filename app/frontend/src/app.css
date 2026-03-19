@@ -338,10 +338,9 @@
 /* ── Phone layout (base) ── */
 
 .fc-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 12px;
+  display: grid;
+  gap: var(--space-4, 16px);
+  padding: var(--space-3, 12px);
   padding-bottom: 84px; /* clearance for bottom nav */
 }
 
@@ -349,25 +348,136 @@
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* ── Settings rows ── */
+
 .fc-setting-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3, 12px);
   min-height: 44px; /* touch target */
 }
 
 .fc-setting-row .sh-input,
 .fc-setting-row .sh-select {
   width: 100%;
-  max-width: 120px;
+  max-width: 140px;
   min-height: 44px; /* touch target */
   font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+.fc-setting-row .sh-input[type="range"] {
+  max-width: 100%;
+  min-height: 32px;
+}
+
+.fc-setting-row .sh-input[type="time"] {
+  max-width: 120px;
 }
 
 .fc-setting-row .sh-toggle {
   min-width: 44px;
   min-height: 44px; /* touch target */
+}
+
+/* ── Settings section inner padding ── */
+
+.fc-settings-section {
+  display: grid;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px) 0;
+}
+
+/* ── Range value display ── */
+
+.fc-range-value {
+  min-width: 48px;
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+}
+
+/* ── Day selector grid ── */
+
+.fc-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1, 4px);
+}
+
+.fc-day-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: var(--space-1, 4px);
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.fc-day-btn--active {
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+  background: oklch(85% 0.18 145 / 0.08);
+}
+
+/* ── Primary action button ── */
+
+.fc-btn-primary {
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+}
+
+.fc-btn-primary:disabled {
+  cursor: default;
+  opacity: 0.4;
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+}
+
+/* ── Toast container — above nav bar ── */
+
+.fc-toast-container {
+  position: fixed;
+  bottom: 80px;
+  left: var(--space-3, 12px);
+  right: var(--space-3, 12px);
+  z-index: 100;
+}
+
+/* ── Offline banner ── */
+
+.fc-offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--status-critical, #ff4444);
+  color: var(--surface-void, #000);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ── Validation error state ── */
+
+.sh-input[aria-invalid="true"],
+.sh-select[aria-invalid="true"] {
+  border-color: var(--status-critical, #ff4444);
 }
 
 /* Boot/display screens — fluid type */
@@ -389,8 +499,8 @@
 /* ── Tablet (768px+) ── */
 @media (min-width: 768px) {
   .fc-page {
-    padding: 20px;
-    padding-bottom: 20px; /* no bottom nav on tablet — sidebar */
+    padding: var(--space-5, 20px);
+    padding-bottom: var(--space-5, 20px); /* no bottom nav on tablet — sidebar */
     max-width: 800px;
     margin: 0 auto;
   }
@@ -408,6 +518,17 @@
     bottom: 32px;
     right: 32px;
     padding: 12px;
+  }
+
+  .fc-setting-row .sh-input,
+  .fc-setting-row .sh-select {
+    max-width: 180px;
+  }
+
+  .fc-toast-container {
+    left: auto;
+    right: var(--space-5, 20px);
+    max-width: 400px;
   }
 }
 
@@ -475,5 +596,15 @@
 
   .fc-otd-overlay {
     /* Keep OTD overlay visible but disable any animation */
+  }
+
+  /* Disable page entrance animation */
+  .sh-animate-page-enter {
+    animation: none;
+  }
+
+  /* Static offline banner — no transition */
+  .fc-offline-banner {
+    transition: none;
   }
 }

@@ -1,9 +1,18 @@
-/** @fileoverview Upload page — dropzone + photo grid + disk space + user filter. */
+/** @fileoverview Upload page — dropzone + batch progress + photo grid + storage + user filter.
+ *
+ * Batch upload shows per-file status, auto-retries failed uploads (3 attempts,
+ * exponential backoff), and displays a completion summary.
+ * piOS voice: UPLOADING 3/12, COMPLETE, FAULT, etc.
+ */
 import { signal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import { ShToast } from "superhot-ui/preact";
+import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
+import { OfflineBanner } from "../components/OfflineBanner.jsx";
 import { createSSE } from "../lib/sse.js";
+import { fetchWithTimeout } from "../lib/fetch.js";
 import {
   currentUser,
   ensureUserIdentified,
@@ -17,17 +26,12 @@ const loading = signal(true);
 const userFilter = signal("all");
 const availableUsers = signal([]);
 
-/** Build ASCII storage bar: [▓▓▓░░░] */
-function storageBar(pct) {
-  const width = 20;
-  const filled = Math.round((pct / 100) * width);
-  const empty = width - filled;
-  return "[" + "\u2593".repeat(filled) + "\u2591".repeat(empty) + "]";
-}
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 1000;
 
 /** Fetch photos list from API. */
 function fetchPhotos() {
-  return fetch("/api/photos")
+  return fetchWithTimeout("/api/photos")
     .then((resp) => resp.json())
     .then((data) => {
       photos.value = data;
@@ -36,30 +40,94 @@ function fetchPhotos() {
       availableUsers.value = uploaders.sort();
     })
     .catch((err) => {
-      console.warn("Upload: fetchPhotos failed", err);
+      console.warn("Upload: fetchPhotos fault", err);
     });
 }
 
 /** Fetch system status (disk usage) from API. */
 function fetchStatus() {
-  return fetch("/api/status")
+  return fetchWithTimeout("/api/status")
     .then((resp) => resp.json())
     .then((data) => {
       if (data.disk) disk.value = data.disk;
     })
     .catch((err) => {
-      console.warn("Upload: fetchStatus failed", err);
+      console.warn("Upload: fetchStatus fault", err);
     });
 }
 
 /**
+ * Upload a single file via XHR with progress + retry.
+ * Returns a promise that resolves with { name, status, error? }.
+ */
+function uploadFileWithRetry(file, onProgress, attempt = 0) {
+  return new Promise((resolve) => {
+    const form = new FormData();
+    form.append("files", file);
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (evt) => {
+      if (evt.lengthComputable) {
+        onProgress(Math.round((evt.loaded / evt.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ name: file.name, status: "COMPLETE" });
+      } else if (xhr.status === 429 && attempt < MAX_RETRIES) {
+        // Rate limited — retry with backoff
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+        setTimeout(() => {
+          uploadFileWithRetry(file, onProgress, attempt + 1).then(resolve);
+        }, delay);
+      } else if (attempt < MAX_RETRIES) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+        setTimeout(() => {
+          uploadFileWithRetry(file, onProgress, attempt + 1).then(resolve);
+        }, delay);
+      } else {
+        let errorMsg = `HTTP ${xhr.status}`;
+        try {
+          const resp = JSON.parse(xhr.responseText);
+          if (resp.error) errorMsg = resp.error;
+        } catch (_) {}
+        resolve({ name: file.name, status: "FAULT", error: errorMsg });
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+        setTimeout(() => {
+          uploadFileWithRetry(file, onProgress, attempt + 1).then(resolve);
+        }, delay);
+      } else {
+        resolve({ name: file.name, status: "FAULT", error: "NETWORK FAULT" });
+      }
+    });
+
+    xhr.open("POST", "/upload");
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.send(form);
+  });
+}
+
+/**
  * Upload — main upload page.
- * Combines ShDropzone, PhotoGrid, disk space display, and user filter.
+ * Combines ShDropzone, batch upload progress, PhotoGrid, disk space display, and user filter.
  * Prompts "WHO IS UPLOADING?" on first upload if no cookie set.
  * Subscribes to SSE for real-time photo:added/photo:deleted events.
  */
 export function Upload() {
   const sseRef = useRef(null);
+  const storageBarRef = useRef(null);
+  const [toast, setToast] = useState(null);
+
+  /* Batch upload state */
+  const [batch, setBatch] = useState(null);
+  /* batch shape: { files: [{name, status, progress, error?}], total, completed, failed } */
 
   function handleRefresh() {
     fetchPhotos();
@@ -67,12 +135,10 @@ export function Upload() {
   }
 
   useEffect(() => {
-    // Initial data fetch
     Promise.all([fetchPhotos(), fetchStatus()]).then(() => {
       loading.value = false;
     });
 
-    // Connect SSE with shared backoff utility
     const sse = createSSE("/api/events", {
       listeners: {
         "photo:added": handleRefresh,
@@ -82,6 +148,70 @@ export function Upload() {
     sseRef.current = sse;
 
     return () => sse.close();
+  }, []);
+
+  /** Apply threshold to storage bar on disk change. */
+  useEffect(() => {
+    if (storageBarRef.current && disk.value) {
+      applyThreshold(storageBarRef.current, disk.value.percent || 0);
+    }
+  }, [disk.value]);
+
+  /** Handle batch file selection from dropzone. */
+  const handleBatchUpload = useCallback(async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+
+    const files = Array.from(fileList);
+    const batchState = {
+      files: files.map((file) => ({ name: file.name, status: "PENDING", progress: 0 })),
+      total: files.length,
+      completed: 0,
+      failed: 0,
+    };
+    setBatch({ ...batchState });
+
+    // Upload sequentially to avoid Pi 3 OOM
+    for (let idx = 0; idx < files.length; idx++) {
+      // Update current file to UPLOADING
+      batchState.files[idx].status = "UPLOADING";
+      setBatch({ ...batchState });
+
+      const result = await uploadFileWithRetry(
+        files[idx],
+        (pct) => {
+          batchState.files[idx].progress = pct;
+          setBatch({ ...batchState });
+        },
+      );
+
+      batchState.files[idx].status = result.status;
+      batchState.files[idx].progress = result.status === "COMPLETE" ? 100 : 0;
+      if (result.error) batchState.files[idx].error = result.error;
+
+      if (result.status === "COMPLETE") {
+        batchState.completed++;
+      } else {
+        batchState.failed++;
+      }
+      setBatch({ ...batchState });
+    }
+
+    // Refresh data after batch completes
+    fetchPhotos();
+    fetchStatus();
+
+    // Show summary toast
+    if (batchState.failed === 0) {
+      setToast({ type: "info", message: `${batchState.completed} UPLOADED` });
+    } else {
+      setToast({
+        type: "error",
+        message: `${batchState.completed} UPLOADED. ${batchState.failed} FAILED`,
+      });
+    }
+
+    // Clear batch after 5s
+    setTimeout(() => setBatch(null), 5000);
   }, []);
 
   function handleUploadAttempt() {
@@ -98,7 +228,6 @@ export function Upload() {
   }
 
   function handleDelete() {
-    // SSE will trigger refresh, but fetch eagerly
     fetchPhotos();
     fetchStatus();
   }
@@ -118,14 +247,16 @@ export function Upload() {
 
   if (isLoading) {
     return (
-      <div class="sh-frame" style="padding: 24px; text-align: center;">
+      <main class="sh-frame" style="padding: 24px; text-align: center;" role="main">
         <div class="sh-ansi-dim">STANDBY</div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div class="sh-animate-page-enter fc-page">
+    <main class="sh-animate-page-enter fc-page" role="main">
+      <OfflineBanner />
+
       {/* User select modal (shown on first upload if no cookie) */}
       <UserSelectModal onSelected={handleUserSelected} />
 
@@ -149,24 +280,92 @@ export function Upload() {
       {/* Dropzone */}
       <ShDropzone
         onUpload={handleUploadAttempt}
+        onBatchUpload={handleBatchUpload}
         disabled={isUploadBlocked}
       />
 
-      {/* Storage indicator */}
-      <div class="sh-frame" data-label="STORAGE">
-        <div style="padding: 12px;">
-          <div style="font-family: var(--font-mono, monospace); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span>{storageBar(diskPct)}</span>
-            <span>{diskPct}%</span>
-            {isLowDisk && (
-              <span class="sh-status-badge" data-sh-status="critical">LOW DISK</span>
+      {/* Batch upload progress */}
+      {batch && (
+        <section class="sh-frame" data-label="TRANSFER" aria-label="Upload progress">
+          <div style="display: grid; gap: var(--space-2, 8px);">
+            <div class="sh-label">
+              UPLOADING {Math.min(batch.completed + batch.failed + 1, batch.total)}/{batch.total}
+            </div>
+            <div class="sh-threshold-bar" style={`--sh-fill: ${Math.round(((batch.completed + batch.failed) / batch.total) * 100)}`} />
+            <div style="display: grid; gap: var(--space-1, 4px); max-height: 200px; overflow-y: auto;">
+              {batch.files.map((file) => (
+                <div
+                  key={file.name}
+                  style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-2, 8px); align-items: center; font-size: 0.8rem;"
+                >
+                  <span
+                    class="sh-ansi-dim"
+                    style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                  >
+                    {file.name}
+                  </span>
+                  <span
+                    class={
+                      file.status === "COMPLETE" ? "sh-ansi-fg-green" :
+                      file.status === "FAULT" ? "sh-ansi-fg-red" :
+                      file.status === "UPLOADING" ? "" :
+                      "sh-ansi-dim"
+                    }
+                    style="font-size: 0.75rem; white-space: nowrap;"
+                  >
+                    {file.status === "UPLOADING" ? `${file.progress}%` : file.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* Completion summary */}
+            {batch.completed + batch.failed === batch.total && (
+              <div style="margin-top: var(--space-2, 8px); font-size: 0.8rem;">
+                <span class="sh-value">
+                  {batch.completed} UPLOADED
+                  {batch.failed > 0 && (
+                    <span class="sh-ansi-fg-red">
+                      . {batch.failed} FAILED
+                    </span>
+                  )}
+                </span>
+                {batch.files.filter((file) => file.error).map((file) => (
+                  <div key={file.name} class="sh-ansi-dim" style="font-size: 0.75rem; margin-top: 2px;">
+                    {file.name} — {file.error}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-          <div class="sh-ansi-dim" style="margin-top: 6px; font-size: 0.8rem;">
+        </section>
+      )}
+
+      {/* Storage indicator */}
+      <section class="sh-frame" data-label="STORAGE" aria-label="Storage usage">
+        <div style="padding: var(--space-3, 12px);">
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-2, 8px); align-items: center;">
+            <div
+              class="sh-threshold-bar"
+              style={`--sh-fill: ${diskPct}`}
+              ref={storageBarRef}
+              role="meter"
+              aria-label="Storage usage"
+              aria-valuenow={diskPct}
+              aria-valuemin="0"
+              aria-valuemax="100"
+            />
+            <span style="white-space: nowrap;">
+              {diskPct}%
+              {isLowDisk && (
+                <span class="sh-status-badge" data-sh-status="critical" style="margin-left: var(--space-2, 8px);">LOW DISK</span>
+              )}
+            </span>
+          </div>
+          <div class="sh-ansi-dim" style="margin-top: var(--space-1, 4px); font-size: 0.8rem;">
             {currentDisk.used} USED / {currentDisk.total} TOTAL / {currentDisk.free} FREE
           </div>
         </div>
-      </div>
+      </section>
 
       {/* User filter dropdown */}
       {availableUsers.value.length > 1 && (
@@ -187,6 +386,18 @@ export function Upload() {
 
       {/* Photo grid */}
       <PhotoGrid photos={filteredPhotos} onDelete={handleDelete} />
-    </div>
+
+      {/* Toast */}
+      {toast && (
+        <div class="fc-toast-container">
+          <ShToast
+            type={toast.type}
+            message={toast.message}
+            duration={4000}
+            onDismiss={() => setToast(null)}
+          />
+        </div>
+      )}
+    </main>
   );
 }

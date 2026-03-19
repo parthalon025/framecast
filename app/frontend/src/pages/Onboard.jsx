@@ -1,8 +1,15 @@
-/** @fileoverview Onboarding page — WiFi setup wizard with scan, select, connect steps. */
+/** @fileoverview Onboarding wizard — 4-step first-boot flow.
+ *
+ * Steps: WIFI -> UPLOAD -> CONFIGURE -> DONE
+ * Auto-redirects on first boot when ONBOARDING_COMPLETE is not set.
+ * TV display shows QR code + "SCAN TO CONFIGURE" throughout.
+ * piOS voice: terse, uppercase, no conversational language.
+ */
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
-import { ShSkeleton } from "superhot-ui/preact";
-import { ShToast } from "superhot-ui/preact";
+import { ShSkeleton, ShToast } from "superhot-ui/preact";
 import { navigate } from "../components/Router.jsx";
+import { ShDropzone } from "../components/ShDropzone.jsx";
+import { fetchWithTimeout } from "../lib/fetch.js";
 
 /** Map 0-100 signal percentage to 1-5 bar level. */
 function signalLevel(pct) {
@@ -14,10 +21,14 @@ function signalLevel(pct) {
 }
 
 /** WiFi signal bars component using superhot-ui CSS. */
-function SignalBars({ signal: pct }) {
-  const level = signalLevel(pct);
+function SignalBars({ strength }) {
+  const level = signalLevel(strength);
   return (
-    <span class="sh-signal-bars" data-sh-signal={level}>
+    <span
+      class="sh-signal-bars"
+      data-sh-signal={level}
+      aria-label={`SIGNAL: ${strength}%`}
+    >
       <span class="sh-signal-bar" />
       <span class="sh-signal-bar" />
       <span class="sh-signal-bar" />
@@ -27,14 +38,19 @@ function SignalBars({ signal: pct }) {
   );
 }
 
-/** Progress steps header showing wizard position. */
-function ProgressSteps({ current, error }) {
-  const steps = ["SCAN", "SELECT", "CONNECT", "DONE"];
-  const currentIdx = steps.indexOf(current);
-  const errorIdx = error ? steps.indexOf(error) : -1;
+/** 4-step progress indicator using sh-progress-steps. */
+function WizardSteps({ currentStep, errorStep }) {
+  const steps = [
+    { key: "WIFI", label: "WIFI" },
+    { key: "UPLOAD", label: "UPLOAD" },
+    { key: "CONFIGURE", label: "CONFIGURE" },
+    { key: "DONE", label: "DONE" },
+  ];
+  const currentIdx = steps.findIndex((step) => step.key === currentStep);
+  const errorIdx = errorStep ? steps.findIndex((step) => step.key === errorStep) : -1;
 
   return (
-    <div class="sh-progress-steps" style="margin-bottom: 16px;">
+    <div class="sh-progress-steps" style="margin-bottom: var(--space-4, 16px);" role="navigation" aria-label="Setup progress">
       {steps.map((step, idx) => {
         let cls = "sh-progress-step";
         if (errorIdx === idx) {
@@ -45,9 +61,9 @@ function ProgressSteps({ current, error }) {
           cls += " sh-progress-step--current";
         }
         return (
-          <div key={step} class={cls}>
+          <div key={step.key} class={cls}>
             <span class="sh-progress-step-number">{idx + 1}</span>
-            <span>{step}</span>
+            <span>{step.label}</span>
           </div>
         );
       })}
@@ -55,13 +71,13 @@ function ProgressSteps({ current, error }) {
   );
 }
 
-/** Network list item — clickable frame with SSID, signal bars, lock icon. */
+/** Network list item — clickable frame with SSID, signal bars, lock indicator. */
 function NetworkItem({ network, onSelect }) {
   const isSecured = network.security && network.security !== "" && network.security !== "--";
   return (
     <div
       class="sh-frame sh-clickable"
-      style="cursor: pointer; margin-bottom: 8px; min-height: 44px;"
+      style="cursor: pointer; margin-bottom: var(--space-2, 8px); min-height: 44px;"
       onClick={() => onSelect(network)}
       role="button"
       tabIndex={0}
@@ -72,19 +88,16 @@ function NetworkItem({ network, onSelect }) {
         }
       }}
     >
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0;">
-        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-          <SignalBars signal={network.signal} />
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-3, 12px); align-items: center; padding: 4px 0;">
+        <div style="display: grid; grid-template-columns: auto 1fr; gap: var(--space-2, 8px); align-items: center; min-width: 0;">
+          <SignalBars strength={network.signal} />
           <span style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             {network.ssid}
           </span>
         </div>
-        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+        <div style="display: grid; grid-auto-flow: column; gap: var(--space-1, 4px); align-items: center;">
           {isSecured && (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Secured">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
+            <span class="sh-ansi-dim" style="font-size: 0.75rem;" aria-label="Secured network">SECURED</span>
           )}
           <span class="sh-ansi-dim" style="font-size: 0.75rem;">
             {network.signal}%
@@ -96,11 +109,11 @@ function NetworkItem({ network, onSelect }) {
 }
 
 /**
- * Onboard — WiFi setup wizard.
- * 4 steps: SCAN → SELECT → CONNECT → DONE
+ * Onboard — first-boot onboarding wizard.
+ * 4 steps: WIFI -> UPLOAD -> CONFIGURE -> DONE
  */
 export function Onboard() {
-  const [step, setStep] = useState("SCAN");
+  const [step, setStep] = useState("WIFI");
   const [networks, setNetworks] = useState([]);
   const [scanning, setScanning] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -108,37 +121,52 @@ export function Onboard() {
   const [connecting, setConnecting] = useState(false);
   const [toast, setToast] = useState(null);
   const [errorStep, setErrorStep] = useState(null);
+  const [uploaded, setUploaded] = useState(false);
+  const [settings, setSettings] = useState(null);
   const redirectTimer = useRef(null);
+
+  /** Check if onboarding already complete — redirect if so. */
+  useEffect(() => {
+    fetchWithTimeout("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        setSettings(data);
+        if (data.onboarding_complete) {
+          navigate("/");
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    };
+  }, []);
+
+  /** Auto-scan WiFi on mount. */
+  useEffect(() => {
+    doScan();
+  }, []);
 
   /** Scan for WiFi networks. */
   const doScan = useCallback(() => {
     setScanning(true);
     setErrorStep(null);
-    fetch("/api/wifi/scan")
+    fetchWithTimeout("/api/wifi/scan")
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((data) => {
         setNetworks(data);
-        setStep("SELECT");
       })
       .catch((err) => {
-        setToast({ type: "error", message: `SCAN FAILED: ${err.message}` });
-        setErrorStep("SCAN");
+        setToast({ type: "error", message: `SCAN FAULT: ${err.message}` });
+        setErrorStep("WIFI");
       })
       .finally(() => {
         setScanning(false);
       });
   }, []);
-
-  // Auto-scan on mount
-  useEffect(() => {
-    doScan();
-    return () => {
-      if (redirectTimer.current) clearTimeout(redirectTimer.current);
-    };
-  }, [doScan]);
 
   /** Handle network selection. */
   function handleSelect(network) {
@@ -146,10 +174,7 @@ export function Onboard() {
     setPassword("");
     setErrorStep(null);
     const isSecured = network.security && network.security !== "" && network.security !== "--";
-    if (isSecured) {
-      setStep("CONNECT");
-    } else {
-      // Open network — connect immediately
+    if (!isSecured) {
       doConnect(network.ssid, "");
     }
   }
@@ -158,30 +183,24 @@ export function Onboard() {
   function doConnect(ssid, pass) {
     setConnecting(true);
     setErrorStep(null);
-    setStep("CONNECT");
-    fetch("/api/wifi/connect", {
+    fetchWithTimeout("/api/wifi/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ssid: ssid, password: pass }),
+      body: JSON.stringify({ ssid, password: pass }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
-          setStep("DONE");
-          setToast({ type: "info", message: `CONNECTED TO ${ssid}` });
-          // Redirect to upload page after 3 seconds
-          redirectTimer.current = setTimeout(() => {
-            navigate("/");
-          }, 3000);
+          setToast({ type: "info", message: `CONNECTED: ${ssid}` });
+          setStep("UPLOAD");
         } else {
-          setToast({ type: "error", message: data.message || "CONNECTION FAILED" });
-          setErrorStep("CONNECT");
-          setStep("CONNECT");
+          setToast({ type: "error", message: data.message || "CONNECTION FAULT" });
+          setErrorStep("WIFI");
         }
       })
       .catch((err) => {
-        setToast({ type: "error", message: `CONNECTION ERROR: ${err.message}` });
-        setErrorStep("CONNECT");
+        setToast({ type: "error", message: `CONNECTION FAULT: ${err.message}` });
+        setErrorStep("WIFI");
       })
       .finally(() => {
         setConnecting(false);
@@ -195,88 +214,69 @@ export function Onboard() {
     doConnect(selected.ssid, password);
   }
 
-  /** Go back to network list for retry. */
-  function handleRetry() {
-    setSelected(null);
-    setPassword("");
-    setErrorStep(null);
-    setToast(null);
-    doScan();
+  /** Handle first photo upload. */
+  function handleUpload() {
+    setUploaded(true);
+    setToast({ type: "info", message: "PHOTO RECEIVED" });
+  }
+
+  /** Proceed from upload to configure step. */
+  function handleUploadContinue() {
+    setStep("CONFIGURE");
+  }
+
+  /** Finalize onboarding. */
+  async function handleFinish() {
+    // Save configure step settings
+    const configUpdates = {};
+    if (settings?.photo_duration) configUpdates.photo_duration = settings.photo_duration;
+    if (settings?.transition_type) configUpdates.transition_type = settings.transition_type;
+    configUpdates.onboarding_complete = true;
+
+    try {
+      await fetchWithTimeout("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configUpdates),
+      });
+    } catch (_) {
+      // Non-critical — proceed anyway
+    }
+    setStep("DONE");
+    redirectTimer.current = setTimeout(() => {
+      navigate("/");
+    }, 3000);
   }
 
   return (
-    <div class="sh-animate-page-enter fc-page">
-      <ProgressSteps current={step} error={errorStep} />
+    <main class="sh-animate-page-enter fc-page" role="main">
+      <WizardSteps currentStep={step} errorStep={errorStep} />
 
-      {/* STEP 1: SCANNING */}
-      {step === "SCAN" && (
-        <div class="sh-frame" data-label="WIFI SETUP">
+      {/* ── STEP 1: WIFI ── */}
+      {step === "WIFI" && (
+        <section class="sh-frame" data-label="WIFI SETUP" aria-label="WiFi setup">
           {scanning ? (
             <div style="text-align: center;">
-              <div class="sh-ansi-dim" style="margin-bottom: 12px;">SCANNING...</div>
+              <div class="sh-ansi-dim" style="margin-bottom: var(--space-3, 12px);">SCANNING</div>
               <ShSkeleton rows={4} height="2.5em" />
             </div>
-          ) : (
-            <div style="text-align: center;">
-              <div class="sh-ansi-dim" style="margin-bottom: 12px;">PREPARING SCAN...</div>
-              <ShSkeleton rows={3} height="2em" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* STEP 2: SELECT NETWORK */}
-      {step === "SELECT" && (
-        <div class="sh-frame" data-label="SELECT NETWORK">
-          {networks.length === 0 ? (
-            <div style="text-align: center; padding: 24px 0;">
+          ) : networks.length === 0 ? (
+            <div style="text-align: center; padding: var(--space-4, 16px) 0;">
               <div class="sh-ansi-dim">NO NETWORKS FOUND</div>
               <button
-                class="sh-input"
-                style="margin-top: 16px; cursor: pointer; text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;"
+                class="sh-input sh-clickable fc-btn-primary"
                 onClick={doScan}
                 disabled={scanning}
+                style="margin-top: var(--space-4, 16px);"
               >
-                {scanning ? "SCANNING..." : "RESCAN"}
+                RESCAN
               </button>
             </div>
-          ) : (
-            <div>
-              {networks.map((net) => (
-                <NetworkItem
-                  key={net.ssid}
-                  network={net}
-                  onSelect={handleSelect}
-                />
-              ))}
-              <button
-                class="sh-input"
-                style="width: 100%; margin-top: 8px; cursor: pointer; text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
-                onClick={doScan}
-                disabled={scanning}
-              >
-                {scanning ? "SCANNING..." : "RESCAN"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* STEP 3: CONNECT (password entry) */}
-      {step === "CONNECT" && selected && (
-        <div class="sh-frame" data-label={`CONNECT TO ${selected.ssid}`}>
-          {connecting ? (
-            <div style="text-align: center; padding: 24px 0;">
-              <div style="margin-bottom: 12px;">CONNECTING...</div>
-              <div class="sh-ansi-dim">{selected.ssid}</div>
-              <div style="margin-top: 16px;">
-                <ShSkeleton rows={1} height="2em" width="60%" />
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleConnect} style="display: flex; flex-direction: column; gap: 12px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <SignalBars signal={selected.signal} />
+          ) : selected && !connecting ? (
+            /* Password entry for secured network */
+            <form onSubmit={handleConnect} style="display: grid; gap: var(--space-3, 12px);">
+              <div style="display: grid; grid-template-columns: auto 1fr; gap: var(--space-2, 8px); align-items: center;">
+                <SignalBars strength={selected.signal} />
                 <span style="font-weight: 600;">{selected.ssid}</span>
               </div>
               <input
@@ -288,50 +288,164 @@ export function Onboard() {
                 autoFocus
                 style="width: 100%;"
               />
-              <div style="display: flex; gap: 8px;">
+              <div style="display: grid; grid-template-columns: 1fr 2fr; gap: var(--space-2, 8px);">
                 <button
                   type="button"
-                  class="sh-input"
-                  style="flex: 1; cursor: pointer; text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
-                  onClick={handleRetry}
+                  class="sh-input sh-clickable"
+                  style="text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
+                  onClick={() => { setSelected(null); setPassword(""); }}
                 >
                   BACK
                 </button>
                 <button
                   type="submit"
-                  class="sh-input"
-                  style="flex: 2; cursor: pointer; text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--sh-phosphor); border-color: var(--sh-phosphor);"
+                  class="sh-input sh-clickable fc-btn-primary"
                 >
                   CONNECT
                 </button>
               </div>
             </form>
+          ) : connecting ? (
+            <div style="text-align: center; padding: var(--space-4, 16px) 0;">
+              <div style="margin-bottom: var(--space-3, 12px);">CONNECTING</div>
+              <div class="sh-ansi-dim">{selected?.ssid}</div>
+              <div style="margin-top: var(--space-4, 16px);">
+                <ShSkeleton rows={1} height="2em" width="60%" />
+              </div>
+            </div>
+          ) : (
+            /* Network list */
+            <div>
+              {networks.map((net) => (
+                <NetworkItem
+                  key={net.ssid}
+                  network={net}
+                  onSelect={handleSelect}
+                />
+              ))}
+              <button
+                class="sh-input sh-clickable"
+                style="width: 100%; margin-top: var(--space-2, 8px); text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
+                onClick={doScan}
+                disabled={scanning}
+              >
+                RESCAN
+              </button>
+            </div>
           )}
-        </div>
+        </section>
       )}
 
-      {/* STEP 4: DONE */}
-      {step === "DONE" && (
-        <div class="sh-frame" data-label="CONNECTED">
-          <div style="text-align: center; padding: 24px 0;">
-            <div style="font-size: 1.5rem; color: var(--sh-phosphor); margin-bottom: 12px;">
-              CONNECTED
+      {/* ── STEP 2: UPLOAD FIRST PHOTO ── */}
+      {step === "UPLOAD" && (
+        <section class="sh-frame" data-label="UPLOAD FIRST PHOTO" aria-label="Upload first photo">
+          <div style="display: grid; gap: var(--space-4, 16px); text-align: center;">
+            <div class="sh-label" style="font-size: 1rem;">
+              {uploaded ? "PHOTO RECEIVED" : "UPLOAD FIRST PHOTO"}
             </div>
-            {selected && (
-              <div class="sh-ansi-dim" style="margin-bottom: 16px;">
-                {selected.ssid}
-              </div>
-            )}
-            <div class="sh-ansi-dim" style="font-size: 0.8rem;">
-              REDIRECTING TO UPLOAD...
+            <div class="sh-ansi-dim">
+              {uploaded
+                ? "ADD MORE OR CONTINUE TO CONFIGURE"
+                : "YOUR FRAME NEEDS AT LEAST ONE PHOTO"}
+            </div>
+            <ShDropzone onUpload={handleUpload} />
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2, 8px);">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
+                onClick={() => setStep("WIFI")}
+              >
+                BACK
+              </button>
+              <button
+                class="sh-input sh-clickable fc-btn-primary"
+                onClick={handleUploadContinue}
+                disabled={!uploaded}
+                style={`opacity: ${uploaded ? 1 : 0.4};`}
+              >
+                CONTINUE
+              </button>
             </div>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* TOAST */}
+      {/* ── STEP 3: CONFIGURE ── */}
+      {step === "CONFIGURE" && (
+        <section class="sh-frame" data-label="CONFIGURE" aria-label="Configure basic settings">
+          <div style="display: grid; gap: var(--space-3, 12px);">
+            <div class="sh-label" style="text-align: center; font-size: 1rem;">
+              BASIC CONFIGURATION
+            </div>
+
+            <div class="fc-setting-row">
+              <span class="sh-label" style="white-space: nowrap;">DURATION</span>
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-2, 8px); align-items: center;">
+                <input
+                  class="sh-input"
+                  type="range"
+                  min="5"
+                  max="60"
+                  step="1"
+                  value={settings?.photo_duration || 10}
+                  onInput={(evt) => setSettings((prev) => ({ ...prev, photo_duration: parseInt(evt.target.value, 10) }))}
+                  aria-label="Slideshow duration in seconds"
+                />
+                <span class="sh-value" style="min-width: 32px; text-align: right;">
+                  {settings?.photo_duration || 10}s
+                </span>
+              </div>
+            </div>
+
+            <div class="fc-setting-row">
+              <span class="sh-label" style="white-space: nowrap;">TRANSITION</span>
+              <select
+                class="sh-select"
+                value={settings?.transition_type || "fade"}
+                onChange={(evt) => setSettings((prev) => ({ ...prev, transition_type: evt.target.value }))}
+              >
+                {["fade", "slide", "zoom", "dissolve", "none"].map((opt) => (
+                  <option key={opt} value={opt}>{opt.toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2, 8px); margin-top: var(--space-2, 8px);">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
+                onClick={() => setStep("UPLOAD")}
+              >
+                BACK
+              </button>
+              <button
+                class="sh-input sh-clickable fc-btn-primary"
+                onClick={handleFinish}
+              >
+                FINISH
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── STEP 4: DONE ── */}
+      {step === "DONE" && (
+        <section class="sh-frame" data-label="COMPLETE" aria-label="Setup complete">
+          <div style="text-align: center; padding: var(--space-6, 32px) 0;">
+            <div style="font-size: 1.5rem; color: var(--sh-phosphor); margin-bottom: var(--space-3, 12px);">
+              FRAME READY
+            </div>
+            <div class="sh-ansi-dim" style="font-size: 0.8rem;">
+              REDIRECTING TO SLIDESHOW
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── TOAST ── */}
       {toast && (
-        <div style="position: fixed; bottom: 80px; left: 12px; right: 12px; z-index: 100;">
+        <div class="fc-toast-container">
           <ShToast
             type={toast.type}
             message={toast.message}
@@ -340,7 +454,7 @@ export function Onboard() {
           />
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

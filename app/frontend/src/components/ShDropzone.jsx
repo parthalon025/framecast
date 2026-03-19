@@ -14,11 +14,12 @@ import { glitchText } from "superhot-ui";
  *   complete  — received label, glitch burst, resets to idle after 2s
  *
  * @param {object}   props
- * @param {Function} [props.onUpload]  - Called with uploaded filename on success
- * @param {number}   [props.maxSizeMB] - Max file size in MB (client-side validation)
- * @param {boolean}  [props.disabled]  - Block uploads (e.g. disk full)
+ * @param {Function} [props.onUpload]      - Called with uploaded filename on success (single file)
+ * @param {Function} [props.onBatchUpload] - Called with FileList for batch upload (multi-file, handled externally)
+ * @param {number}   [props.maxSizeMB]     - Max file size in MB (client-side validation)
+ * @param {boolean}  [props.disabled]      - Block uploads (e.g. disk full)
  */
-export function ShDropzone({ onUpload, maxSizeMB = 200, disabled = false }) {
+export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled = false }) {
   const state = signal("idle");
   const progress = signal(0);
   const errorMsg = signal("");
@@ -120,6 +121,11 @@ export function ShDropzone({ onUpload, maxSizeMB = 200, disabled = false }) {
   /** Process dropped/selected files. */
   function handleFiles(fileList) {
     if (disabled || !fileList || fileList.length === 0) return;
+    // Delegate to batch handler when available (Upload page manages progress UI)
+    if (onBatchUpload && fileList.length > 0) {
+      onBatchUpload(fileList);
+      return;
+    }
     for (let i = 0; i < fileList.length; i++) {
       uploadFile(fileList[i]);
     }
