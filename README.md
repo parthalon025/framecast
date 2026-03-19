@@ -57,20 +57,21 @@ Any HDMI TV or monitor works. A small 7" or 10" HDMI display works well as a ded
 +-----------------------------------------------+
 |                 Raspberry Pi                   |
 |                                                |
-|  +---------------+     +-----------------+     |
-|  | Kiosk Display |     |  Flask + SSE    |     |     +-----------+
-|  | (cage + WebKit)|     |  (gunicorn)     |<--------->| Phone /   |
-|  | CSS slideshow |     |  Upload, API,   |     |WiFi | Computer  |
-|  +-------+-------+     |  settings, map  |     |     +-----------+
-|          |              +--------+--------+     |
-|          +----------+------------|              |
-|                     |                           |
-|             +-------v--------+                  |
-|             |   ~/media/     |                  |
-|             | photos & videos|                  |
-|             +----------------+                  |
-|                                                 |
-|  systemd services | watchdog | OTA updater      |
+|  +------------------+   +------------------+  |
+|  | framecast-kiosk  |   |  Flask + SSE     |  |     +-----------+
+|  | cage + GTK-WebKit|   |  (gunicorn)      |<------>| Phone /   |
+|  | /display route   |   |  Upload, API,    |  |WiFi | Computer  |
+|  | Preact slideshow |   |  settings, map   |  |     +-----------+
+|  +-------+----------+   +--------+---------+  |
+|          |                       |             |
+|          +----------+------------+             |
+|                     |                          |
+|             +-------v--------+                 |
+|             |   ~/media/     |                 |
+|             | photos & videos|                 |
+|             +----------------+                 |
+|                                                |
+|  systemd services | watchdog | OTA updater     |
 +-------------------------------------------------+
                       | HDMI
                       v
@@ -78,6 +79,8 @@ Any HDMI TV or monitor works. A small 7" or 10" HDMI display works well as a ded
               |  TV / Monitor |
               +---------------+
 ```
+
+Wayland only — no X11. The kiosk browser (`cage` compositor + `GTK-WebKit`) renders the slideshow page served by the same Flask app.
 
 ---
 
@@ -102,12 +105,16 @@ Once running, open the web UI and navigate to Settings to configure:
 ```bash
 git clone https://github.com/parthalon025/framecast.git
 cd framecast
+```
 
-# Build the frontend
+```bash
+# Build the frontend (requires Node.js 18+)
 cd app/frontend && npm ci && npm run build && cd ../..
+```
 
-# Run on a Pi (manual install)
-sudo bash install.sh
+```bash
+# Run locally for UI development
+cd app && gunicorn -c gunicorn.conf.py web_upload:app
 ```
 
 ### Building the OS Image
