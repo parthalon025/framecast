@@ -296,7 +296,7 @@ stage2-framecast/
   prerun.sh                      # copy_previous
   EXPORT_IMAGE                   # triggers .img export
   00-packages/
-    00-packages                  # cage, gjs, gir1.2-webkit2-4.0,
+    00-packages                  # cage, gjs, gir1.2-webkit2-4.0, wlr-randr,
                                  # python3-flask, gunicorn, ffmpeg, watchdog,
                                  # qrencode, avahi-daemon, network-manager,
                                  # python3-pil, python3-pip, nodejs (for esbuild)
@@ -304,7 +304,7 @@ stage2-framecast/
     01-run.sh                    # boot config, display settings, watchdog
     files/
       config.txt                 # GPU mem (Pi 3), disable splash
-      cmdline.txt                # quiet boot
+      cmdline.txt                # quiet boot + vc4.force_hotplug=1
   02-app/
     01-run.sh                    # copy app files, build frontend (npm run build)
     01-run-chroot.sh             # enable services, create user, sudoers
@@ -602,17 +602,25 @@ Configurable in settings:
 
 Turn the display off at night, on in the morning. Configurable times in settings.
 
-With cage/Wayland, HDMI control via `wlr-randr`:
+With cage/Wayland, HDMI control via `wlr-randr` (included in cage v0.1.5+, available on Bookworm):
 ```bash
-# Off: disable the output
-wlr-randr --output HDMI-A-1 --off
+# Off: disable the output (removes from layout, cage re-maximizes on restore)
+WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 wlr-randr --output HDMI-A-1 --off
 
 # On: re-enable at preferred resolution
-wlr-randr --output HDMI-A-1 --on
+WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 wlr-randr --output HDMI-A-1 --on
 ```
 
-Implemented as a systemd timer that runs `hdmi-control.sh` at configured times.
-Falls back to kernel DPMS (`/sys/class/drm/card*/dpms`) if `wlr-randr` is unavailable.
+**HDMI hotplug bounce fix:** Many TVs deassert hotplug when output is disabled, causing
+auto-reconnect loop. Add `vc4.force_hotplug=1` to `/boot/firmware/cmdline.txt` in the pi-gen stage.
+
+**Note:** cage uses `wlr-output-management` (removes output from layout), not true DPMS
+(`wlr-output-power-management`). The browser may briefly lose its output surface on `--off`.
+Cage re-maximizes the window on `--on`, so this is acceptable for a kiosk. If hotplug issues
+persist, swap cage for **labwc** which supports `wlopm` (true DPMS).
+
+Implemented as user crontab entries set by the web UI (same pattern as existing `hdmi-control.sh`).
+Package dependency: `wlr-randr`.
 
 ---
 
