@@ -2,6 +2,8 @@
 set -u -o pipefail
 # SD card longevity and system hardening
 
+: "${ROOTFS_DIR:?ROOTFS_DIR must be set by pi-gen runner}"
+
 # Journal limits
 mkdir -p "${ROOTFS_DIR}/etc/systemd/journald.conf.d"
 install -m 644 files/framecast-journal.conf "${ROOTFS_DIR}/etc/systemd/journald.conf.d/"

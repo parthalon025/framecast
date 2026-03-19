@@ -32,6 +32,7 @@ chmod +x /opt/framecast/scripts/hdmi-control.sh
 
 # Scoped sudoers for service restart and reboot
 SUDOERS_TMP=$(mktemp)
+trap 'rm -f "${SUDOERS_TMP:-}"' EXIT
 echo "pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart framecast, /usr/bin/systemctl restart framecast-kiosk, /usr/sbin/reboot, /usr/sbin/shutdown" > "$SUDOERS_TMP"
 if visudo -cf "$SUDOERS_TMP" >/dev/null 2>&1; then
     cp "$SUDOERS_TMP" /etc/sudoers.d/framecast
@@ -42,7 +43,7 @@ fi
 rm -f "$SUDOERS_TMP"
 
 # Build frontend (node/npm available in chroot)
-cd /opt/framecast/app/frontend
+cd /opt/framecast/app/frontend || { echo "ERROR: frontend dir missing"; exit 1; }
 npm install --production
 npm run build
 rm -rf node_modules  # Save image space

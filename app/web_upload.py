@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Web upload server for Pi Photo Display.
+"""Web upload server for FrameCast.
 
 Provides a web interface to upload, manage, and configure the
 Raspberry Pi photo/video slideshow over the local network.
@@ -297,14 +297,14 @@ def _generate_video_thumbnail(video_path, filename):
         log.warning("Thumbnail generation failed for %s: %s", filename, exc)
 
 
-_RESIZE_TIMEOUT = 30  # seconds
-
-
 def _auto_resize_image(image_path):
     """Downscale an image if it exceeds AUTO_RESIZE_MAX on its longest side.
 
     Uses Pillow. Silently skips if Pillow is not installed.
-    Enforces a 30s timeout via SIGALRM to prevent hangs on corrupt images.
+
+    Note: No per-image SIGALRM here. SIGALRM is process-global and races
+    across gthread workers. The outer request_timeout (300s) provides the
+    safety net. See Python Expert review finding.
     """
     if AUTO_RESIZE_MAX <= 0:
         return
@@ -313,16 +313,6 @@ def _auto_resize_image(image_path):
     except ImportError:
         log.debug("Pillow not installed, skipping auto-resize")
         return
-
-    # Set up SIGALRM timeout (Unix only)
-    has_alarm = hasattr(signal, "SIGALRM")
-    old_handler = None
-    if has_alarm:
-        def _resize_timeout_handler(signum, frame):
-            raise TimeoutError(f"Image resize timed out after {_RESIZE_TIMEOUT}s")
-
-        old_handler = signal.signal(signal.SIGALRM, _resize_timeout_handler)
-        signal.alarm(_RESIZE_TIMEOUT)
 
     try:
         # Limit decompression to ~178MP (1GB RAM) to prevent OOM on Pi 3B.
@@ -345,14 +335,8 @@ def _auto_resize_image(image_path):
                 save_kwargs["exif"] = exif
             resized.save(str(image_path), **save_kwargs)
             log.info("Resized %s: %dx%d -> %dx%d", image_path.name, w, h, new_w, new_h)
-    except TimeoutError:
-        log.error("Auto-resize timed out after %ds for %s", _RESIZE_TIMEOUT, image_path.name)
     except Exception as exc:
         log.warning("Auto-resize failed for %s: %s", image_path.name, exc)
-    finally:
-        if has_alarm:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
 
 
 # --- Routes ---
@@ -458,7 +442,6 @@ def _do_upload():
 
         # DB INSERT before file write (Lesson #1670) — quarantined until file is safe
         try:
-            import hashlib as _hashlib
             photo_id = db.insert_photo(
                 filename=filename,
                 filepath=str(dest),
@@ -486,15 +469,17 @@ def _do_upload():
                 os.fsync(fd.fileno())
             # Atomic rename - on same filesystem this is atomic
             os.replace(str(tmp_dest), str(dest))
-        except Exception:
+        except Exception as write_exc:
             # Clean up temp file on any failure
+            log.error("File write failed for %s: %s", filename, write_exc)
             try:
                 tmp_dest.unlink(missing_ok=True)
             except OSError as cleanup_exc:
                 log.warning("Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc)
             # Mark DB record as quarantined with reason
             db.update_photo_quarantine(photo_id, True, "file write failed")
-            raise
+            skipped += 1
+            continue
         log.info("Uploaded: %s (%s)", filename, media.format_size(dest.stat().st_size))
 
         # Validate image integrity before processing
@@ -827,7 +812,7 @@ def restart_slideshow():
     success, message = services.restart_slideshow()
     if success:
         return jsonify({"status": "ok", "message": message})
-    return jsonify({"status": "error", "message": message}), 500
+    return jsonify({"error": message}), 500
 
 
 @app.route("/api/reboot", methods=["POST"])
@@ -840,7 +825,7 @@ def api_reboot():
         return jsonify({"status": "ok", "message": "Device is rebooting..."})
     except Exception:
         log.error("Failed to reboot", exc_info=True)
-        return jsonify({"status": "error", "message": "Failed to reboot"}), 500
+        return jsonify({"error": "Failed to reboot"}), 500
 
 
 @app.route("/api/shutdown", methods=["POST"])
@@ -853,7 +838,7 @@ def api_shutdown():
         return jsonify({"status": "ok", "message": "Device is shutting down..."})
     except Exception:
         log.error("Failed to shut down", exc_info=True)
-        return jsonify({"status": "error", "message": "Failed to shut down"}), 500
+        return jsonify({"error": "Failed to shut down"}), 500
 
 
 # --- SPA routes ---

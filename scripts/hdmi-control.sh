@@ -12,7 +12,7 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 
 # Auto-detect HDMI output name for wlr-randr fallback
-HDMI_OUTPUT=$(wlr-randr 2>/dev/null | grep -oP 'HDMI-\S+' | head -1 || true)
+HDMI_OUTPUT=$(wlr-randr 2>/dev/null | grep -Eo 'HDMI-[^ ]+' | head -1 || true)
 HDMI_OUTPUT="${HDMI_OUTPUT:-HDMI-A-1}"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S'): HDMI: $*"; }
@@ -50,10 +50,13 @@ case "$ACTION" in
     fi
     ;;
   check-schedule)
-    ON_TIME="${DISPLAY_ON_TIME:-07:00}"
-    OFF_TIME="${DISPLAY_OFF_TIME:-23:00}"
-    NOW=$(date +%H:%M)
-    if [[ "$NOW" > "$ON_TIME" || "$NOW" == "$ON_TIME" ]] && [[ "$NOW" < "$OFF_TIME" ]]; then
+    ON_TIME="${HDMI_ON_TIME:-08:00}"
+    OFF_TIME="${HDMI_OFF_TIME:-22:00}"
+    to_minutes() { IFS=: read -r h m <<< "$1"; echo $(( 10#$h * 60 + 10#$m )); }
+    NOW_M=$(to_minutes "$(date +%H:%M)")
+    ON_M=$(to_minutes "$ON_TIME")
+    OFF_M=$(to_minutes "$OFF_TIME")
+    if [[ $NOW_M -ge $ON_M && $NOW_M -lt $OFF_M ]]; then
       "$0" on
     else
       "$0" off

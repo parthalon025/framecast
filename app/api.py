@@ -12,7 +12,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, abort, jsonify, request, send_file
 
 import sse
 from modules import cec, config, db, media, updater, users, wifi
@@ -22,6 +22,14 @@ from modules.rate_limiter import RateLimiter
 log = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__, url_prefix="/api")
+
+
+def _require_json():
+    """Parse and validate JSON request body. Returns dict or aborts 400."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        abort(400, description="Invalid JSON body")
+    return data
 
 
 def _enrich_photos(photos):
@@ -205,9 +213,7 @@ def get_settings():
 @require_pin
 def update_settings():
     """Update settings from JSON body. Expects {"key": value, ...}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
     # --- Validate before touching config ---
 
@@ -398,9 +404,7 @@ def list_albums():
 @require_pin
 def create_album():
     """Create a new album. Body: {"name": "...", "description": "..."}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
     name = (data.get("name") or "").strip()
     if not name:
@@ -447,11 +451,12 @@ def list_smart_album_photos(smart_key):
 @require_pin
 def add_photo_to_album(album_id):
     """Add a photo to an album. Body: {"photo_id": int}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
-    photo_id = data.get("photo_id")
+    try:
+        photo_id = int(data.get("photo_id", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "photo_id must be an integer"}), 400
     if not photo_id:
         return jsonify({"error": "photo_id is required"}), 400
 
@@ -490,9 +495,7 @@ def list_photo_tags(photo_id):
 @require_pin
 def add_photo_tag(photo_id):
     """Add a tag to a photo. Body: {"name": "..."}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
     name = (data.get("name") or "").strip()
     if not name:
@@ -591,9 +594,7 @@ def list_users():
 @require_pin
 def create_user():
     """Create a new user. Body: {"name": "..."}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
     name = (data.get("name") or "").strip()
     if not name:
@@ -674,9 +675,7 @@ def wifi_scan():
 @require_pin
 def wifi_connect():
     """Connect to a WiFi network. Body: {"ssid": "...", "password": "..."}."""
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
+    data = _require_json()
 
     ssid = data.get("ssid", "").strip()
     password = data.get("password", "")

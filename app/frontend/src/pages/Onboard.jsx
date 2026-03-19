@@ -135,7 +135,7 @@ export function Onboard() {
           navigate("/");
         }
       })
-      .catch(() => {});
+      .catch((err) => console.warn("Onboard: settings check failed", err));
 
     return () => {
       if (redirectTimer.current) clearTimeout(redirectTimer.current);
@@ -239,8 +239,8 @@ export function Onboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(configUpdates),
       });
-    } catch (_) {
-      // Non-critical — proceed anyway
+    } catch (err) {
+      console.warn("Onboard: save failed (non-critical)", err);
     }
     setStep("DONE");
     redirectTimer.current = setTimeout(() => {

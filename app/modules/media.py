@@ -11,6 +11,8 @@ from . import config
 
 log = logging.getLogger(__name__)
 
+_pillow_warned = False
+
 
 def get_allowed_extensions():
     """Get the set of allowed file extensions."""
@@ -151,10 +153,14 @@ def extract_gps(image_path):
     Returns:
         A tuple of (latitude, longitude) as floats, or None.
     """
+    global _pillow_warned
     try:
         from PIL import Image as PILImage
         from PIL import ExifTags
     except ImportError:
+        if not _pillow_warned:
+            log.warning("Pillow not installed — GPS extraction disabled")
+            _pillow_warned = True
         return None
 
     try:
@@ -260,9 +266,13 @@ def get_photo_locations():
         A list of dicts: [{"name": str, "lat": float, "lon": float}, ...]
         Returns an empty list if Pillow is not available.
     """
+    global _pillow_warned
     try:
         from PIL import Image as PILImage  # noqa: F401
     except ImportError:
+        if not _pillow_warned:
+            log.warning("Pillow not installed — photo location scanning disabled")
+            _pillow_warned = True
         return []
 
     media_path = Path(get_media_dir())

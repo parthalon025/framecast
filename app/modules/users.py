@@ -8,6 +8,7 @@ import logging
 from contextlib import closing
 
 from . import db
+from .media import format_size
 
 log = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ def get_full_stats():
         "total_photos": total_photos,
         "total_videos": total_videos,
         "storage_bytes": storage_bytes,
-        "storage_used": _format_bytes(storage_bytes),
+        "storage_used": format_size(storage_bytes),
         "by_user": by_user,
         "most_shown": most_shown,
         "least_shown": least_shown,
@@ -146,16 +147,3 @@ def get_full_stats():
     }
 
 
-def _format_bytes(num_bytes):
-    """Format bytes into human-readable string with exact values."""
-    if num_bytes == 0:
-        return "0 B"
-    units = ["B", "KB", "MB", "GB", "TB"]
-    idx = 0
-    size = float(num_bytes)
-    while size >= 1024 and idx < len(units) - 1:
-        size /= 1024
-        idx += 1
-    if idx == 0:
-        return f"{int(size)} B"
-    return f"{size:.1f} {units[idx]}"

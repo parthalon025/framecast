@@ -164,7 +164,7 @@ if [ -f "$INSTALL_DIR/app/.env" ]; then
     fi
 
     if grep -q "^MEDIA_DIR=" "$INSTALL_DIR/app/.env" 2>/dev/null; then
-        MEDIA_DIR=$(grep "^MEDIA_DIR=" "$INSTALL_DIR/app/.env" | cut -d= -f2)
+        MEDIA_DIR=$(grep "^MEDIA_DIR=" "$INSTALL_DIR/app/.env" | cut -d= -f2-)
         pass "MEDIA_DIR configured: $MEDIA_DIR"
     else
         fail "MEDIA_DIR not configured in .env"
@@ -356,7 +356,7 @@ echo "========================================"
 if [ "$FAIL" -gt 0 ]; then
     echo ""
     echo "  CRITICAL: Some checks failed. Review the output above."
-    echo "  Try re-running the installer: sudo bash install.sh"
+    echo "  Review output above"
     exit 2
 elif [ "$WARN" -gt 0 ]; then
     echo ""

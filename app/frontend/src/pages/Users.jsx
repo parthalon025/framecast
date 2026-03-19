@@ -265,7 +265,7 @@ export function UserSelectModal({ onSelected }) {
       fetch("/api/users")
         .then((resp) => resp.json())
         .then((data) => { users.value = data; })
-        .catch(() => {});
+        .catch((err) => console.warn("UserSelectModal: fetch failed", err));
     }
   }, [showUserModal.value]);
 

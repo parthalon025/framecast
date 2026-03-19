@@ -5,7 +5,7 @@
  * piOS aesthetic: monospace, uppercase, green phosphor.
  */
 import { signal } from "@preact/signals";
-import { useState, useCallback } from "preact/hooks";
+import { useState, useCallback, useRef, useEffect } from "preact/hooks";
 import { ShToast } from "superhot-ui/preact";
 
 /** Global signal: when true, the PIN gate overlay is shown. */
@@ -49,6 +49,13 @@ export function PinGate() {
   const [pinValue, setPinValue] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [toast, setToast] = useState(null);
+  const dismissTimer = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    };
+  }, []);
 
   const handleVerify = useCallback(async () => {
     if (pinValue.length !== 4 || verifying) return;
@@ -65,7 +72,8 @@ export function PinGate() {
         setToast({ type: "info", message: "AUTHORIZED" });
         setPinValue("");
         // Dismiss the overlay after brief feedback
-        setTimeout(() => {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current);
+        dismissTimer.current = setTimeout(() => {
           pinRequired.value = false;
           setToast(null);
           // Retry the original request if caller is watching
