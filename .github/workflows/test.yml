@@ -1,0 +1,111 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint app/
+        run: ruff check app/
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: app/frontend
+        run: npm ci
+      - name: Build bundle
+        working-directory: app/frontend
+        run: npm run build
+      - name: Verify build output
+        run: |
+          test -f app/static/js/app.js || { echo "::error::app.js not built"; exit 1; }
+          test -f app/static/css/superhot.css || { echo "::error::superhot.css not copied"; exit 1; }
+          test -f app/static/css/app.css || { echo "::error::app.css not copied"; exit 1; }
+          echo "Build artifacts verified"
+
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project structure
+        run: |
+          FAIL=0
+          for f in \
+            app/web_upload.py \
+            app/api.py \
+            app/sse.py \
+            app/gunicorn.conf.py \
+            app/modules/config.py \
+            app/modules/media.py \
+            app/modules/services.py \
+            app/modules/auth.py \
+            app/modules/wifi.py \
+            app/modules/boot_config.py \
+            app/modules/updater.py \
+            app/frontend/package.json \
+            app/frontend/esbuild.config.js \
+            app/frontend/src/app.jsx \
+            app/frontend/src/app.css \
+            kiosk/browser.js \
+            kiosk/kiosk.sh \
+            pi-gen/build.sh \
+            pi-gen/config \
+            systemd/framecast.service \
+            systemd/framecast-kiosk.service \
+            systemd/wifi-manager.service \
+            systemd/framecast-update.service \
+            systemd/framecast-update.timer \
+            scripts/health-check.sh \
+            scripts/hdmi-control.sh \
+            install.sh \
+            VERSION \
+            README.md \
+            CHANGELOG.md; do
+            if [ -f "$f" ]; then
+              echo "  OK  $f"
+            else
+              echo "  MISSING  $f"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::Required files are missing"
+            exit 1
+          fi
+          echo "All required files present."
+      - name: Verify shell scripts are executable
+        run: |
+          for f in kiosk/kiosk.sh scripts/health-check.sh scripts/hdmi-control.sh pi-gen/build.sh; do
+            if [ -x "$f" ]; then
+              echo "  OK  $f (executable)"
+            else
+              echo "  WARN  $f (not executable)"
+            fi
+          done
+      - name: Verify VERSION matches CHANGELOG
+        run: |
+          VERSION=$(cat VERSION)
+          if grep -q "\[${VERSION}\]" CHANGELOG.md; then
+            echo "VERSION ${VERSION} found in CHANGELOG"
+          else
+            echo "::warning::VERSION ${VERSION} not found in CHANGELOG.md"
+          fi

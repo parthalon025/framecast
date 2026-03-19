@@ -4,13 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "mkdir -p ../static/css ../static/js && cp src/app.css ../static/css/app.css",
     "build": "node esbuild.config.js",
+    "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css",
     "dev": "node esbuild.config.js --watch"
   },
   "dependencies": {
-    "preact": "^10.25.0",
     "@preact/signals": "^2.0.0",
-    "superhot-ui": "file:../../../../superhot-ui"
+    "leaflet": "^1.9.4",
+    "preact": "^10.25.0",
+    "qrcode-generator": "^2.0.4",
+    "superhot-ui": "^0.3.1"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

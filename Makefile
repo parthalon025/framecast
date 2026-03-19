@@ -1,21 +1,40 @@
-# Makefile for Pi Photo Display
+# Makefile for FrameCast
 # Usage: make [target]
 #
 # Run on the Raspberry Pi where the project is cloned.
 
 SHELL := /bin/bash
-INSTALL_DIR := /opt/pi-photo-display
+INSTALL_DIR := /opt/framecast
 REPO_DIR := $(shell pwd)
-SERVICES := slideshow photo-upload wifi-manager
+SERVICES := framecast framecast-kiosk wifi-manager
+TIMERS := framecast-update
 
-.PHONY: install uninstall update status logs test help
+.PHONY: install uninstall update status logs test help build-frontend dev run build-image
 
 help: ## Show this help message
-	@echo "Pi Photo Display - Available targets:"
+	@echo "FrameCast - Available targets:"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  make %-12s %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  make %-16s %s\n", $$1, $$2}'
 	@echo ""
+
+build-frontend: ## Build the Preact frontend
+	cd app/frontend && npm run build
+
+dev: ## Run gunicorn in dev mode (auto-reload)
+	cd app && gunicorn -c gunicorn.conf.py --reload web_upload:app
+
+run: ## Run gunicorn in production mode
+	cd app && gunicorn -c gunicorn.conf.py web_upload:app
+
+build-image: ## Run pi-gen build to produce SD card image
+	@echo "Building FrameCast SD card image with pi-gen..."
+	@if [ -d pi-gen ]; then \
+		cd pi-gen && sudo ./build.sh; \
+	else \
+		echo "ERROR: pi-gen directory not found. Clone pi-gen first."; \
+		exit 1; \
+	fi
 
 install: ## Run the installer (requires sudo)
 	@if [ "$$(id -u)" -ne 0 ]; then \
@@ -24,15 +43,23 @@ install: ## Run the installer (requires sudo)
 	fi
 	bash $(REPO_DIR)/install.sh
 
-uninstall: ## Remove services, sudoers, cron entries, install dir (preserves media)
+uninstall: ## Remove services, timers, sudoers, install dir (preserves media)
 	@if [ "$$(id -u)" -ne 0 ]; then \
 		echo "ERROR: Run with sudo: sudo make uninstall"; \
 		exit 1; \
 	fi
 	@echo "========================================"
-	@echo "  Pi Photo Display - Uninstall"
+	@echo "  FrameCast - Uninstall"
 	@echo "========================================"
 	@echo ""
+	@# Stop and disable timers
+	@for tmr in $(TIMERS); do \
+		echo "Stopping timer $$tmr..."; \
+		systemctl stop $$tmr.timer 2>/dev/null || true; \
+		systemctl disable $$tmr.timer 2>/dev/null || true; \
+		rm -f /etc/systemd/system/$$tmr.timer; \
+		rm -f /etc/systemd/system/$$tmr.service; \
+	done
 	@# Stop and disable services
 	@for svc in $(SERVICES); do \
 		echo "Stopping $$svc..."; \
@@ -44,23 +71,16 @@ uninstall: ## Remove services, sudoers, cron entries, install dir (preserves med
 	@echo ""
 	@# Remove sudoers entries
 	@echo "Removing sudoers entries..."
-	@rm -f /etc/sudoers.d/pi-photo-display
-	@echo ""
-	@# Remove cron entries for HDMI schedule
-	@echo "Removing cron entries..."
-	@PI_USER=$${SUDO_USER:-$$(logname 2>/dev/null || true)}; \
-	if [ -n "$$PI_USER" ] && [ "$$PI_USER" != "root" ]; then \
-		crontab -u "$$PI_USER" -l 2>/dev/null | grep -v "hdmi-control" | crontab -u "$$PI_USER" - 2>/dev/null || true; \
-	fi
+	@rm -f /etc/sudoers.d/framecast
 	@echo ""
 	@# Remove avahi service
 	@echo "Removing mDNS service advertisement..."
-	@rm -f /etc/avahi/services/pi-photo-display.service
+	@rm -f /etc/avahi/services/framecast.service
 	@systemctl restart avahi-daemon 2>/dev/null || true
 	@echo ""
 	@# Remove journald config
 	@echo "Removing journald overrides..."
-	@rm -f /etc/systemd/journald.conf.d/pi-photo-display.conf
+	@rm -f /etc/systemd/journald.conf.d/framecast.conf
 	@echo ""
 	@# Remove install directory but preserve media
 	@echo "Removing install directory $(INSTALL_DIR)..."
@@ -80,7 +100,7 @@ update: ## Pull latest changes and re-run installer (preserves config)
 		exit 1; \
 	fi
 	@echo "========================================"
-	@echo "  Pi Photo Display - Update"
+	@echo "  FrameCast - Update"
 	@echo "========================================"
 	@echo ""
 	@echo "Pulling latest changes..."
@@ -90,18 +110,22 @@ update: ## Pull latest changes and re-run installer (preserves config)
 	@echo "Re-running installer (config will be preserved)..."
 	@bash $(REPO_DIR)/install.sh
 
-status: ## Show status of all services
+status: ## Show status of all services and timers
 	@echo "========================================"
-	@echo "  Pi Photo Display - Service Status"
+	@echo "  FrameCast - Service Status"
 	@echo "========================================"
 	@echo ""
+	@echo "--- Services ---"
 	@for svc in $(SERVICES); do \
-		printf "%-20s " "$$svc:"; \
+		printf "  %-24s " "$$svc:"; \
 		systemctl is-active $$svc 2>/dev/null || echo "not found"; \
 	done
 	@echo ""
-	@echo "--- VLC Process ---"
-	@pgrep -a vlc 2>/dev/null || echo "  VLC is not running"
+	@echo "--- Timers ---"
+	@for tmr in $(TIMERS); do \
+		printf "  %-24s " "$$tmr:"; \
+		systemctl is-active $$tmr.timer 2>/dev/null || echo "not found"; \
+	done
 	@echo ""
 	@echo "--- Web Server ---"
 	@PORT=$$(grep "^WEB_PORT=" $(INSTALL_DIR)/app/.env 2>/dev/null | cut -d= -f2 || echo "8080"); \
@@ -116,16 +140,13 @@ status: ## Show status of all services
 		echo "  curl not installed, skipping web check"; \
 	fi
 	@echo ""
-	@echo "--- Hardware Watchdog ---"
-	@systemctl is-active watchdog 2>/dev/null && echo "  Watchdog: active" || echo "  Watchdog: inactive"
-	@echo ""
 	@echo "--- Disk Usage ---"
 	@df -h / 2>/dev/null | tail -1 | awk '{printf "  Root filesystem: %s used of %s (%s)\n", $$3, $$2, $$5}'
 	@echo ""
 
 logs: ## Show recent logs from all services
 	@echo "========================================"
-	@echo "  Pi Photo Display - Recent Logs"
+	@echo "  FrameCast - Recent Logs"
 	@echo "========================================"
 	@for svc in $(SERVICES); do \
 		echo ""; \

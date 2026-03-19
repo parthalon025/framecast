@@ -1,0 +1,339 @@
+/**
+ * FrameCast — app styles
+ * Green phosphor overrides, dropzone, slideshow, transitions, QR overlay, boot screen.
+ */
+
+/* ================================================================
+   1. Green Phosphor Override
+   ================================================================
+   The <html data-sh-monitor="green"> attribute activates superhot-ui's
+   green variant. We override to a brighter, slightly warmer green
+   tuned for photo-frame ambiance. This cascades into --status-healthy,
+   --status-success, --accent via semantic.css derivation.
+   ================================================================ */
+
+:root,
+[data-sh-monitor="green"] {
+  --sh-phosphor: oklch(85% 0.18 145);
+  --sh-phosphor-glow: oklch(85% 0.18 145 / 0.2);
+
+  /* Override accent to match phosphor (nav active state, links) */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+
+  /* Explicit status overrides for consumers that read these directly */
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}
+
+/* ================================================================
+   2. Dropzone
+   ================================================================ */
+
+.sh-dropzone {
+  border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* Touch target: entire dropzone is tappable */
+}
+
+.sh-dropzone[data-sh-dropzone="idle"] {
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+}
+
+.sh-dropzone[data-sh-dropzone="hover"] {
+  border-color: var(--sh-phosphor);
+  background: oklch(85% 0.18 145 / 0.05);
+  box-shadow: 0 0 16px var(--sh-phosphor-glow);
+}
+
+.sh-dropzone[data-sh-dropzone="receiving"] {
+  border-color: var(--sh-phosphor);
+  border-style: solid;
+  background: oklch(85% 0.18 145 / 0.08);
+  pointer-events: none;
+}
+
+.sh-dropzone[data-sh-dropzone="error"] {
+  border-color: var(--status-critical, #ff4444);
+  background: oklch(50% 0.2 30 / 0.05);
+}
+
+/* ================================================================
+   3. Slideshow
+   ================================================================ */
+
+.slideshow-container {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.slideshow-container img,
+.slideshow-container video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-orientation: from-image;
+}
+
+.slideshow-container video {
+  object-fit: contain;
+}
+
+/* ================================================================
+   4. Transition Animations
+   ================================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+@keyframes kenBurns {
+  0%   { transform: scale(1)    translate(0, 0); }
+  50%  { transform: scale(1.08) translate(-1%, -1%); }
+  100% { transform: scale(1.12) translate(1%, 0.5%); }
+}
+
+.slideshow-fade-in {
+  animation: fadeIn 1s ease-in forwards;
+}
+
+.slideshow-fade-out {
+  animation: fadeOut 1s ease-out forwards;
+}
+
+.slideshow-slide-in {
+  animation: slideIn 0.6s ease-out forwards;
+}
+
+.slideshow-slide-out {
+  animation: slideOut 0.6s ease-in forwards;
+}
+
+.slideshow-ken-burns {
+  animation: kenBurns 12s ease-in-out infinite alternate;
+}
+
+/* ================================================================
+   5. QR Overlay
+   ================================================================ */
+
+.qr-overlay {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid var(--sh-phosphor);
+  border-radius: 8px;
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
+  z-index: 10;
+}
+
+.qr-overlay img {
+  display: block;
+  width: 120px;
+  height: 120px;
+  image-rendering: pixelated;
+}
+
+/* ================================================================
+   6. Boot Screen
+   ================================================================ */
+
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height — respects mobile browser chrome */
+  background: var(--surface-void, #000);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  padding: 16px;
+  text-align: center;
+  gap: 16px;
+}
+
+.boot-screen .boot-logo {
+  font-size: clamp(1.5rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px var(--sh-phosphor-glow);
+}
+
+.boot-screen .boot-status {
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
+  opacity: 0.7;
+}
+
+/* ================================================================
+   7. Utility — reduced motion
+   ================================================================ */
+
+/* ================================================================
+   8. Responsive — Mobile-First Breakpoints
+   ================================================================
+   Base styles = phone. Scale up with min-width only. Never max-width.
+   Breakpoints: 768px (tablet), 1024px (desktop), 1400px (TV/wide)
+   ================================================================ */
+
+/* ── Phone layout (base) ── */
+
+.fc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  padding-bottom: 84px; /* clearance for bottom nav */
+}
+
+.fc-page .sh-grid-3 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.fc-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px; /* touch target */
+}
+
+.fc-setting-row .sh-input,
+.fc-setting-row .sh-select {
+  width: 100%;
+  max-width: 120px;
+  min-height: 44px; /* touch target */
+  font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+.fc-setting-row .sh-toggle {
+  min-width: 44px;
+  min-height: 44px; /* touch target */
+}
+
+/* Boot/display screens — fluid type */
+.boot-screen h1 {
+  font-size: clamp(1.5rem, 5vw, 5rem);
+}
+
+.boot-screen .sh-label {
+  font-size: clamp(0.875rem, 2vw, 1.5rem);
+}
+
+/* QR — scale with viewport */
+.qr-overlay {
+  bottom: 16px;
+  right: 16px;
+  padding: 8px;
+}
+
+/* ── Tablet (768px+) ── */
+@media (min-width: 768px) {
+  .fc-page {
+    padding: 20px;
+    padding-bottom: 20px; /* no bottom nav on tablet — sidebar */
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sh-dropzone {
+    padding: 48px 24px;
+    min-height: 200px;
+  }
+
+  .qr-overlay {
+    bottom: 32px;
+    right: 32px;
+    padding: 12px;
+  }
+}
+
+/* ── Desktop (1024px+) ── */
+@media (min-width: 1024px) {
+  .fc-page {
+    max-width: 960px;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── TV / Wide (1400px+) ── */
+@media (min-width: 1400px) {
+  .boot-screen {
+    padding: 48px;
+  }
+
+  .qr-overlay {
+    bottom: 48px;
+    right: 48px;
+    padding: 16px;
+  }
+}
+
+/* ================================================================
+   9. Utility — reduced motion
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .slideshow-fade-in,
+  .slideshow-fade-out,
+  .slideshow-slide-in,
+  .slideshow-slide-out,
+  .slideshow-ken-burns {
+    animation: none;
+  }
+
+  .slideshow-fade-in,
+  .slideshow-slide-in {
+    opacity: 1;
+  }
+
+  .slideshow-fade-out,
+  .slideshow-slide-out {
+    opacity: 0;
+  }
+}

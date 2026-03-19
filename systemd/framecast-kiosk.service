@@ -1,0 +1,16 @@
+[Unit]
+Description=FrameCast Kiosk Display
+After=framecast.service graphical.target
+Wants=framecast.service
+
+[Service]
+Type=simple
+User=pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/opt/framecast/kiosk/kiosk.sh
+Restart=always
+RestartSec=10
+MemoryMax=512M
+
+[Install]
+WantedBy=graphical.target

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from flask import (
     Flask,
-    Response,
     abort,
     flash,
     jsonify,
@@ -31,7 +30,11 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+import sse
+from api import api
 from modules import config, media, services
+from modules.auth import auth_api, require_pin
+from modules.boot_config import apply_boot_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +55,7 @@ def _heal_env_file():
     env_example = Path(__file__).parent / ".env.example"
 
     if env_file.exists() and env_file.stat().st_size > 10:
+        _ensure_access_pin()
         return  # .env looks valid
 
     if not env_file.exists():
@@ -70,6 +74,20 @@ def _heal_env_file():
     else:
         log.critical("No .env.example found - cannot self-heal. Using built-in defaults.")
 
+    _ensure_access_pin()
+
+
+def _ensure_access_pin():
+    """Generate a random 4-digit ACCESS_PIN if not already set."""
+    existing = config.get("ACCESS_PIN", "").strip()
+    if existing:
+        return  # PIN already configured
+
+    pin = str(secrets.randbelow(9000) + 1000)
+    config.save({"ACCESS_PIN": pin})
+    config.reload()
+    log.info("Generated new ACCESS_PIN (shown on TV display)")
+
 
 _heal_env_file()
 
@@ -82,7 +100,6 @@ THUMBNAIL_DIR = str(Path(MEDIA_DIR) / "thumbnails")
 PORT = int(config.get("WEB_PORT", "8080"))
 MAX_UPLOAD_MB = int(config.get("MAX_UPLOAD_MB", "200"))
 AUTO_RESIZE_MAX = int(config.get("AUTO_RESIZE_MAX", "1920"))
-WEB_PASSWORD = config.get("WEB_PASSWORD", "").strip()
 
 # Semaphore to limit concurrent uploads (Pi 3B has only 1GB RAM).
 # A single large upload can use 200MB+; two simultaneous ones cause OOM.
@@ -132,6 +149,9 @@ def _cleanup_tmp_files():
 
 
 _cleanup_tmp_files()
+
+# --- Boot partition WiFi config ---
+apply_boot_config()
 
 
 # --- Request timeout ---
@@ -185,6 +205,10 @@ if not _secret:
 app.secret_key = _secret
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
+# Register API blueprints
+app.register_blueprint(api)
+app.register_blueprint(auth_api)
+
 
 @app.after_request
 def security_headers(response):
@@ -199,40 +223,6 @@ def security_headers(response):
         "style-src 'self' 'unsafe-inline' https://unpkg.com"
     )
     return response
-
-
-# --- PIN authentication ---
-
-
-def _check_auth(username, password):
-    """Verify credentials against the configured WEB_PASSWORD."""
-    return password == WEB_PASSWORD
-
-
-def _auth_required_response():
-    """Return a 401 response that prompts for Basic Auth."""
-    return Response(
-        "Authentication required. Please provide the configured PIN.",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Pi Photo Display"'},
-    )
-
-
-def require_pin(f):
-    """Decorator to require HTTP Basic Auth on POST routes when WEB_PASSWORD is set.
-
-    If WEB_PASSWORD is empty or not configured, the route is unprotected
-    (preserving the default open-access behavior for local networks).
-    """
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        if not WEB_PASSWORD:
-            return f(*args, **kwargs)
-        auth = request.authorization
-        if not auth or not _check_auth(auth.username, auth.password):
-            return _auth_required_response()
-        return f(*args, **kwargs)
-    return decorated
 
 
 # --- Request logging ---
@@ -284,7 +274,7 @@ def _generate_video_thumbnail(video_path, filename):
             log.warning("Thumbnail generation produced empty file for %s", filename)
     except FileNotFoundError:
         log.debug("ffmpeg not found, skipping thumbnail for %s", filename)
-    except Exception as exc:
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
         log.warning("Thumbnail generation failed for %s: %s", filename, exc)
 
 
@@ -347,6 +337,14 @@ def index():
     )
 
 
+def _is_xhr():
+    """Check if the request is from an XHR/fetch client (SPA frontend)."""
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "")
+    )
+
+
 @app.route("/upload", methods=["POST"])
 @require_pin
 @log_post_request
@@ -354,6 +352,8 @@ def index():
 def upload():
     # Limit concurrent uploads to prevent OOM on Pi 3B (1GB RAM)
     if not _upload_semaphore.acquire(blocking=False):
+        if _is_xhr():
+            return jsonify({"error": "Another upload is in progress"}), 429
         flash("Another upload is in progress. Please wait and try again.", "warning")
         return redirect(url_for("index"))
     try:
@@ -363,17 +363,24 @@ def upload():
 
 
 def _do_upload():
+    xhr = _is_xhr()
+
     if "files" not in request.files:
+        if xhr:
+            return jsonify({"error": "No files selected"}), 400
         flash("No files selected", "error")
         return redirect(url_for("index"))
 
     # Check disk space before accepting uploads (reserve 50MB for system use)
     disk = media.get_disk_usage()
     if disk["percent"] >= 95 or disk.get("free_bytes", 0) < 50 * 1024 * 1024:
+        if xhr:
+            return jsonify({"error": "Not enough disk space"}), 507
         flash("Not enough disk space. Delete files or use a larger SD card.", "error")
         return redirect(url_for("index"))
 
     uploaded = 0
+    uploaded_names = []
     skipped = 0
     for f in request.files.getlist("files"):
         if f.filename == "":
@@ -391,7 +398,8 @@ def _do_upload():
         # during multi-file uploads
         current_disk = media.get_disk_usage()
         if current_disk["percent"] >= 95 or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-            flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
+            if not xhr:
+                flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
             break
 
         dest = Path(MEDIA_DIR) / filename
@@ -415,8 +423,8 @@ def _do_upload():
             # Clean up temp file on any failure
             try:
                 tmp_dest.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                log.warning("Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc)
             raise
         log.info("Uploaded: %s (%s)", filename, media.format_size(dest.stat().st_size))
 
@@ -430,6 +438,15 @@ def _do_upload():
             media.update_location_cache(filename, coords)
 
         uploaded += 1
+        uploaded_names.append(filename)
+        sse.notify("photo:added", {"filename": filename})
+
+    if xhr:
+        return jsonify({
+            "uploaded": uploaded_names,
+            "uploaded_count": uploaded,
+            "skipped": skipped,
+        }), 200 if uploaded > 0 else 400
 
     if uploaded > 0:
         flash(f"Uploaded {uploaded} file(s) successfully", "success")
@@ -443,8 +460,11 @@ def _do_upload():
 @require_pin
 @log_post_request
 def delete():
+    xhr = _is_xhr()
     filename = request.form.get("filename", "")
     if not filename:
+        if xhr:
+            return jsonify({"error": "No file specified"}), 400
         flash("No file specified", "error")
         return redirect(url_for("index"))
 
@@ -453,6 +473,8 @@ def delete():
     try:
         filepath.resolve().relative_to(Path(MEDIA_DIR).resolve())
     except ValueError:
+        if xhr:
+            return jsonify({"error": "Invalid file path"}), 400
         flash("Invalid file path", "error")
         return redirect(url_for("index"))
 
@@ -465,8 +487,13 @@ def delete():
         media.remove_from_location_cache(filepath.name)
         filepath.unlink()
         log.info("Deleted: %s", filename)
+        sse.notify("photo:deleted", {"filename": filename})
+        if xhr:
+            return jsonify({"status": "ok", "filename": filename})
         flash("File deleted", "success")
     else:
+        if xhr:
+            return jsonify({"error": "File not found"}), 404
         flash("File not found", "error")
 
     return redirect(url_for("index"))
@@ -500,8 +527,8 @@ def delete_all():
     if cache_path.exists():
         try:
             cache_path.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
     flash(f"Deleted {count} file(s)", "success")
     return redirect(url_for("index"))
@@ -529,13 +556,6 @@ def serve_thumbnail(filename):
 def map_page():
     """Map page showing photo locations."""
     return render_template("map.html")
-
-
-@app.route("/api/locations")
-def api_locations():
-    """Return GPS locations for all photos as JSON."""
-    locations = media.get_photo_locations()
-    return jsonify(locations)
 
 
 @app.route("/settings")
@@ -637,21 +657,16 @@ def settings_save():
     return redirect(url_for("settings_page"))
 
 
-# --- Lightweight status cache ---
-# Avoids re-scanning the entire media directory on every 10-second poll
-# from every connected browser tab.
-_status_cache = {"data": None, "time": 0}
-_STATUS_CACHE_TTL = 5  # seconds
+# --- Periodic thumbnail cleanup ---
 _thumbnail_cleanup_last = 0
 _THUMBNAIL_CLEANUP_INTERVAL = 3600  # hourly
 
 
-@app.route("/api/status")
-def api_status():
+@app.before_request
+def _periodic_thumbnail_cleanup():
+    """Run orphan thumbnail cleanup hourly, triggered by any request."""
     global _thumbnail_cleanup_last
     now = time.monotonic()
-
-    # Periodic orphan thumbnail cleanup (hourly)
     if now - _thumbnail_cleanup_last > _THUMBNAIL_CLEANUP_INTERVAL:
         _thumbnail_cleanup_last = now
         try:
@@ -659,22 +674,7 @@ def api_status():
             if removed:
                 log.info("Cleaned up %d orphan thumbnail(s)", removed)
         except Exception:
-            pass
-
-    if _status_cache["data"] and (now - _status_cache["time"]) < _STATUS_CACHE_TTL:
-        return jsonify(_status_cache["data"])
-
-    files = media.get_media_files()
-    disk = media.get_disk_usage()
-    data = {
-        "photo_count": sum(1 for f in files if not f["is_video"]),
-        "video_count": sum(1 for f in files if f["is_video"]),
-        "disk": disk,
-        "slideshow_running": services.is_slideshow_running(),
-    }
-    _status_cache["data"] = data
-    _status_cache["time"] = now
-    return jsonify(data)
+            log.warning("Periodic thumbnail cleanup failed", exc_info=True)
 
 
 @app.route("/api/restart-slideshow", methods=["POST"])
@@ -696,7 +696,7 @@ def api_reboot():
         subprocess.Popen(["sudo", "reboot"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({"status": "ok", "message": "Device is rebooting..."})
     except Exception:
-        log.error("Failed to reboot")
+        log.error("Failed to reboot", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to reboot"}), 500
 
 
@@ -709,14 +709,35 @@ def api_shutdown():
         subprocess.Popen(["sudo", "shutdown", "-h", "now"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({"status": "ok", "message": "Device is shutting down..."})
     except Exception:
-        log.error("Failed to shut down")
+        log.error("Failed to shut down", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to shut down"}), 500
+
+
+# --- SPA routes ---
+# Serve the SPA shell for all client-side routes.
+# Existing template routes above remain as fallback.
+
+
+@app.route("/display")
+@app.route("/display/<path:subpath>")
+def display(subpath=None):
+    return render_template("spa.html")
+
+
+@app.route("/setup")
+def setup():
+    return render_template("spa.html")
+
+
+@app.route("/update")
+def update():
+    return render_template("spa.html")
 
 
 if __name__ == "__main__":
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    log.info("Pi Photo Display - Web Upload Server")
+    log.info("FrameCast - Web Upload Server")
     log.info("Media directory: %s", MEDIA_DIR)
     log.info("Listening on http://0.0.0.0:%d", PORT)
     app.run(host="0.0.0.0", port=PORT, debug=False, threaded=True)

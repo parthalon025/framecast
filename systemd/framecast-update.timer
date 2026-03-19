@@ -1,0 +1,10 @@
+[Unit]
+Description=FrameCast Daily OTA Update Timer
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -26,8 +26,13 @@ Thumbs.db
 *.pid
 /media/
 
+# Node
+node_modules/
+
 # Generated files
 app/static/welcome.png
+app/static/js/
+app/static/css/
 thumbnails/
 
 # Environment
@@ -37,3 +42,6 @@ app/.env
 # Temporary
 *.tmp
 *.bak
+
+# pi-gen cloned upstream
+pi-gen/pi-gen/

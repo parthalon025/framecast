@@ -1,9 +1,12 @@
 """Configuration management - reads and writes .env files."""
 
+import logging
 import os
 import tempfile
 import threading
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 SCRIPT_DIR = Path(__file__).parent.parent
 ENV_FILE = SCRIPT_DIR / ".env"
@@ -80,8 +83,8 @@ def save(updates: dict):
             # Clean up temp file on any failure
             try:
                 os.unlink(tmp_path)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                log.warning("Failed to clean up temp file %s: %s", tmp_path, cleanup_exc)
             raise
 
         _cache.update(updates)

@@ -1,0 +1,35 @@
+name: Build Image
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Build Pi Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        working-directory: app/frontend
+        run: |
+          npm install --ignore-scripts --install-strategy=nested 2>/dev/null || true
+          npm install esbuild preact @preact/signals leaflet qrcode-generator --save --ignore-scripts
+          mkdir -p ../static/css ../static/js
+          node esbuild.config.js
+
+      - name: Build pi-gen image
+        run: cd pi-gen && bash build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: framecast-image
+          path: pi-gen/pi-gen/deploy/*.img.xz
+          retention-days: 14
