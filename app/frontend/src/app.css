@@ -36,16 +36,17 @@
 .sh-dropzone {
   border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
   border-radius: 12px;
-  padding: 48px 24px;
+  padding: 24px 16px;
   text-align: center;
   transition: border-color 0.2s, background 0.2s;
   cursor: pointer;
-  min-height: 200px;
+  min-height: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
+  /* Touch target: entire dropzone is tappable */
 }
 
 .sh-dropzone[data-sh-dropzone="idle"] {
@@ -180,16 +181,17 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height — respects mobile browser chrome */
   background: var(--surface-void, #000);
   color: var(--sh-phosphor);
   font-family: var(--font-mono, monospace);
-  padding: 24px;
+  padding: 16px;
   text-align: center;
   gap: 16px;
 }
 
 .boot-screen .boot-logo {
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 5vw, 3rem);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -197,7 +199,7 @@
 }
 
 .boot-screen .boot-status {
-  font-size: 0.875rem;
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
   opacity: 0.7;
 }
 
@@ -206,30 +208,110 @@
    ================================================================ */
 
 /* ================================================================
-   8. Responsive Breakpoints
+   8. Responsive — Mobile-First Breakpoints
+   ================================================================
+   Base styles = phone. Scale up with min-width only. Never max-width.
+   Breakpoints: 768px (tablet), 1024px (desktop), 1400px (TV/wide)
    ================================================================ */
 
-/* Phone (< 480px): tighter spacing, 2-column grid */
-@media (max-width: 480px) {
-  .sh-grid-3 { grid-template-columns: repeat(2, 1fr); }
-  .sh-dropzone { padding: var(--space-4); min-height: 150px; }
-  .boot-screen { padding: var(--space-4); }
-  .boot-screen h1 { font-size: 2rem; }
-  .qr-overlay { bottom: var(--space-3); right: var(--space-3); padding: var(--space-2); }
+/* ── Phone layout (base) ── */
+
+.fc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  padding-bottom: 84px; /* clearance for bottom nav */
 }
 
-/* Tablet (481px - 1023px): default 3-column grid, standard spacing */
+.fc-page .sh-grid-3 {
+  grid-template-columns: repeat(2, 1fr);
+}
 
-/* Desktop/TV (>= 1024px): 4-column grid, larger display elements */
+.fc-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px; /* touch target */
+}
+
+.fc-setting-row .sh-input,
+.fc-setting-row .sh-select {
+  width: 100%;
+  max-width: 120px;
+  min-height: 44px; /* touch target */
+  font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+.fc-setting-row .sh-toggle {
+  min-width: 44px;
+  min-height: 44px; /* touch target */
+}
+
+/* Boot/display screens — fluid type */
+.boot-screen h1 {
+  font-size: clamp(1.5rem, 5vw, 5rem);
+}
+
+.boot-screen .sh-label {
+  font-size: clamp(0.875rem, 2vw, 1.5rem);
+}
+
+/* QR — scale with viewport */
+.qr-overlay {
+  bottom: 16px;
+  right: 16px;
+  padding: 8px;
+}
+
+/* ── Tablet (768px+) ── */
+@media (min-width: 768px) {
+  .fc-page {
+    padding: 20px;
+    padding-bottom: 20px; /* no bottom nav on tablet — sidebar */
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sh-dropzone {
+    padding: 48px 24px;
+    min-height: 200px;
+  }
+
+  .qr-overlay {
+    bottom: 32px;
+    right: 32px;
+    padding: 12px;
+  }
+}
+
+/* ── Desktop (1024px+) ── */
 @media (min-width: 1024px) {
-  .sh-grid-3 { grid-template-columns: repeat(4, 1fr); }
-  .boot-screen h1 { font-size: 4rem; }
+  .fc-page {
+    max-width: 960px;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
-/* TV full-screen (>= 1920px): maximize display elements */
-@media (min-width: 1920px) {
-  .boot-screen h1 { font-size: 5rem; }
-  .boot-screen .sh-label { font-size: 1.5rem; }
+/* ── TV / Wide (1400px+) ── */
+@media (min-width: 1400px) {
+  .boot-screen {
+    padding: 48px;
+  }
+
+  .qr-overlay {
+    bottom: 48px;
+    right: 48px;
+    padding: 16px;
+  }
 }
 
 /* ================================================================
