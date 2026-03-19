@@ -7,6 +7,9 @@ Wants=NetworkManager.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/opt/framecast/scripts/wifi-check.sh
+ProtectSystem=strict
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/framecast
 
 [Install]
 WantedBy=multi-user.target
