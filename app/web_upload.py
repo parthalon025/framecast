@@ -403,6 +403,11 @@ def _do_upload():
         flash("Not enough disk space. Delete files or use a larger SD card.", "error")
         return redirect(url_for("index"))
 
+    # Read uploader identity from cookie (set by "Who's uploading?" modal)
+    uploaded_by = request.cookies.get("framecast_user", "default").strip() or "default"
+    # Ensure user exists in DB (auto-create on first upload)
+    db.get_or_create_user(uploaded_by)
+
     uploaded = 0
     uploaded_names = []
     skipped = 0
@@ -442,6 +447,7 @@ def _do_upload():
                 filename=filename,
                 filepath=str(dest),
                 is_video=is_vid,
+                uploaded_by=uploaded_by,
                 quarantined=True,
                 quarantine_reason="upload in progress",
             )
