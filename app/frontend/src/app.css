@@ -1,0 +1,226 @@
+/**
+ * FrameCast — app styles
+ * Green phosphor overrides, dropzone, slideshow, transitions, QR overlay, boot screen.
+ */
+
+/* ================================================================
+   1. Green Phosphor Override
+   ================================================================
+   The <html data-sh-monitor="green"> attribute activates superhot-ui's
+   green variant. We override to a brighter, slightly warmer green
+   tuned for photo-frame ambiance. This cascades into --status-healthy,
+   --status-success, --accent via semantic.css derivation.
+   ================================================================ */
+
+:root,
+[data-sh-monitor="green"] {
+  --sh-phosphor: oklch(85% 0.18 145);
+  --sh-phosphor-glow: oklch(85% 0.18 145 / 0.2);
+
+  /* Override accent to match phosphor (nav active state, links) */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+
+  /* Explicit status overrides for consumers that read these directly */
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}
+
+/* ================================================================
+   2. Dropzone
+   ================================================================ */
+
+.sh-dropzone {
+  border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.sh-dropzone[data-sh-dropzone="idle"] {
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+}
+
+.sh-dropzone[data-sh-dropzone="hover"] {
+  border-color: var(--sh-phosphor);
+  background: oklch(85% 0.18 145 / 0.05);
+  box-shadow: 0 0 16px var(--sh-phosphor-glow);
+}
+
+.sh-dropzone[data-sh-dropzone="receiving"] {
+  border-color: var(--sh-phosphor);
+  border-style: solid;
+  background: oklch(85% 0.18 145 / 0.08);
+  pointer-events: none;
+}
+
+.sh-dropzone[data-sh-dropzone="error"] {
+  border-color: var(--status-critical, #ff4444);
+  background: oklch(50% 0.2 30 / 0.05);
+}
+
+/* ================================================================
+   3. Slideshow
+   ================================================================ */
+
+.slideshow-container {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.slideshow-container img,
+.slideshow-container video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-orientation: from-image;
+}
+
+.slideshow-container video {
+  object-fit: contain;
+}
+
+/* ================================================================
+   4. Transition Animations
+   ================================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+@keyframes kenBurns {
+  0%   { transform: scale(1)    translate(0, 0); }
+  50%  { transform: scale(1.08) translate(-1%, -1%); }
+  100% { transform: scale(1.12) translate(1%, 0.5%); }
+}
+
+.slideshow-fade-in {
+  animation: fadeIn 1s ease-in forwards;
+}
+
+.slideshow-fade-out {
+  animation: fadeOut 1s ease-out forwards;
+}
+
+.slideshow-slide-in {
+  animation: slideIn 0.6s ease-out forwards;
+}
+
+.slideshow-slide-out {
+  animation: slideOut 0.6s ease-in forwards;
+}
+
+.slideshow-ken-burns {
+  animation: kenBurns 12s ease-in-out infinite alternate;
+}
+
+/* ================================================================
+   5. QR Overlay
+   ================================================================ */
+
+.qr-overlay {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid var(--sh-phosphor);
+  border-radius: 8px;
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
+  z-index: 10;
+}
+
+.qr-overlay img {
+  display: block;
+  width: 120px;
+  height: 120px;
+  image-rendering: pixelated;
+}
+
+/* ================================================================
+   6. Boot Screen
+   ================================================================ */
+
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--surface-void, #000);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  padding: 24px;
+  text-align: center;
+  gap: 16px;
+}
+
+.boot-screen .boot-logo {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px var(--sh-phosphor-glow);
+}
+
+.boot-screen .boot-status {
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+
+/* ================================================================
+   7. Utility — reduced motion
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .slideshow-fade-in,
+  .slideshow-fade-out,
+  .slideshow-slide-in,
+  .slideshow-slide-out,
+  .slideshow-ken-burns {
+    animation: none;
+  }
+
+  .slideshow-fade-in,
+  .slideshow-slide-in {
+    opacity: 1;
+  }
+
+  .slideshow-fade-out,
+  .slideshow-slide-out {
+    opacity: 0;
+  }
+}
