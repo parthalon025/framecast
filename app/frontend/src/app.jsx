@@ -25,10 +25,6 @@ function UpdatePage() {
 function SetupPage() {
   return <div class="sh-frame" style="padding: 20px;">Setup</div>;
 }
-function DisplayPage() {
-  return <div style="position: fixed; inset: 0; background: black;">Display</div>;
-}
-
 // --- Route definitions ---
 const phoneRoutes = [
   { path: "/", component: Upload },
@@ -39,8 +35,8 @@ const phoneRoutes = [
 ];
 
 const displayRoutes = [
-  { path: "/display", component: DisplayPage },
-  { path: "*", component: DisplayPage },
+  { path: "/display", component: () => <DisplayRouter /> },
+  { path: "*", component: () => <DisplayRouter /> },
 ];
 
 // --- App shell ---
