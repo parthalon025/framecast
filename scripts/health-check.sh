@@ -14,6 +14,14 @@ if [ ! -f "$ROLLBACK_FILE" ]; then
 fi
 
 PREV_TAG=$(cat "$ROLLBACK_FILE")
+
+# Validate tag format to prevent injection
+if ! [[ "$PREV_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "INVALID rollback tag: $PREV_TAG — aborting"
+    rm -f "$ROLLBACK_FILE"
+    exit 1
+fi
+
 echo "Post-update health check. Rollback target: $PREV_TAG"
 
 # Wait for services to come up

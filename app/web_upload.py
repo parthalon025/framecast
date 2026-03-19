@@ -80,13 +80,11 @@ def _heal_env_file():
 
 def _ensure_access_pin():
     """Generate a random 4-digit ACCESS_PIN if not already set."""
-    import random
-
     existing = config.get("ACCESS_PIN", "").strip()
     if existing:
         return  # PIN already configured
 
-    pin = str(random.randint(1000, 9999))
+    pin = str(secrets.randbelow(9000) + 1000)
     config.save({"ACCESS_PIN": pin})
     config.reload()
     log.info("Generated new ACCESS_PIN (shown on TV display)")

@@ -133,7 +133,7 @@ nmcli_start_ap() {
     nmcli connection up "$NM_CON_NAME" 2>/dev/null
 
     CURRENT_MODE="ap"
-    log "AP hotspot '$AP_SSID' active at $AP_IP (password: $AP_PASS)"
+    log "AP hotspot '$AP_SSID' active at $AP_IP (password: ***)"
     log "Web upload available at http://${AP_IP}:8080"
 }
 
@@ -200,7 +200,7 @@ EOF
     dnsmasq -C "$DNSMASQ_CONF" --pid-file=/tmp/piphoto-dnsmasq.pid 2>/dev/null
 
     CURRENT_MODE="ap"
-    log "AP hotspot '$AP_SSID' active at $AP_IP (password: $AP_PASS)"
+    log "AP hotspot '$AP_SSID' active at $AP_IP (password: ***)"
     log "Web upload available at http://${AP_IP}:8080"
 }
 

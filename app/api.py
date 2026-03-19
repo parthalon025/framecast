@@ -92,14 +92,17 @@ def status():
     """Return system status: disk usage, counts, version, settings."""
     files = media.get_media_files()
     disk = media.get_disk_usage()
-    return jsonify({
+    result = {
         "photo_count": sum(1 for f in files if not f["is_video"]),
         "video_count": sum(1 for f in files if f["is_video"]),
         "disk": disk,
         "version": _read_version(),
         "settings": _current_settings(),
-        "access_pin": config.get("ACCESS_PIN", "").strip(),
-    })
+    }
+    # Only expose PIN to localhost (TV display needs it to show on-screen)
+    if request.remote_addr in ("127.0.0.1", "::1"):
+        result["access_pin"] = config.get("ACCESS_PIN", "").strip()
+    return jsonify(result)
 
 
 @api.route("/settings")
@@ -274,6 +277,9 @@ def apply_update():
     tag = data.get("tag")
     if not tag:
         return jsonify({"error": "No tag specified"}), 400
+
+    if not updater._TAG_RE.match(tag):
+        return jsonify({"error": f"Invalid tag format: {tag}"}), 400
 
     success, message = updater.apply_update(tag)
     if success:

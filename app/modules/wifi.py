@@ -12,6 +12,15 @@ log = logging.getLogger(__name__)
 _TIMEOUT = 15
 
 
+def _redact_password(cmd):
+    """Return a copy of *cmd* with the argument after 'password' replaced by '***'."""
+    redacted = list(cmd)
+    for i, arg in enumerate(redacted):
+        if arg == "password" and i + 1 < len(redacted):
+            redacted[i + 1] = "***"
+    return redacted
+
+
 def _run(cmd, timeout=_TIMEOUT):
     """Run a subprocess command, returning (returncode, stdout, stderr).
 
@@ -26,13 +35,13 @@ def _run(cmd, timeout=_TIMEOUT):
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
-        log.error("Command timed out after %ds: %s", timeout, cmd)
+        log.error("Command timed out after %ds: %s", timeout, _redact_password(cmd))
         return -1, "", f"Timed out after {timeout}s"
     except FileNotFoundError:
         log.error("Command not found: %s", cmd[0])
         return -1, "", f"Command not found: {cmd[0]}"
     except OSError as exc:
-        log.error("OS error running %s: %s", cmd, exc)
+        log.error("OS error running %s: %s", _redact_password(cmd), exc)
         return -1, "", str(exc)
 
 
@@ -144,7 +153,11 @@ def start_ap(ssid=None):
 
     log.info("Starting AP mode with SSID '%s'", ssid)
 
-    # Open hotspot (no password for easy phone connection)
+    # SECURITY TRADEOFF: Open hotspot (no password) for onboarding UX.
+    # The user must be physically present to see the SSID on the TV screen.
+    # The AP only serves the upload/settings UI on a local subnet — no
+    # internet gateway, no stored credentials exposed. Acceptable risk for
+    # a device that requires physical access to operate.
     cmd = [
         "nmcli", "dev", "wifi", "hotspot",
         "ifname", "wlan0",

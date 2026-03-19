@@ -17,6 +17,9 @@ _clients_lock = threading.Lock()
 # Max events buffered per client before it's considered stale
 _MAX_QUEUE_SIZE = 50
 
+# Max concurrent SSE clients (Pi has limited RAM)
+_MAX_CLIENTS = 10
+
 # Keepalive interval in seconds (SSE comment to prevent timeout)
 _KEEPALIVE_INTERVAL = 30
 
@@ -27,6 +30,12 @@ def subscribe():
     Yields:
         SSE-formatted strings (event + data lines, or keepalive comments).
     """
+    with _clients_lock:
+        if len(_clients) >= _MAX_CLIENTS:
+            log.warning("SSE connection rejected: max clients (%d) reached", _MAX_CLIENTS)
+            yield f"event: error\ndata: {{\"error\": \"Too many connections\"}}\n\n"
+            return
+
     q = Queue(maxsize=_MAX_QUEUE_SIZE)
     with _clients_lock:
         _clients.append(q)

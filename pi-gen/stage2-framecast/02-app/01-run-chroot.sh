@@ -20,6 +20,9 @@ EOF
 mkdir -p /home/pi/media
 chown -R 1000:1000 /home/pi/media
 
+# Lock pi user password (SSH disabled, headless device)
+passwd -l pi
+
 # Permissions
 chown -R 1000:1000 /opt/framecast
 chmod +x /opt/framecast/kiosk/kiosk.sh
