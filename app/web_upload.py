@@ -31,6 +31,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+from api import api
 from modules import config, media, services
 
 logging.basicConfig(
@@ -184,6 +185,9 @@ if not _secret:
     config.save({"FLASK_SECRET_KEY": _secret})
 app.secret_key = _secret
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+# Register API blueprint
+app.register_blueprint(api)
 
 
 @app.after_request
@@ -531,13 +535,6 @@ def map_page():
     return render_template("map.html")
 
 
-@app.route("/api/locations")
-def api_locations():
-    """Return GPS locations for all photos as JSON."""
-    locations = media.get_photo_locations()
-    return jsonify(locations)
-
-
 @app.route("/settings")
 def settings_page():
     """Settings page to configure the display."""
@@ -637,21 +634,16 @@ def settings_save():
     return redirect(url_for("settings_page"))
 
 
-# --- Lightweight status cache ---
-# Avoids re-scanning the entire media directory on every 10-second poll
-# from every connected browser tab.
-_status_cache = {"data": None, "time": 0}
-_STATUS_CACHE_TTL = 5  # seconds
+# --- Periodic thumbnail cleanup ---
 _thumbnail_cleanup_last = 0
 _THUMBNAIL_CLEANUP_INTERVAL = 3600  # hourly
 
 
-@app.route("/api/status")
-def api_status():
+@app.before_request
+def _periodic_thumbnail_cleanup():
+    """Run orphan thumbnail cleanup hourly, triggered by any request."""
     global _thumbnail_cleanup_last
     now = time.monotonic()
-
-    # Periodic orphan thumbnail cleanup (hourly)
     if now - _thumbnail_cleanup_last > _THUMBNAIL_CLEANUP_INTERVAL:
         _thumbnail_cleanup_last = now
         try:
@@ -660,21 +652,6 @@ def api_status():
                 log.info("Cleaned up %d orphan thumbnail(s)", removed)
         except Exception:
             pass
-
-    if _status_cache["data"] and (now - _status_cache["time"]) < _STATUS_CACHE_TTL:
-        return jsonify(_status_cache["data"])
-
-    files = media.get_media_files()
-    disk = media.get_disk_usage()
-    data = {
-        "photo_count": sum(1 for f in files if not f["is_video"]),
-        "video_count": sum(1 for f in files if f["is_video"]),
-        "disk": disk,
-        "slideshow_running": services.is_slideshow_running(),
-    }
-    _status_cache["data"] = data
-    _status_cache["time"] = now
-    return jsonify(data)
 
 
 @app.route("/api/restart-slideshow", methods=["POST"])
