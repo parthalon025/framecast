@@ -152,6 +152,9 @@ def _cleanup_tmp_files():
 
 _cleanup_tmp_files()
 
+# --- Boot partition WiFi config ---
+apply_boot_config()
+
 
 # --- Request timeout ---
 
