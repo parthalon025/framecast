@@ -600,17 +600,19 @@ Agent 6 → .worktrees/security-docs/        → feature/security-docs
 
 **Tasks:**
 1. Create `cec.py` (tv_power_on, tv_standby, tv_status, set_active_source)
-   - All via `cec-client` subprocess with 5s timeout
-   - `suppress(ProcessLookupError)` on kill (Lesson #81)
+   - **Use `cec-ctl` from `v4l-utils`** (NOT `cec-client` — libcec is broken on Bookworm/Pi 5)
+   - Commands: `cec-ctl --playback -t0 --image-view-on`, `cec-ctl --playback -t0 --standby`
+   - Status: `cec-ctl -d0 --give-device-power-status` → parse "pwr-on-status: on/standby"
+   - All with 5s timeout, `suppress(ProcessLookupError)` on kill (Lesson #81)
    - Init queries state (Lesson #7 — don't assume)
 2. Rewrite `hdmi-control.sh`:
-   - CEC-first, `wlr-randr` fallback
+   - `cec-ctl` first, `wlr-randr` fallback
    - Dynamic HDMI output detection
 3. Create schedule systemd units:
    - `framecast-schedule.timer` (every minute)
    - `framecast-schedule.service` (check time vs settings)
 4. Wire `DISPLAY_ON_TIME`/`DISPLAY_OFF_TIME`/`DISPLAY_SCHEDULE_DAYS` to CEC
-5. Add `cec-utils` to pi-gen packages
+5. Add `v4l-utils` to pi-gen packages (provides `cec-ctl`)
 6. Mock subprocess tests
 7. Commit + PR
 
