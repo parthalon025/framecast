@@ -7,6 +7,8 @@ import { Settings } from "./pages/Settings.jsx";
 import { Map } from "./pages/Map.jsx";
 import { Update } from "./pages/Update.jsx";
 import { Onboard } from "./pages/Onboard.jsx";
+import { Stats } from "./pages/Stats.jsx";
+import { Users } from "./pages/Users.jsx";
 import { DisplayRouter } from "./display/DisplayRouter.jsx";
 import { PinGate } from "./components/PinGate.jsx";
 import { detectCapability, applyCapability } from "superhot-ui";
@@ -22,6 +24,8 @@ const phoneRoutes = [
   { path: "/", component: Upload },
   { path: "/settings", component: Settings },
   { path: "/map", component: Map },
+  { path: "/stats", component: Stats },
+  { path: "/users", component: Users },
   { path: "/update", component: Update },
   { path: "/setup", component: Onboard },
 ];

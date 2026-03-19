@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Blueprint, Response, jsonify, request, send_file
 
 import sse
-from modules import config, db, media, updater, wifi
+from modules import config, db, media, updater, users, wifi
 from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
@@ -399,8 +399,12 @@ def slideshow_playlist():
 
 @api.route("/stats")
 def get_stats():
-    """Return aggregated content and display statistics."""
-    stats = db.get_stats()
+    """Return aggregated content and display statistics (full dashboard data)."""
+    try:
+        stats = users.get_full_stats()
+    except Exception:
+        log.warning("Full stats failed, falling back to basic stats", exc_info=True)
+        stats = db.get_stats()
     return jsonify(stats)
 
 
@@ -411,9 +415,9 @@ def get_stats():
 
 @api.route("/users")
 def list_users():
-    """Return all users."""
-    users = db.get_users()
-    return jsonify(users)
+    """Return all users ordered by upload count."""
+    user_list = users.get_users()
+    return jsonify(user_list)
 
 
 @api.route("/users", methods=["POST"])
@@ -429,15 +433,27 @@ def create_user():
         return jsonify({"error": "User name is required"}), 400
 
     try:
-        user_id = db.create_user(name, is_admin=bool(data.get("is_admin")))
+        user_row = users.create_user(name)
     except Exception as exc:
         if "UNIQUE" in str(exc):
             return jsonify({"error": "User name already exists"}), 409
         log.error("Failed to create user: %s", exc)
         return jsonify({"error": "Failed to create user"}), 500
 
-    log.info("User created: %s (id=%d)", name, user_id)
-    return jsonify({"status": "ok", "user_id": user_id}), 201
+    log.info("User created: %s", name)
+    return jsonify({"status": "ok", "user": user_row}), 201
+
+
+@api.route("/users/<int:user_id>", methods=["DELETE"])
+@require_pin
+def delete_user(user_id):
+    """Delete a user by id. Reassigns their photos to 'default'."""
+    try:
+        users.delete_user(user_id)
+    except Exception as exc:
+        log.error("Failed to delete user %d: %s", user_id, exc)
+        return jsonify({"error": "Failed to delete user"}), 500
+    return jsonify({"status": "ok"})
 
 
 # ---------------------------------------------------------------------------
