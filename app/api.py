@@ -96,6 +96,7 @@ def status():
         "disk": disk,
         "version": _read_version(),
         "settings": _current_settings(),
+        "access_pin": config.get("ACCESS_PIN", "").strip(),
     })
 
 

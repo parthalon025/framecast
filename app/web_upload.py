@@ -34,7 +34,7 @@ from werkzeug.utils import secure_filename
 import sse
 from api import api
 from modules import config, media, services
-from modules.auth import require_pin
+from modules.auth import auth_api, require_pin
 
 logging.basicConfig(
     level=logging.INFO,
@@ -207,8 +207,9 @@ if not _secret:
 app.secret_key = _secret
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-# Register API blueprint
+# Register API blueprints
 app.register_blueprint(api)
+app.register_blueprint(auth_api)
 
 
 @app.after_request
