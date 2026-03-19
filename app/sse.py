@@ -6,7 +6,6 @@ Thread-safe client management with keepalive and stale client cleanup.
 import json
 import logging
 import threading
-import time
 from queue import Empty, Full, Queue
 
 log = logging.getLogger(__name__)
