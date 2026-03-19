@@ -26,8 +26,13 @@ Thumbs.db
 *.pid
 /media/
 
+# Node
+node_modules/
+
 # Generated files
 app/static/welcome.png
+app/static/js/
+app/static/css/
 thumbnails/
 
 # Environment
