@@ -9,6 +9,7 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from queue import Empty, Full, Queue
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ _event_id_lock = threading.Lock()
 
 # Recent event buffer for reconnection (ring buffer of (id, event, data))
 _RECENT_BUFFER_SIZE = 50
-_recent_events = []
+_recent_events = deque(maxlen=_RECENT_BUFFER_SIZE)
 _recent_lock = threading.Lock()
 
 
@@ -175,10 +176,7 @@ def notify(event: str, data: dict | None = None):
     # Assign an event ID and buffer for reconnection
     eid = _next_event_id()
     with _recent_lock:
-        _recent_events.append((eid, event, data))
-        # Trim ring buffer
-        while len(_recent_events) > _RECENT_BUFFER_SIZE:
-            _recent_events.pop(0)
+        _recent_events.append((eid, event, data))  # deque auto-trims at maxlen
 
     stale = []
     with _clients_lock:
