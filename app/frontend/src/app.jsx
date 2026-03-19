@@ -6,7 +6,9 @@ import { Upload } from "./pages/Upload.jsx";
 import { Settings } from "./pages/Settings.jsx";
 import { Map } from "./pages/Map.jsx";
 import { Update } from "./pages/Update.jsx";
+import { Onboard } from "./pages/Onboard.jsx";
 import { DisplayRouter } from "./display/DisplayRouter.jsx";
+import { PinGate } from "./components/PinGate.jsx";
 import { detectCapability, applyCapability } from "superhot-ui";
 
 // --- Surface detection ---
@@ -15,17 +17,13 @@ function isDisplay() {
   return route.value.startsWith("/display");
 }
 
-// --- Placeholder page components ---
-function SetupPage() {
-  return <div class="sh-frame" style="padding: 20px;">Setup</div>;
-}
 // --- Route definitions ---
 const phoneRoutes = [
   { path: "/", component: Upload },
   { path: "/settings", component: Settings },
   { path: "/map", component: Map },
   { path: "/update", component: Update },
-  { path: "/setup", component: SetupPage },
+  { path: "/setup", component: Onboard },
 ];
 
 const displayRoutes = [
@@ -40,6 +38,7 @@ function App() {
   }
   return (
     <PhoneLayout>
+      <PinGate />
       <Router routes={phoneRoutes} />
     </PhoneLayout>
   );
