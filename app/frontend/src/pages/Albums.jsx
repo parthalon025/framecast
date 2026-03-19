@@ -2,6 +2,7 @@
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { ShModal } from "superhot-ui/preact";
+import { fetchWithTimeout } from "../lib/fetch.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
 import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
@@ -31,7 +32,7 @@ const albumFilter = signal("all");
 // ---------------------------------------------------------------------------
 
 function fetchAlbums() {
-  return fetch("/api/albums")
+  return fetchWithTimeout("/api/albums")
     .then((resp) => resp.json())
     .then((data) => {
       albums.value = data;
@@ -53,7 +54,7 @@ function fetchAlbumPhotos(albumId) {
     url = `/api/albums/${albumId}/photos`;
   }
 
-  return fetch(url)
+  return fetchWithTimeout(url)
     .then((resp) => resp.json())
     .then((data) => {
       // Augment with name field for PhotoCard compatibility

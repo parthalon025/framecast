@@ -255,8 +255,7 @@ def insert_photo(
                     quarantine_reason,
                 ),
             )
-            conn.commit()
-            # Update user upload count
+            # Update user upload count in same transaction
             conn.execute(
                 """UPDATE users SET upload_count = upload_count + 1,
                    last_upload_at = strftime('%Y-%m-%dT%H:%M:%S','now')

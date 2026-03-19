@@ -2,6 +2,7 @@
 import { signal } from "@preact/signals";
 import { useEffect, useRef, useCallback } from "preact/hooks";
 import { formatTime } from "superhot-ui";
+import { fetchWithTimeout } from "../lib/fetch.js";
 
 /** Lightbox state: { photos, index } or null when closed. */
 export const lightboxState = signal(null);
@@ -39,24 +40,24 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
   const tagSuggestions = signal([]);
   const allTags = signal([]);
 
-  // Fetch all tags for autocomplete
-  useEffect(() => {
-    if (!state) return;
-    fetch("/api/tags")
-      .then((resp) => resp.ok ? resp.json() : [])
-      .then((data) => { allTags.value = data; })
-      .catch(() => { allTags.value = []; });
-  }, [state ? 1 : 0]);
-
-  // Fetch tags for current photo
+  // Fetch all tags + current photo tags in parallel
   useEffect(() => {
     if (!state) return;
     const photo = state.photos[state.index];
     if (!photo || !photo.id) return;
-    fetch(`/api/photos/${photo.id}/tags`)
-      .then((resp) => resp.ok ? resp.json() : [])
-      .then((data) => { tagSuggestions.value = data; })
-      .catch(() => { tagSuggestions.value = []; });
+
+    Promise.all([
+      fetchWithTimeout("/api/tags").then((resp) => resp.ok ? resp.json() : []),
+      fetchWithTimeout(`/api/photos/${photo.id}/tags`).then((resp) => resp.ok ? resp.json() : []),
+    ])
+      .then(([all, current]) => {
+        allTags.value = all;
+        tagSuggestions.value = current;
+      })
+      .catch(() => {
+        allTags.value = [];
+        tagSuggestions.value = [];
+      });
   }, [state ? state.index : -1]);
 
   // Keyboard navigation
@@ -136,7 +137,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
         tagInput.value = "";
         // Refresh tags
         setTimeout(() => {
-          fetch(`/api/photos/${photo.id}/tags`)
+          fetchWithTimeout(`/api/photos/${photo.id}/tags`)
             .then((resp) => resp.ok ? resp.json() : [])
             .then((data) => { tagSuggestions.value = data; })
             .catch(() => {});
@@ -150,7 +151,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
       onRemoveTag(photo, tag);
       // Refresh tags
       setTimeout(() => {
-        fetch(`/api/photos/${photo.id}/tags`)
+        fetchWithTimeout(`/api/photos/${photo.id}/tags`)
           .then((resp) => resp.ok ? resp.json() : [])
           .then((data) => { tagSuggestions.value = data; })
           .catch(() => {});
@@ -366,7 +367,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                         if (onAddTag) onAddTag(photo, sug.name);
                         tagInput.value = "";
                         setTimeout(() => {
-                          fetch(`/api/photos/${photo.id}/tags`)
+                          fetchWithTimeout(`/api/photos/${photo.id}/tags`)
                             .then((resp) => resp.ok ? resp.json() : [])
                             .then((data) => { tagSuggestions.value = data; })
                             .catch(() => {});

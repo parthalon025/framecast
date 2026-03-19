@@ -10,7 +10,6 @@ import logging
 import re
 import subprocess
 import threading
-import time
 from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request, send_file
@@ -18,56 +17,25 @@ from flask import Blueprint, Response, jsonify, request, send_file
 import sse
 from modules import cec, config, db, media, updater, users, wifi
 from modules.auth import require_pin
+from modules.rate_limiter import RateLimiter
 
 log = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
+
+def _enrich_photos(photos):
+    """Add name and size_human fields to photo dicts for frontend."""
+    for photo in photos:
+        photo["name"] = photo["filename"]
+        photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+    return photos
+
 # ---------------------------------------------------------------------------
-# API rate limiting — 60 requests/minute per IP (in-memory counter)
-# Same pattern as auth.py rate limiter.
+# API rate limiting — 60 requests/minute per IP
 # ---------------------------------------------------------------------------
 
-_rate_counts: dict[str, dict] = {}  # ip -> {"count": int, "window_start": float}
-_rate_lock = threading.Lock()
-_RATE_LIMIT = 60  # requests per window
-_RATE_WINDOW = 60.0  # seconds
-_RATE_EVICT_AFTER = _RATE_WINDOW * 3  # evict stale entries
-
-
-def _check_rate_limit(ip: str) -> int | None:
-    """Check if *ip* has exceeded the rate limit.
-
-    Returns None if under the limit, or the number of seconds until
-    the window resets if over the limit.
-    """
-    now = time.monotonic()
-    with _rate_lock:
-        # Amortized eviction of stale entries
-        stale = [
-            k for k, v in _rate_counts.items()
-            if now - v["window_start"] > _RATE_EVICT_AFTER
-        ]
-        for k in stale:
-            del _rate_counts[k]
-
-        if ip not in _rate_counts:
-            _rate_counts[ip] = {"count": 0, "window_start": now}
-
-        record = _rate_counts[ip]
-
-        # Reset window if expired
-        if now - record["window_start"] >= _RATE_WINDOW:
-            record["count"] = 0
-            record["window_start"] = now
-
-        record["count"] += 1
-
-        if record["count"] > _RATE_LIMIT:
-            retry_after = int(_RATE_WINDOW - (now - record["window_start"])) + 1
-            return max(retry_after, 1)
-
-    return None
+_api_limiter = RateLimiter(max_attempts=60, window_seconds=60, evict_after=180)
 
 
 @api.before_request
@@ -78,7 +46,7 @@ def _api_rate_limit():
         return None
 
     client_ip = request.remote_addr or "unknown"
-    retry_after = _check_rate_limit(client_ip)
+    retry_after = _api_limiter.check(client_ip)
     if retry_after is not None:
         log.warning(
             "API rate limited: %s %s from %s",
@@ -175,10 +143,7 @@ def list_photos():
             favorite_only=favorite_only,
             include_hidden=include_hidden,
         )
-        # Augment with human-readable size for frontend compatibility
-        for photo in photos:
-            photo["name"] = photo["filename"]
-            photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+        _enrich_photos(photos)
         return jsonify(photos)
     except Exception:
         log.warning("DB query failed for /api/photos, falling back to filesystem", exc_info=True)
@@ -397,9 +362,7 @@ def delete_album_endpoint(album_id):
 def list_album_photos(album_id):
     """Return all photos in an album."""
     photos = db.get_album_photos(album_id)
-    for photo in photos:
-        photo["name"] = photo["filename"]
-        photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+    _enrich_photos(photos)
     return jsonify(photos)
 
 
@@ -407,9 +370,7 @@ def list_album_photos(album_id):
 def list_smart_album_photos(smart_key):
     """Return photos matching a smart album query."""
     photos = db.get_smart_album_photos(smart_key)
-    for photo in photos:
-        photo["name"] = photo["filename"]
-        photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+    _enrich_photos(photos)
     return jsonify(photos)
 
 
@@ -481,7 +442,6 @@ def remove_photo_tag(photo_id, tag_id):
 
 
 # ---------------------------------------------------------------------------
-<<<<<<< HEAD
 # Slideshow playlist endpoint
 # ---------------------------------------------------------------------------
 

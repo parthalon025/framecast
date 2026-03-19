@@ -20,13 +20,12 @@ import hashlib
 import hmac
 import logging
 import secrets
-import threading
-import time
 
 
 from flask import Blueprint, jsonify, make_response, request
 
 from modules import config
+from modules.rate_limiter import RateLimiter
 
 log = logging.getLogger(__name__)
 
@@ -47,10 +46,9 @@ _SKIP_PREFIXES = (
 _STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # --- Rate limiting for PIN verification ---
-_fail_counts: dict[str, dict] = {}
-_fail_counts_lock = threading.Lock()
-_LOCKOUT_SECONDS = 300
-_EVICT_AFTER = _LOCKOUT_SECONDS * 2  # Evict entries older than 2x lockout
+# 4-digit PIN: 5 attempts / 300s lockout; 6-digit: 3 attempts / 300s lockout
+_pin_limiter_4 = RateLimiter(max_attempts=5, window_seconds=300)
+_pin_limiter_6 = RateLimiter(max_attempts=3, window_seconds=300)
 
 
 def _get_pin_length() -> int:
@@ -73,16 +71,9 @@ def _get_max_attempts() -> int:
     return 3 if _get_pin_length() == 6 else 5
 
 
-def _get_fail_record(ip: str) -> dict:
-    """Get or create a fail record for an IP, evicting stale entries."""
-    now = time.monotonic()
-    # Evict expired entries (amortized cleanup)
-    stale = [k for k, v in _fail_counts.items() if now - v["last"] > _EVICT_AFTER]
-    for k in stale:
-        del _fail_counts[k]
-    if ip not in _fail_counts:
-        _fail_counts[ip] = {"count": 0, "last": 0.0}
-    return _fail_counts[ip]
+def _get_pin_limiter() -> RateLimiter:
+    """Return the appropriate rate limiter for the current PIN length."""
+    return _pin_limiter_6 if _get_pin_length() == 6 else _pin_limiter_4
 
 
 def _make_auth_token(pin):
@@ -235,21 +226,12 @@ def verify_pin():
     """
     # --- Rate limiting ---
     client_ip = request.remote_addr or "unknown"
-    now = time.monotonic()
-    max_attempts = _get_max_attempts()
+    limiter = _get_pin_limiter()
 
-    with _fail_counts_lock:
-        record = _get_fail_record(client_ip)
-
-        # Reset if lockout has expired
-        if record["count"] >= max_attempts and (now - record["last"]) >= _LOCKOUT_SECONDS:
-            record["count"] = 0
-            record["last"] = 0.0
-
-        if record["count"] >= max_attempts:
-            remaining = int(_LOCKOUT_SECONDS - (now - record["last"]))
-            log.warning("Rate limited PIN attempt from %s (%ds remaining)", client_ip, remaining)
-            return jsonify({"error": "TOO MANY ATTEMPTS — TRY AGAIN LATER", "retry_after": remaining}), 429
+    retry_after = limiter.check(client_ip)
+    if retry_after is not None:
+        log.warning("Rate limited PIN attempt from %s (%ds remaining)", client_ip, retry_after)
+        return jsonify({"error": "TOO MANY ATTEMPTS — TRY AGAIN LATER", "retry_after": retry_after}), 429
 
     data = request.get_json(silent=True)
     if not data or not isinstance(data.get("pin"), str):
@@ -263,21 +245,14 @@ def verify_pin():
         return jsonify({"status": "ok", "message": "AUTHORIZED -- open access"})
 
     if not hmac.compare_digest(submitted, stored):
-        with _fail_counts_lock:
-            record = _get_fail_record(client_ip)
-            record["count"] += 1
-            record["last"] = now
-            log.warning(
-                "PIN verification FAILED from %s (attempt %d/%d)",
-                client_ip, record["count"], max_attempts,
-            )
+        log.warning(
+            "PIN verification FAILED from %s",
+            client_ip,
+        )
         return jsonify({"error": "ACCESS DENIED", "needs_pin": True}), 401
 
     # Success — reset failure count
-    with _fail_counts_lock:
-        record = _get_fail_record(client_ip)
-        record["count"] = 0
-        record["last"] = 0.0
+    limiter.reset(client_ip)
 
     log.warning("PIN verified successfully from %s", client_ip)
     resp = make_response(jsonify({"status": "ok", "message": "AUTHORIZED"}))
