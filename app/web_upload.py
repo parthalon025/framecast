@@ -693,10 +693,31 @@ def api_shutdown():
         return jsonify({"status": "error", "message": "Failed to shut down"}), 500
 
 
+# --- SPA routes ---
+# Serve the SPA shell for all client-side routes.
+# Existing template routes above remain as fallback.
+
+
+@app.route("/display")
+@app.route("/display/<path:subpath>")
+def display(subpath=None):
+    return render_template("spa.html")
+
+
+@app.route("/setup")
+def setup():
+    return render_template("spa.html")
+
+
+@app.route("/update")
+def update():
+    return render_template("spa.html")
+
+
 if __name__ == "__main__":
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    log.info("Pi Photo Display - Web Upload Server")
+    log.info("FrameCast - Web Upload Server")
     log.info("Media directory: %s", MEDIA_DIR)
     log.info("Listening on http://0.0.0.0:%d", PORT)
     app.run(host="0.0.0.0", port=PORT, debug=False, threaded=True)
