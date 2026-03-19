@@ -16,7 +16,7 @@ from pathlib import Path
 from flask import Blueprint, Response, jsonify, request, send_file
 
 import sse
-from modules import config, db, media, updater, users, wifi
+from modules import cec, config, db, media, updater, users, wifi
 from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
@@ -443,6 +443,7 @@ def remove_photo_tag(photo_id, tag_id):
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Slideshow playlist endpoint
 # ---------------------------------------------------------------------------
 
@@ -459,6 +460,36 @@ def slideshow_playlist():
     except Exception:
         log.error("Failed to generate slideshow playlist", exc_info=True)
         return jsonify({"photos": [], "playlist_id": "error"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Display control (HDMI-CEC) endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/display/on", methods=["POST"])
+@require_pin
+def display_on():
+    """Power on TV via CEC."""
+    success = cec.tv_power_on()
+    if success:
+        cec.set_active_source()
+    return jsonify({"success": success, "power": "on" if success else "unknown"})
+
+
+@api.route("/display/off", methods=["POST"])
+@require_pin
+def display_off():
+    """Put TV into standby via CEC."""
+    success = cec.tv_standby()
+    return jsonify({"success": success, "power": "standby" if success else "unknown"})
+
+
+@api.route("/display/status")
+def display_status():
+    """Query TV power status via CEC."""
+    power = cec.tv_status()
+    return jsonify({"power": power})
 
 
 # ---------------------------------------------------------------------------

@@ -14,3 +14,4 @@ python3-pip
 nodejs
 npm
 ufw
+v4l-utils

@@ -1,0 +1,8 @@
+[Unit]
+Description=FrameCast Display Schedule Checker
+After=framecast.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/framecast/scripts/hdmi-control.sh check-schedule
+EnvironmentFile=/opt/framecast/app/.env
