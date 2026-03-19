@@ -2,7 +2,7 @@
 
 All API endpoints are prefixed with `/api/` and return JSON. State-changing endpoints (POST, PUT, DELETE) require PIN authentication via cookie and are subject to Origin header validation.
 
-**Rate limiting:** All `/api/` endpoints are rate limited to 60 requests per minute per IP address. Exceeding the limit returns `429` with a `retry_after` field.
+**Rate limiting:** State-changing endpoints (POST, PUT, DELETE) are rate limited to 60 requests per minute per IP address. GET requests are not rate limited. Exceeding the limit returns `429` with a `retry_after` field in the JSON body.
 
 **Authentication:** Endpoints marked with a lock icon require a valid `framecast_pin` cookie. Obtain one via `POST /api/auth/verify`.
 
