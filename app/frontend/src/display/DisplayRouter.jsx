@@ -24,7 +24,7 @@ const accessPin = signal("");
 /** PIN display shown on Setup and Welcome screens. */
 function PinDisplay() {
   const pin = accessPin.value;
-  if (!pin || pin === "0000") return null;
+  if (!pin) return null;
   return (
     <div style="margin-top: 24px;">
       <span
