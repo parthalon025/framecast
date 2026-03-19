@@ -7,8 +7,9 @@ read/write settings, and retrieve GPS locations.
 import logging
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
+import sse
 from modules import config, media
 
 log = logging.getLogger(__name__)
@@ -110,6 +111,19 @@ def update_settings():
     log.info("Settings updated via API: %s", list(updates.keys()))
 
     return jsonify({"status": "ok", "settings": _current_settings()})
+
+
+@api.route("/events")
+def events():
+    """SSE endpoint for real-time event streaming."""
+    return Response(
+        sse.subscribe(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @api.route("/locations")

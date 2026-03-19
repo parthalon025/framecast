@@ -31,6 +31,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+import sse
 from api import api
 from modules import config, media, services
 
@@ -434,6 +435,7 @@ def _do_upload():
             media.update_location_cache(filename, coords)
 
         uploaded += 1
+        sse.notify("photo:added", {"filename": filename})
 
     if uploaded > 0:
         flash(f"Uploaded {uploaded} file(s) successfully", "success")
@@ -469,6 +471,7 @@ def delete():
         media.remove_from_location_cache(filepath.name)
         filepath.unlink()
         log.info("Deleted: %s", filename)
+        sse.notify("photo:deleted", {"filename": filename})
         flash("File deleted", "success")
     else:
         flash("File not found", "error")
