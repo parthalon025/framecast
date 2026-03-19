@@ -55,6 +55,7 @@ def _heal_env_file():
     env_example = Path(__file__).parent / ".env.example"
 
     if env_file.exists() and env_file.stat().st_size > 10:
+        _ensure_access_pin()
         return  # .env looks valid
 
     if not env_file.exists():
@@ -72,6 +73,22 @@ def _heal_env_file():
         log.warning("Self-healing: .env restored with new secret key. Review settings.")
     else:
         log.critical("No .env.example found - cannot self-heal. Using built-in defaults.")
+
+    _ensure_access_pin()
+
+
+def _ensure_access_pin():
+    """Generate a random 4-digit ACCESS_PIN if not already set."""
+    import random
+
+    existing = config.get("ACCESS_PIN", "").strip()
+    if existing:
+        return  # PIN already configured
+
+    pin = str(random.randint(1000, 9999))
+    config.save({"ACCESS_PIN": pin})
+    config.reload()
+    log.info("Generated new ACCESS_PIN (shown on TV display)")
 
 
 _heal_env_file()
