@@ -1,7 +1,7 @@
 """JSON API blueprint for FrameCast.
 
 Provides endpoints for the SPA frontend to list photos, get status,
-read/write settings, and retrieve GPS locations.
+read/write settings, retrieve GPS locations, and manage albums/tags/users.
 """
 
 import logging
@@ -10,10 +10,10 @@ import subprocess
 import threading
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 
 import sse
-from modules import config, media, updater, wifi
+from modules import config, db, media, updater, wifi
 from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
@@ -92,19 +92,37 @@ _SETTINGS_ENV_MAP = {
 
 @api.route("/photos")
 def list_photos():
-    """Return all media files as JSON."""
-    files = media.get_media_files()
-    return jsonify(files)
+    """Return all media files as JSON from database."""
+    try:
+        photos = db.get_photos()
+        # Augment with human-readable size for frontend compatibility
+        for photo in photos:
+            photo["name"] = photo["filename"]
+            photo["size_human"] = media.format_size(photo.get("file_size") or 0)
+        return jsonify(photos)
+    except Exception:
+        log.warning("DB query failed for /api/photos, falling back to filesystem", exc_info=True)
+        files = media.get_media_files()
+        return jsonify(files)
 
 
 @api.route("/status")
 def status():
     """Return system status: disk usage, counts, version, settings."""
-    files = media.get_media_files()
     disk = media.get_disk_usage()
+    try:
+        stats = db.get_stats()
+        photo_count = stats["total_photos"] - stats["videos"]
+        video_count = stats["videos"]
+    except Exception:
+        log.warning("DB stats failed, falling back to filesystem", exc_info=True)
+        files = media.get_media_files()
+        photo_count = sum(1 for f in files if not f["is_video"])
+        video_count = sum(1 for f in files if f["is_video"])
+
     result = {
-        "photo_count": sum(1 for f in files if not f["is_video"]),
-        "video_count": sum(1 for f in files if f["is_video"]),
+        "photo_count": photo_count,
+        "video_count": video_count,
         "disk": disk,
         "version": _read_version(),
         "settings": _current_settings(),
@@ -202,9 +220,229 @@ def events():
 
 @api.route("/locations")
 def locations():
-    """Return GPS locations for all photos as JSON."""
-    locs = media.get_photo_locations()
-    return jsonify(locs)
+    """Return GPS locations for all photos from database."""
+    try:
+        photos = db.get_photos()
+        locs = [
+            {"name": p["filename"], "lat": p["gps_lat"], "lon": p["gps_lon"]}
+            for p in photos
+            if p.get("gps_lat") is not None and p.get("gps_lon") is not None
+        ]
+        return jsonify(locs)
+    except Exception:
+        log.warning("DB query failed for /api/locations, falling back to cache", exc_info=True)
+        locs = media.get_photo_locations()
+        return jsonify(locs)
+
+
+# ---------------------------------------------------------------------------
+# Photo actions
+# ---------------------------------------------------------------------------
+
+
+@api.route("/photos/<int:photo_id>/favorite", methods=["POST"])
+@require_pin
+def toggle_photo_favorite(photo_id):
+    """Toggle favorite status for a photo (atomic SQL)."""
+    photo = db.get_photo_by_id(photo_id)
+    if not photo:
+        return jsonify({"error": "Photo not found"}), 404
+
+    new_val = db.toggle_favorite(photo_id)
+    status_label = "FAVORITE" if new_val else "UNFAVORITED"
+    log.info("Photo %d: %s", photo_id, status_label)
+    return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
+
+
+# ---------------------------------------------------------------------------
+# Album endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/albums")
+def list_albums():
+    """Return all albums (regular + smart) as JSON."""
+    albums = db.get_albums()
+    result = [dict(a, smart=False) for a in albums]
+
+    # Append smart albums
+    for key, album_def in db.SMART_ALBUMS.items():
+        photos = db.get_smart_album_photos(key)
+        result.append({
+            "id": f"smart:{key}",
+            "name": album_def["name"],
+            "description": None,
+            "cover_photo_id": photos[0]["id"] if photos else None,
+            "photo_count": len(photos),
+            "smart": True,
+        })
+
+    return jsonify(result)
+
+
+@api.route("/albums", methods=["POST"])
+@require_pin
+def create_album():
+    """Create a new album. Body: {"name": "...", "description": "..."}."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Album name is required"}), 400
+
+    try:
+        album_id = db.create_album(name, data.get("description"))
+    except Exception as exc:
+        if "UNIQUE" in str(exc):
+            return jsonify({"error": "Album name already exists"}), 409
+        log.error("Failed to create album: %s", exc)
+        return jsonify({"error": "Failed to create album"}), 500
+
+    log.info("Album created: %s (id=%d)", name, album_id)
+    return jsonify({"status": "ok", "album_id": album_id}), 201
+
+
+@api.route("/albums/<int:album_id>", methods=["DELETE"])
+@require_pin
+def delete_album_endpoint(album_id):
+    """Delete an album by id."""
+    db.delete_album(album_id)
+    log.info("Album deleted: id=%d", album_id)
+    return jsonify({"status": "ok"})
+
+
+@api.route("/albums/<int:album_id>/photos", methods=["POST"])
+@require_pin
+def add_photo_to_album(album_id):
+    """Add a photo to an album. Body: {"photo_id": int}."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    photo_id = data.get("photo_id")
+    if not photo_id:
+        return jsonify({"error": "photo_id is required"}), 400
+
+    db.add_to_album(photo_id, album_id)
+    return jsonify({"status": "ok"})
+
+
+@api.route("/albums/<int:album_id>/photos/<int:photo_id>", methods=["DELETE"])
+@require_pin
+def remove_photo_from_album(album_id, photo_id):
+    """Remove a photo from an album."""
+    db.remove_from_album(photo_id, album_id)
+    return jsonify({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Tag endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/photos/<int:photo_id>/tags")
+def list_photo_tags(photo_id):
+    """Return all tags for a photo."""
+    tags = db.get_tags(photo_id)
+    return jsonify(tags)
+
+
+@api.route("/photos/<int:photo_id>/tags", methods=["POST"])
+@require_pin
+def add_photo_tag(photo_id):
+    """Add a tag to a photo. Body: {"name": "..."}."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Tag name is required"}), 400
+
+    tag_id = db.add_tag(photo_id, name)
+    return jsonify({"status": "ok", "tag_id": tag_id}), 201
+
+
+@api.route("/photos/<int:photo_id>/tags/<int:tag_id>", methods=["DELETE"])
+@require_pin
+def remove_photo_tag(photo_id, tag_id):
+    """Remove a tag from a photo."""
+    db.remove_tag(photo_id, tag_id)
+    return jsonify({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Stats endpoint
+# ---------------------------------------------------------------------------
+
+
+@api.route("/stats")
+def get_stats():
+    """Return aggregated content and display statistics."""
+    stats = db.get_stats()
+    return jsonify(stats)
+
+
+# ---------------------------------------------------------------------------
+# User endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/users")
+def list_users():
+    """Return all users."""
+    users = db.get_users()
+    return jsonify(users)
+
+
+@api.route("/users", methods=["POST"])
+@require_pin
+def create_user():
+    """Create a new user. Body: {"name": "..."}."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "User name is required"}), 400
+
+    try:
+        user_id = db.create_user(name, is_admin=bool(data.get("is_admin")))
+    except Exception as exc:
+        if "UNIQUE" in str(exc):
+            return jsonify({"error": "User name already exists"}), 409
+        log.error("Failed to create user: %s", exc)
+        return jsonify({"error": "Failed to create user"}), 500
+
+    log.info("User created: %s (id=%d)", name, user_id)
+    return jsonify({"status": "ok", "user_id": user_id}), 201
+
+
+# ---------------------------------------------------------------------------
+# Backup endpoint
+# ---------------------------------------------------------------------------
+
+
+@api.route("/backup")
+@require_pin
+def download_backup():
+    """Download a fresh database backup."""
+    try:
+        backup_path = db.backup_db()
+        return send_file(
+            backup_path,
+            mimetype="application/x-sqlite3",
+            as_attachment=True,
+            download_name="framecast.db.backup",
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "Database not found"}), 404
+    except Exception as exc:
+        log.error("Backup failed: %s", exc)
+        return jsonify({"error": "Backup failed"}), 500
 
 
 # ---------------------------------------------------------------------------
