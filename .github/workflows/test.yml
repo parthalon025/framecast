@@ -3,6 +3,8 @@ name: Test
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   lint-python:
@@ -28,26 +30,24 @@ jobs:
           node-version: "20"
       - name: Install dependencies
         working-directory: app/frontend
-        run: |
-          # superhot-ui is a local file: dep — stub it for CI
-          npm install --ignore-scripts --install-strategy=nested 2>/dev/null || true
-          # Install remaining deps that resolved
-          npm install esbuild preact @preact/signals leaflet qrcode-generator --save --ignore-scripts
+        run: npm ci
       - name: Build bundle
         working-directory: app/frontend
+        run: npm run build
+      - name: Verify build output
         run: |
-          mkdir -p ../static/css ../static/js
-          # Run esbuild directly (skip pre/postbuild which copy superhot-ui CSS)
-          node esbuild.config.js
+          test -f app/static/js/app.js || { echo "::error::app.js not built"; exit 1; }
+          test -f app/static/css/superhot.css || { echo "::error::superhot.css not copied"; exit 1; }
+          test -f app/static/css/app.css || { echo "::error::app.css not copied"; exit 1; }
+          echo "Build artifacts verified"
 
   smoke:
-    name: Smoke Test (structure)
+    name: Smoke Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Verify project structure
         run: |
-          echo "--- Checking required files ---"
           FAIL=0
           for f in \
             app/web_upload.py \
@@ -65,9 +65,17 @@ jobs:
             app/frontend/esbuild.config.js \
             app/frontend/src/app.jsx \
             app/frontend/src/app.css \
+            kiosk/browser.js \
+            kiosk/kiosk.sh \
             pi-gen/build.sh \
             pi-gen/config \
-            scripts/smoke-test.sh \
+            systemd/framecast.service \
+            systemd/framecast-kiosk.service \
+            systemd/wifi-manager.service \
+            systemd/framecast-update.service \
+            systemd/framecast-update.timer \
+            scripts/health-check.sh \
+            scripts/hdmi-control.sh \
             install.sh \
             VERSION \
             README.md \
@@ -84,3 +92,20 @@ jobs:
             exit 1
           fi
           echo "All required files present."
+      - name: Verify shell scripts are executable
+        run: |
+          for f in kiosk/kiosk.sh scripts/health-check.sh scripts/hdmi-control.sh pi-gen/build.sh; do
+            if [ -x "$f" ]; then
+              echo "  OK  $f (executable)"
+            else
+              echo "  WARN  $f (not executable)"
+            fi
+          done
+      - name: Verify VERSION matches CHANGELOG
+        run: |
+          VERSION=$(cat VERSION)
+          if grep -q "\[${VERSION}\]" CHANGELOG.md; then
+            echo "VERSION ${VERSION} found in CHANGELOG"
+          else
+            echo "::warning::VERSION ${VERSION} not found in CHANGELOG.md"
+          fi
