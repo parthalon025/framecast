@@ -6,6 +6,7 @@ calls carry timeouts and log errors before returning fallback values.
 
 import json
 import logging
+import re
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -24,6 +25,7 @@ GITHUB_API_URL = (
     f"https://api.github.com/repos/{_GITHUB_OWNER}/{_GITHUB_REPO}/releases/latest"
 )
 _SUBPROCESS_TIMEOUT = 30
+_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def get_current_version() -> str:
@@ -93,6 +95,9 @@ def apply_update(tag: str) -> tuple:
     Returns:
         (success: bool, message: str)
     """
+    if not _TAG_RE.match(tag):
+        return False, f"Invalid tag format: {tag}"
+
     current = get_current_version()
 
     # Save rollback tag
