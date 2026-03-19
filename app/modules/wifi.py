@@ -7,10 +7,16 @@ All subprocess calls use timeout=15 to prevent hangs.
 import logging
 import re
 import subprocess
+import threading
 
 log = logging.getLogger(__name__)
 
 _TIMEOUT = 15
+
+# AP auto-timeout: restart AP if no client connects within this window (seconds)
+_AP_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+_ap_timer = None
+_ap_timer_lock = threading.Lock()
 
 
 def _redact_password(cmd):
@@ -139,10 +145,71 @@ def connect(ssid, password):
     return False, f"CONNECTION FAILED: {error_msg[:80]}"
 
 
+def _cancel_ap_timer():
+    """Cancel any pending AP auto-timeout timer."""
+    global _ap_timer
+    with _ap_timer_lock:
+        if _ap_timer is not None:
+            _ap_timer.cancel()
+            _ap_timer = None
+
+
+def _has_ap_clients():
+    """Check if any clients are connected to the AP."""
+    rc, stdout, _ = _run(
+        ["nmcli", "-t", "-f", "GENERAL.CLIENTS", "dev", "show", "wlan0"]
+    )
+    if rc != 0:
+        return False
+    # Output: GENERAL.CLIENTS:N
+    parts = stdout.split(":", 1)
+    if len(parts) == 2:
+        try:
+            return int(parts[1]) > 0
+        except (ValueError, IndexError):
+            pass
+    return False
+
+
+def _ap_timeout_handler():
+    """Called when AP timeout expires. Restart AP if no clients connected."""
+    global _ap_timer
+    with _ap_timer_lock:
+        _ap_timer = None
+
+    if not is_ap_active():
+        log.info("AP timeout fired but AP is no longer active — no action")
+        return
+
+    if _has_ap_clients():
+        log.info("AP timeout fired but clients are connected — resetting timer")
+        _start_ap_timer()
+        return
+
+    log.warning("AP timeout: no clients connected in %d minutes — restarting AP",
+                _AP_TIMEOUT_SECONDS // 60)
+    # Cycle AP to reset state
+    stop_ap()
+    start_ap()
+
+
+def _start_ap_timer():
+    """Start (or restart) the AP auto-timeout timer."""
+    global _ap_timer
+    _cancel_ap_timer()
+    with _ap_timer_lock:
+        _ap_timer = threading.Timer(_AP_TIMEOUT_SECONDS, _ap_timeout_handler)
+        _ap_timer.daemon = True
+        _ap_timer.start()
+    log.info("AP auto-timeout set: %d minutes", _AP_TIMEOUT_SECONDS // 60)
+
+
 def start_ap(ssid=None):
     """Start WiFi hotspot AP.
 
     SSID defaults to FrameCast-XXXX (last 4 of MAC).
+    Starts a 30-minute auto-timeout timer that restarts the AP if no
+    clients connect.
 
     Args:
         ssid: Optional custom AP SSID.
@@ -153,7 +220,7 @@ def start_ap(ssid=None):
     if ssid is None:
         ssid = get_ap_ssid()
 
-    log.info("Starting AP mode with SSID '%s'", ssid)
+    log.info("AP STATE: starting with SSID '%s'", ssid)
 
     # SECURITY TRADEOFF: Open hotspot (no password) for onboarding UX.
     # The user must be physically present to see the SSID on the TV screen.
@@ -169,9 +236,10 @@ def start_ap(ssid=None):
     ]
     rc, stdout, stderr = _run(cmd, timeout=30)
     if rc == 0:
-        log.info("AP started: %s", ssid)
+        log.info("AP STATE: started — %s", ssid)
+        _start_ap_timer()
         return True, f"AP STARTED: {ssid}"
-    log.error("Failed to start AP: %s", stderr or stdout)
+    log.error("AP STATE: start failed — %s", stderr or stdout)
     return False, f"AP START FAILED: {(stderr or stdout)[:80]}"
 
 
@@ -181,12 +249,13 @@ def stop_ap():
     Returns:
         Tuple of (success: bool, message: str).
     """
-    log.info("Stopping AP mode")
+    log.info("AP STATE: stopping")
+    _cancel_ap_timer()
     rc, stdout, stderr = _run(["nmcli", "connection", "down", "Hotspot"])
     if rc == 0:
-        log.info("AP stopped")
+        log.info("AP STATE: stopped")
         return True, "AP STOPPED"
-    log.error("Failed to stop AP: %s", stderr or stdout)
+    log.error("AP STATE: stop failed — %s", stderr or stdout)
     return False, f"AP STOP FAILED: {(stderr or stdout)[:80]}"
 
 

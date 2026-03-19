@@ -1,7 +1,9 @@
 [Unit]
 Description=FrameCast Kiosk Display
 After=framecast.service graphical.target
-Wants=framecast.service
+Requires=framecast.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -10,6 +12,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/opt/framecast/kiosk/kiosk.sh
 Restart=always
 RestartSec=10
+WatchdogSec=60
 MemoryMax=512M
 
 [Install]

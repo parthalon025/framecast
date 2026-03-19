@@ -121,6 +121,13 @@ function setLayerContent(layer, photo, onVideoEnded) {
     img.alt = photo.name;
     img.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-orientation:from-image;";
+    img.onerror = () => {
+      console.warn("Slideshow: failed to load image", photo.name);
+      // Advance to next photo after 3s on broken image
+      if (onVideoEnded) {
+        setTimeout(onVideoEnded, 3000);
+      }
+    };
     layer.appendChild(img);
   }
 }
@@ -282,6 +289,9 @@ export function Slideshow() {
         .catch((err) => console.error("Slideshow: SSE refetch failed", err));
     }
 
+    let sseBackoff = 1000;
+    const SSE_BACKOFF_MAX = 60000;
+
     function connectSSE() {
       if (source) source.close();
       source = new EventSource("/api/events");
@@ -293,14 +303,20 @@ export function Slideshow() {
         try {
           const cfg = JSON.parse(evt.data);
           settingsData.value = cfg;
-        } catch (err) {
-          console.warn("Slideshow: failed to parse settings:changed SSE data", err);
+        } catch (parseErr) {
+          console.warn("Slideshow: failed to parse settings:changed SSE data", parseErr);
         }
       });
 
+      source.onopen = () => {
+        // Reset backoff on successful connection
+        sseBackoff = 1000;
+      };
+
       source.onerror = () => {
         source.close();
-        setTimeout(connectSSE, 3000);
+        setTimeout(connectSSE, sseBackoff);
+        sseBackoff = Math.min(sseBackoff * 2, SSE_BACKOFF_MAX);
       };
     }
 

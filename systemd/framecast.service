@@ -2,6 +2,8 @@
 Description=FrameCast Web App
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -10,8 +12,13 @@ WorkingDirectory=/opt/framecast/app
 ExecStart=/usr/bin/gunicorn -c /opt/framecast/app/gunicorn.conf.py web_upload:app
 Restart=always
 RestartSec=5
+WatchdogSec=120
 MemoryMax=512M
 NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/opt/framecast /var/lib/framecast
 StandardOutput=journal
 StandardError=journal
 

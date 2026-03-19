@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -234,6 +235,8 @@ def _save_locations_cache(cache):
         try:
             with open(fd, "w", encoding="utf-8") as f:
                 json.dump(cache, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             Path(tmp_path).replace(cache_path)
         except Exception:
             # Clean up temp file on failure

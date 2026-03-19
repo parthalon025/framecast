@@ -1,0 +1,8 @@
+[Unit]
+Description=FrameCast Post-Update Health Check Timer
+
+[Timer]
+OnBootSec=90
+
+[Install]
+WantedBy=timers.target

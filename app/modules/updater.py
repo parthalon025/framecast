@@ -4,8 +4,11 @@ Uses urllib.request (stdlib only) to query the GitHub API.  All subprocess
 calls carry timeouts and log errors before returning fallback values.
 """
 
+import hashlib
+import hmac
 import json
 import logging
+import os
 import re
 import subprocess
 import urllib.request
@@ -17,7 +20,8 @@ log = logging.getLogger(__name__)
 
 VERSION_FILE = Path(__file__).resolve().parent.parent.parent / "VERSION"
 INSTALL_DIR = VERSION_FILE.parent
-ROLLBACK_FILE = Path("/tmp/framecast-rollback-tag")
+ROLLBACK_FILE = Path("/var/lib/framecast/rollback-tag")
+ROLLBACK_SIG_FILE = Path("/var/lib/framecast/rollback-sig")
 # Configurable via .env for forks. Default: official FrameCast repo.
 _GITHUB_OWNER = config.get("GITHUB_OWNER", "parthalon025")
 _GITHUB_REPO = config.get("GITHUB_REPO", "framecast")
@@ -91,11 +95,41 @@ def check_for_update() -> dict:
     return result
 
 
+def _hmac_sign(data: str) -> str:
+    """Compute HMAC-SHA256 of *data* using FLASK_SECRET_KEY."""
+    secret = config.get("FLASK_SECRET_KEY", "")
+    if not secret:
+        log.warning("FLASK_SECRET_KEY not set — rollback signature will be weak")
+        secret = "framecast-fallback"
+    return hmac.new(
+        secret.encode(), data.encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def _atomic_write(path: Path, content: str):
+    """Write *content* to *path* atomically (tmp + fsync + rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = str(path) + ".tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError as cleanup_exc:
+            log.warning("Failed to clean up temp file %s: %s", tmp_path, cleanup_exc)
+        raise
+
+
 def apply_update(tag: str) -> tuple:
     """Apply update: git fetch, git checkout <tag>.
 
-    Saves current version tag to ``/tmp/framecast-rollback-tag`` before
-    switching so the health-check script can roll back on failure.
+    Saves current version tag to ``/var/lib/framecast/rollback-tag`` with
+    an HMAC signature in ``rollback-sig`` before switching so the
+    health-check script can validate and roll back on failure.
 
     Returns:
         (success: bool, message: str)
@@ -104,11 +138,13 @@ def apply_update(tag: str) -> tuple:
         return False, f"Invalid tag format: {tag}"
 
     current = get_current_version()
+    rollback_tag = f"v{current}"
 
-    # Save rollback tag
+    # Save rollback tag with HMAC signature (atomic writes)
     try:
-        ROLLBACK_FILE.write_text(f"v{current}")
-        log.info("Saved rollback tag v%s to %s", current, ROLLBACK_FILE)
+        _atomic_write(ROLLBACK_FILE, rollback_tag)
+        _atomic_write(ROLLBACK_SIG_FILE, _hmac_sign(rollback_tag))
+        log.info("Saved rollback tag %s to %s (HMAC signed)", rollback_tag, ROLLBACK_FILE)
     except OSError as exc:
         log.error("Failed to write rollback file: %s", exc)
         return False, f"Failed to save rollback tag: {exc}"
