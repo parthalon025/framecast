@@ -34,7 +34,7 @@ fi
 # Read secret key from .env
 SECRET=""
 if [ -f "$ENV_FILE" ]; then
-    SECRET=$(grep "^FLASK_SECRET_KEY=" "$ENV_FILE" 2>/dev/null | cut -d= -f2 || true)
+    SECRET=$(grep "^FLASK_SECRET_KEY=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
 fi
 if [ -z "$SECRET" ]; then
     echo "ERROR: FLASK_SECRET_KEY not found in $ENV_FILE — cannot validate rollback signature"

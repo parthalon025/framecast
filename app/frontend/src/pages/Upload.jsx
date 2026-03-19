@@ -170,6 +170,7 @@ function uploadFileWithRetry(file, onProgress, attempt = 0) {
 export function Upload() {
   const sseRef = useRef(null);
   const storageBarRef = useRef(null);
+  const batchClearTimer = useRef(null);
   const [toast, setToast] = useState(null);
 
   /* Batch upload state */
@@ -194,7 +195,10 @@ export function Upload() {
     });
     sseRef.current = sse;
 
-    return () => sse.close();
+    return () => {
+      sse.close();
+      if (batchClearTimer.current) clearTimeout(batchClearTimer.current);
+    };
   }, []);
 
   /** Apply threshold to storage bar on disk change. */
@@ -263,7 +267,8 @@ export function Upload() {
     }
 
     // Clear batch after 5s
-    setTimeout(() => setBatch(null), 5000);
+    if (batchClearTimer.current) clearTimeout(batchClearTimer.current);
+    batchClearTimer.current = setTimeout(() => setBatch(null), 5000);
   }, []);
 
   function handleUploadAttempt() {

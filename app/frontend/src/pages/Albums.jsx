@@ -109,7 +109,8 @@ function handleDeleteAlbum() {
 
   deleting.value = true;
   fetch(`/api/albums/${album.id}`, { method: "DELETE" })
-    .then(() => {
+    .then((resp) => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       deleteTarget.value = null;
       if (selectedAlbum.value && selectedAlbum.value.id === album.id) {
         selectedAlbum.value = null;

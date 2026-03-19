@@ -332,7 +332,7 @@ def get_photos(
 
     with closing(get_db()) as conn:
         rows = conn.execute(
-            f"SELECT p.* FROM photos p WHERE {where} ORDER BY p.uploaded_at DESC",
+            f"SELECT p.* FROM photos p WHERE {where} ORDER BY p.uploaded_at DESC LIMIT 500",
             params,
         ).fetchall()
         return [dict(r) for r in rows]
@@ -350,7 +350,7 @@ def update_photo_quarantine(photo_id, quarantined, reason=None):
 
 
 def toggle_favorite(photo_id):
-    """Toggle is_favorite using atomic SQL (Lesson #1274).
+    """Toggle is_favorite using atomic SQL toggle.
 
     Returns the new is_favorite value.
     """
@@ -368,7 +368,7 @@ def toggle_favorite(photo_id):
 
 
 def toggle_hidden(photo_id):
-    """Toggle is_hidden using atomic SQL (Lesson #1274)."""
+    """Toggle is_hidden using atomic SQL toggle."""
     with _write_lock:
         with closing(get_db()) as conn:
             conn.execute(
@@ -451,7 +451,8 @@ def get_album_photos(album_id):
             """SELECT p.* FROM photos p
                JOIN album_photos ap ON p.id = ap.photo_id
                WHERE ap.album_id = ?
-               ORDER BY ap.added_at DESC""",
+               ORDER BY ap.added_at DESC
+               LIMIT 500""",
             (album_id,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -515,7 +516,7 @@ def get_all_tags():
     """Return all tags in the system (for autocomplete)."""
     with closing(get_db()) as conn:
         rows = conn.execute(
-            "SELECT id, name FROM tags ORDER BY name"
+            "SELECT id, name FROM tags ORDER BY name LIMIT 500"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -620,14 +621,18 @@ def _periodic_flush():
         _start_flush_timer()
 
 
+_flush_timer_lock = threading.Lock()
+
+
 def _start_flush_timer():
     """Start the periodic stats flush timer."""
     global _flush_timer
-    if _flush_timer is not None:
-        _flush_timer.cancel()
-    _flush_timer = threading.Timer(_STATS_FLUSH_INTERVAL, _periodic_flush)
-    _flush_timer.daemon = True
-    _flush_timer.start()
+    with _flush_timer_lock:
+        if _flush_timer is not None:
+            _flush_timer.cancel()
+        _flush_timer = threading.Timer(_STATS_FLUSH_INTERVAL, _periodic_flush)
+        _flush_timer.daemon = True
+        _flush_timer.start()
 
 
 def _prune_old_stats():
@@ -778,12 +783,19 @@ def _compute_sha256(filepath):
     return sha.hexdigest()
 
 
+_pillow_warned = False
+
+
 def _extract_exif_date(filepath):
     """Extract the EXIF date from an image file, or None."""
+    global _pillow_warned
     try:
         from PIL import Image as PILImage
         from PIL import ExifTags
     except ImportError:
+        if not _pillow_warned:
+            log.warning("Pillow not installed — EXIF/dimension extraction disabled")
+            _pillow_warned = True
         return None
 
     try:
@@ -800,9 +812,13 @@ def _extract_exif_date(filepath):
 
 def _get_image_dimensions(filepath):
     """Get (width, height) of an image, or (None, None)."""
+    global _pillow_warned
     try:
         from PIL import Image as PILImage
     except ImportError:
+        if not _pillow_warned:
+            log.warning("Pillow not installed — EXIF/dimension extraction disabled")
+            _pillow_warned = True
         return None, None
 
     try:

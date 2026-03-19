@@ -1,6 +1,6 @@
 """Weighted photo rotation and playlist generation for FrameCast slideshow.
 
-Implements binary CDF search for O(log n) weighted selection, "On This Day"
+Implements O(n) per selection with O(log n) lookup via binary CDF search, "On This Day"
 memory surfacing, and diversity penalty to prevent photo repetition.
 
 All SQLite access via contextlib.closing() + WAL + busy_timeout (Lesson #34, #1335).
@@ -156,7 +156,7 @@ def _get_recent_shown_ids(total_photos):
 def generate_playlist(count=50):
     """Generate a weighted playlist of photo dicts.
 
-    "On This Day" photos are inserted with 5x boost and metadata flag.
+    "On This Day" photos are inserted with priority placement and metadata flag.
 
     Args:
         count: Number of photos to include in the playlist.

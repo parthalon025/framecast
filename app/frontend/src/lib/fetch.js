@@ -38,7 +38,7 @@ export async function fetchWithTimeout(url, opts = {}) {
       try {
         const body = await res.json();
         retryAfter = body.retry_after || 30;
-      } catch (_) {}
+      } catch (parseErr) { console.debug("fetchWithTimeout: 429 body parse failed", parseErr); }
       throw new Error(`RATE LIMITED. RETRY IN ${retryAfter}s`);
     }
 

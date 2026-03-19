@@ -184,7 +184,7 @@ def rotate_pin_on_boot():
 def require_pin(func):
     """Decorator: require a valid framecast_pin cookie.
 
-    Open access (no PIN or PIN == "0000") bypasses auth entirely.
+    Open access (no PIN configured) bypasses auth entirely.
     Paths on the skip list bypass auth.
     State-changing requests are validated against the Origin header.
     Otherwise, the cookie must match the stored ACCESS_PIN.

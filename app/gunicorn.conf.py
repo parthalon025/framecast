@@ -26,7 +26,7 @@ workers = 1
 worker_class = "gthread"
 
 # Threads per worker
-threads = 4
+threads = int(os.environ.get("GUNICORN_THREADS", "2"))
 
 # Timeout: 120s to handle large uploads over slow connections
 timeout = 120
