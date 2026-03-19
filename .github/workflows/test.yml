@@ -1,0 +1,86 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint app/
+        run: ruff check app/
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: app/frontend
+        run: |
+          # superhot-ui is a local file: dep — stub it for CI
+          npm install --ignore-scripts --install-strategy=nested 2>/dev/null || true
+          # Install remaining deps that resolved
+          npm install esbuild preact @preact/signals leaflet qrcode-generator --save --ignore-scripts
+      - name: Build bundle
+        working-directory: app/frontend
+        run: |
+          mkdir -p ../static/css ../static/js
+          # Run esbuild directly (skip pre/postbuild which copy superhot-ui CSS)
+          node esbuild.config.js
+
+  smoke:
+    name: Smoke Test (structure)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project structure
+        run: |
+          echo "--- Checking required files ---"
+          FAIL=0
+          for f in \
+            app/web_upload.py \
+            app/api.py \
+            app/sse.py \
+            app/gunicorn.conf.py \
+            app/modules/config.py \
+            app/modules/media.py \
+            app/modules/services.py \
+            app/modules/auth.py \
+            app/modules/wifi.py \
+            app/modules/boot_config.py \
+            app/modules/updater.py \
+            app/frontend/package.json \
+            app/frontend/esbuild.config.js \
+            app/frontend/src/app.jsx \
+            app/frontend/src/app.css \
+            pi-gen/build.sh \
+            pi-gen/config \
+            scripts/smoke-test.sh \
+            install.sh \
+            VERSION \
+            README.md \
+            CHANGELOG.md; do
+            if [ -f "$f" ]; then
+              echo "  OK  $f"
+            else
+              echo "  MISSING  $f"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::Required files are missing"
+            exit 1
+          fi
+          echo "All required files present."
