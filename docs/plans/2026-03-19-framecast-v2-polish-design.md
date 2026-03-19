@@ -756,6 +756,79 @@ Each agent produces tests:
 
 ---
 
+## superhot-ui Design Rules (Mandatory for All Frontend Agents)
+
+FrameCast uses the **green phosphor monitor variant** (`data-sh-monitor="green"` on layout root).
+
+### Voice & Typography (piOS)
+
+All UI text follows terminal system voice. No conversational language, no emoji, no icons.
+
+| Don't | Do | Rule |
+|-------|-----|------|
+| "Loading..." | `STANDBY` | R13 |
+| "Something went wrong" | `FAULT` or `ERROR` | R13 |
+| "Nothing here yet" | `NO DATA` | R9 |
+| "Successfully completed!" | `COMPLETE` | R13 |
+| "Are you sure you want to delete?" | `CONFIRM: DELETE PHOTO?` | R29 |
+| "Back online!" | `RESTORED` | R13 |
+| "Refreshing..." | `SYNC` | R13 |
+| "Yes" / "No" buttons | `[CONFIRM]` / `[CANCEL]` | R29 |
+| "2:23 PM" | `14:23:07` (24-hour) | R24 |
+| "March 16, 2026" | `2026-03-16` (ISO) | R24 |
+| "about 3 hours ago" | `3h 14m` (exact) | R23 |
+
+### Required Components (use these, don't build custom)
+
+| Need | Use | Notes |
+|------|-----|-------|
+| Phone navigation | `ShNav` (`.sh-nav-phone`) | Bottom bar |
+| Modals/confirms | `ShModal` | Has built-in focus trap |
+| Toasts | `ShToast` | Auto-dismiss (3-5s) or persist |
+| Collapsible sections | `ShCollapsible` | For settings groups |
+| Loading states | `ShSkeleton` | Match dimensions to content |
+| Stats display | `ShStatsGrid` + `ShStatCard` | For stats dashboard |
+| Data tables | `ShDataTable` | Left-justified, no zebra |
+| Error displays | `ShErrorState` | For error pages |
+| Progress wizard | `.sh-progress-steps` | For onboarding |
+| Filter UI | `.sh-filter-panel` + `.sh-filter-chip` | For album/tag filters |
+| WiFi signal | `.sh-signal-bars` | With `data-sh-signal` |
+| Forms | `.sh-input`, `.sh-select`, `.sh-toggle` | Phosphor aesthetic |
+| Boot animation | `bootSequence()` | Typewriter reveal |
+| Hardware detection | `detectCapability()` | Auto-downgrade on Pi 3 |
+| Time formatting | `formatTime()` | 24h, ISO, relative |
+| Action feedback | `confirmAction()` | On button presses |
+| Storage bar | `.sh-threshold-bar` + `applyThreshold()` | Progressive color |
+
+### Layout Rules
+
+- CSS Grid with explicit columns (NOT flexbox wrapping) — R36
+- 60%+ void (empty space) — R1
+- `--space-*` tokens for all spacing — R33
+- Sharp corners, no organic curves — R36
+- Progressive disclosure: summary → detail → raw data — R34
+- Stagger entrance: structure (0ms), skeletons (50ms), data (150ms), effects (400ms+) — R10
+- Urgent status at top, never below fold — R26
+
+### Animation Rules
+
+- Silence = healthy (no idle animation) — R2
+- Rest frames between animations (300ms after shatter, 200ms after glitch) — R7
+- Max 3 simultaneous animated effects per viewport — R8
+- `prefers-reduced-motion` support mandatory — R15
+- Disable CRT on mobile — R14
+- Call `detectCapability()` at init for auto-downgrade on Pi 3 — Hardware
+
+### Color Rules
+
+- Red = threat only (errors, DLQ). Never decorative red — R3
+- Phosphor cyan = alive/emphasis. Never combine with red on same element — R4
+- Hover: phosphor left-border reveal, NOT bg color change — R21
+- Focus: `2px solid var(--sh-threat)`, NOT browser default — R22
+- Opacity encodes data relevance, NOT hover state — R30
+
+---
+
 ## References
 
 - Design doc: `docs/plans/2026-03-19-framecast-image-design.md`
