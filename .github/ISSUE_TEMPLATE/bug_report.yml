@@ -1,0 +1,74 @@
+name: Bug Report
+description: Report a problem with FrameCast
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: pi-model
+    attributes:
+      label: Raspberry Pi Model
+      options:
+        - Pi 3B
+        - Pi 3B+
+        - Pi 4 (1GB)
+        - Pi 4 (2GB)
+        - Pi 4 (4GB)
+        - Pi 4 (8GB)
+        - Pi 5 (4GB)
+        - Pi 5 (8GB)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: FrameCast Version
+      description: Found in Settings or on the boot screen
+      placeholder: "v1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install Method
+      options:
+        - Flashed image (SD card)
+        - Manual install (install.sh)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem clearly
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we trigger this?
+      placeholder: |
+        1. Upload a photo via the web UI
+        2. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "Run: journalctl -u framecast -u framecast-kiosk --no-pager -n 50"
+      render: shell
+    validations:
+      required: false
