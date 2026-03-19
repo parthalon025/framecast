@@ -13,27 +13,31 @@ Anyone on your WiFi can upload photos from their phone's browser. No app, no clo
 1. **Download** the latest `.img.xz` from [Releases](../../releases)
 2. **Flash** with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (select "Use custom" and pick the downloaded file)
 3. **Boot** the Pi -- it displays a setup screen with a QR code
-4. **Connect** to the `FrameCast` WiFi network shown on screen
-5. **Upload** photos at the address shown (scan the QR code or type it in)
+4. **Scan the QR code** from your phone to open the web UI
+5. **Upload** photos -- they appear on the TV within seconds
 
-That's it. Photos appear on the TV within seconds.
+The slideshow starts automatically. No configuration required.
 
 ---
 
 ## Features
 
-- **Browser-based slideshow** with CSS transitions (fade, slide, Ken Burns)
-- **superhot-ui terminal aesthetic** -- green phosphor interface
-- **WiFi captive portal** with onboarding wizard -- no SSH needed
+- **Browser-based slideshow** with weighted rotation, CSS transitions (fade, slide, Ken Burns), and "On This Day" memories
 - **Drag-and-drop upload** from any phone, tablet, or computer
+- **Favorites and albums** for content curation
+- **Multi-user support** -- each person gets credit for their uploads
+- **Stats dashboard** -- most shown, least shown, upload timeline, per-user breakdown
+- **WiFi captive portal** with onboarding wizard -- no SSH or terminal needed
+- **HDMI-CEC TV control** -- scheduled on/off, manual toggle from the web UI
+- **OTA updates** with SHA-256 verification and health-check rollback
+- **PIN authentication** (4 or 6 digits) with rate limiting and cookie hardening
+- **Firewall** (ufw) -- only allows traffic from your local network
+- **superhot-ui terminal aesthetic** -- green phosphor monitor interface
 - **Photo map** plotting GPS EXIF data on an offline SVG world map
-- **Server-Sent Events** for real-time display updates
-- **OTA updates** with health-check rollback
-- **PIN authentication** for the web UI
-- **HDMI schedule** to turn the display off at night
-- **Wayland kiosk** (cage + GTK-WebKit) -- no X11
+- **Server-Sent Events** for real-time display updates with reconnection support
 - **Self-healing** -- crash recovery, hardware watchdog, config restore
 - **WiFi hotspot fallback** when your home network is unavailable
+- **SQLite content model** with duplicate detection and SD card write optimization
 
 ---
 
@@ -41,17 +45,22 @@ That's it. Photos appear on the TV within seconds.
 
 | Pi Model | Status |
 |----------|--------|
-| Raspberry Pi 3B / 3B+ | Supported (64-bit) |
+| Raspberry Pi 3B / 3B+ | Supported (64-bit, performance-optimized) |
 | Raspberry Pi 4 | Supported (64-bit) |
 | Raspberry Pi 5 | Supported (64-bit) |
 
 Any HDMI TV or monitor works. A small 7" or 10" HDMI display works well as a dedicated frame.
 
-**Requirements:** microSD card (16 GB minimum, 32 GB recommended), power supply for your Pi model, HDMI cable (micro-HDMI adapter for Pi 4/5).
+**Requirements:**
+- microSD card (16 GB minimum, 32 GB recommended)
+- Power supply for your Pi model
+- HDMI cable (micro-HDMI adapter for Pi 4/5)
 
 ---
 
-## How It Works
+## Architecture
+
+FrameCast is one Flask app serving two surfaces:
 
 ```
 +-----------------------------------------------+
@@ -67,91 +76,150 @@ Any HDMI TV or monitor works. A small 7" or 10" HDMI display works well as a ded
 |          +----------+------------+             |
 |                     |                          |
 |             +-------v--------+                 |
-|             |   ~/media/     |                 |
-|             | photos & videos|                 |
+|             |  SQLite DB +   |                 |
+|             |  ~/media/      |                 |
 |             +----------------+                 |
 |                                                |
-|  systemd services | watchdog | OTA updater     |
-+-------------------------------------------------+
-                      | HDMI
+|  systemd services | watchdog | ufw firewall    |
++------------------------------------------------+
+                      | HDMI-CEC
                       v
               +---------------+
               |  TV / Monitor |
               +---------------+
 ```
 
-Wayland only — no X11. The kiosk browser (`cage` compositor + `GTK-WebKit`) renders the slideshow page served by the same Flask app.
+- **Phone** surface: upload, settings, albums, favorites, stats, map, users, update (Preact SPA)
+- **TV** surface: slideshow with CSS animations, boot sequence, QR codes (Wayland kiosk)
+- **Database**: SQLite with WAL mode, co-located with photos for unified backup
+
+Wayland only -- no X11. The kiosk browser (cage compositor + GTK-WebKit) renders the slideshow page served by the same Flask app.
 
 ---
 
-## Settings
+## Configuration Reference
 
-Once running, open the web UI and navigate to Settings to configure:
+All settings are in `/opt/framecast/app/.env` and can be changed from the web UI Settings page.
 
-- Photo duration, shuffle, loop mode
-- Slideshow transitions (fade, slide, Ken Burns)
-- HDMI on/off schedule
-- Upload size limits
-- PIN protection
-- WiFi network (via captive portal)
-- OTA updates
+### Slideshow
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `PHOTO_DURATION` | `10` | Seconds each photo is displayed |
+| `SHUFFLE` | `yes` | Randomize photo order |
+| `TRANSITION_TYPE` | `fade` | Effect: `fade`, `slide`, `zoom`, `dissolve`, `none` |
+| `PHOTO_ORDER` | `shuffle` | Order: `shuffle`, `newest`, `oldest`, `alphabetical` |
+| `QR_DISPLAY_SECONDS` | `30` | How long the QR code shows on boot (0 to disable) |
+
+### Web Server
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `WEB_PORT` | `8080` | HTTP port (not editable from web UI) |
+| `MAX_UPLOAD_MB` | `200` | Maximum upload file size in MB |
+| `AUTO_RESIZE_MAX` | `1920` | Max dimension for auto-resize (0 to disable) |
+
+### Security
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `ACCESS_PIN` | (generated) | PIN displayed on TV screen for authentication |
+| `PIN_LENGTH` | `4` | PIN digit count: `4` or `6` |
+| `PIN_ROTATE_ON_BOOT` | `no` | Generate a new PIN every time the Pi boots |
+| `FLASK_SECRET_KEY` | (generated) | Secret key for cookie signing |
+
+### Display Schedule
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `HDMI_SCHEDULE_ENABLED` | `no` | Enable automatic TV on/off schedule |
+| `HDMI_OFF_TIME` | `22:00` | Time to turn TV off (HH:MM, 24-hour) |
+| `HDMI_ON_TIME` | `08:00` | Time to turn TV on (HH:MM, 24-hour) |
+
+### Updates
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AUTO_UPDATE_ENABLED` | `no` | Check for OTA updates daily |
+| `GITHUB_OWNER` | `parthalon025` | GitHub repo owner (for forks) |
+| `GITHUB_REPO` | `framecast` | GitHub repo name (for forks) |
+
+### Media
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `MEDIA_DIR` | `/home/pi/media` | Photo/video storage path (not editable from web UI) |
+| `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.bmp,.gif,.webp,.tiff` | Accepted image types |
+| `VIDEO_EXTENSIONS` | `.mp4,.mkv,.avi,.mov,.webm,.m4v,.mpg,.mpeg` | Accepted video types |
 
 ---
 
-## For Developers
+## Building from Source
 
-### Building from Source
+### Prerequisites
 
-```bash
-git clone https://github.com/parthalon025/framecast.git
-cd framecast
-```
+- Node.js 18+ (frontend build)
+- Python 3.11+ with pip (backend)
+- Docker (OS image build only)
 
-```bash
-# Build the frontend (requires Node.js 18+)
-cd app/frontend && npm ci && npm run build && cd ../..
-```
+### Frontend
 
 ```bash
-# Run locally for UI development
-cd app && gunicorn -c gunicorn.conf.py web_upload:app
+cd app/frontend
+npm install
+npm run build
 ```
 
-### Building the OS Image
+### Run Locally
 
-The image is built with [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker:
+```bash
+pip install flask gunicorn pillow
+cd app
+gunicorn -c gunicorn.conf.py web_upload:app
+```
+
+Open `http://localhost:8080` for the phone UI. The kiosk display (`/display`) requires a Wayland compositor -- test visually on a Pi or use a browser.
+
+### Build the OS Image
+
+The flashable `.img.xz` is built with [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker:
 
 ```bash
 cd pi-gen
 bash build.sh
 ```
 
-This clones pi-gen, applies the FrameCast stage, and produces a `.img.xz` in `pi-gen/deploy/`. Takes 20-60 minutes depending on your machine.
+Output lands in `pi-gen/deploy/`. Takes 20-60 minutes depending on your machine.
 
 ### Project Structure
 
 ```
 framecast/
 |-- app/
-|   |-- web_upload.py              # Flask web server
-|   |-- api.py                     # REST API endpoints
-|   |-- sse.py                     # Server-Sent Events
-|   |-- gunicorn.conf.py           # Gunicorn configuration
-|   |-- modules/                   # Python modules (config, media, auth, wifi, etc.)
-|   |-- frontend/                  # Preact SPA (superhot-ui)
-|   |   |-- src/                   # JSX components and pages
-|   |   |-- esbuild.config.js      # Build configuration
-|   |-- static/                    # Built CSS/JS assets
-|   |-- templates/                 # HTML templates
+|   |-- web_upload.py            # Flask web server (entry point)
+|   |-- api.py                   # REST API endpoints + rate limiting
+|   |-- sse.py                   # Server-Sent Events
+|   |-- gunicorn.conf.py         # Gunicorn configuration
+|   |-- modules/
+|   |   |-- auth.py              # PIN authentication + rate limiting
+|   |   |-- config.py            # .env configuration management
+|   |   |-- db.py                # SQLite content model
+|   |   |-- media.py             # Image/video processing + GPS
+|   |   |-- rotation.py          # Weighted slideshow rotation
+|   |   |-- updater.py           # OTA updates with SHA verification
+|   |   |-- wifi.py              # WiFi provisioning (nmcli)
+|   |-- frontend/
+|   |   |-- src/                 # Preact + superhot-ui JSX components
+|   |   |-- esbuild.config.js    # Build configuration
+|   |-- static/                  # Built CSS/JS assets
+|   |-- templates/               # HTML templates
 |-- pi-gen/
-|   |-- build.sh                   # Image build script
-|   |-- config                     # pi-gen configuration
-|   |-- stage2-framecast/          # Custom pi-gen stage
-|-- scripts/
-|   |-- smoke-test.sh              # Post-install validation
-|-- systemd/                       # Service definitions
-|-- install.sh                     # One-command Pi installer
-|-- VERSION                        # Current version
+|   |-- build.sh                 # Image build script
+|   |-- config                   # pi-gen configuration
+|   |-- stage2-framecast/        # Custom pi-gen stage
+|-- scripts/                     # Health check, HDMI control, smoke tests
+|-- systemd/                     # Service definitions
+|-- VERSION                      # Current version (semver)
 ```
 
 ### CI/CD
@@ -161,6 +229,64 @@ framecast/
 - **Releases** are created automatically with the image and SHA256 checksum
 
 ---
+
+## Troubleshooting
+
+### WiFi won't connect
+
+- **Check the password.** The most common cause is a typo. Re-enter via the web UI.
+- **Network not found.** Move the Pi closer to the router. The Pi 3 has limited WiFi range.
+- **AP mode stuck.** Power cycle the Pi. It will restart the captive portal.
+- **Hidden network.** FrameCast cannot scan hidden SSIDs. Either unhide it or configure WiFi via `wpa_supplicant.conf` on the boot partition.
+
+### TV is black
+
+- **Check HDMI connection.** Unplug and re-plug the HDMI cable.
+- **Check power supply.** An undervoltage-throttled Pi may not drive the display. Use the official power supply for your model.
+- **HDMI schedule.** If the schedule is enabled, the display turns off at the configured time. Check Settings or disable `HDMI_SCHEDULE_ENABLED`.
+- **Kiosk crash.** Check logs: `journalctl -u framecast-kiosk -n 50`. The watchdog should auto-restart within 60 seconds.
+
+### Photos not showing
+
+- **Upload completed?** The web UI shows a confirmation. Check the upload page for errors.
+- **File format.** Only standard image/video formats are accepted (see Configuration Reference above).
+- **Disk full.** Check Settings for storage usage. Delete old photos or use a larger SD card.
+- **Quarantined.** Corrupt images are automatically quarantined. Check `journalctl -u framecast` for warnings.
+
+### OTA update failed
+
+- **No internet.** Updates require internet access. Verify WiFi is connected.
+- **SHA mismatch.** The update reports a SHA mismatch as a security check. Try again -- if it persists, report an issue.
+- **Rollback.** If a bad update gets through, the health-check timer will automatically roll back within 90 seconds.
+
+### General debugging
+
+```bash
+# Web server logs
+journalctl -u framecast -n 100
+
+# Display/kiosk logs
+journalctl -u framecast-kiosk -n 50
+
+# WiFi provisioning logs
+journalctl -u wifi-manager -n 50
+
+# System health
+systemctl status framecast framecast-kiosk wifi-manager
+
+# Firewall status
+sudo ufw status
+```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture overview, dev setup, and PR guidelines.
+
+## API Documentation
+
+See [API.md](API.md) for complete endpoint documentation with request/response examples.
 
 ## Credits
 

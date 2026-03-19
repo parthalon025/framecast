@@ -81,3 +81,7 @@ cat > /home/pi/.profile << 'PROF'
 # This file is kept minimal
 PROF
 chown 1000:1000 /home/pi/.profile
+
+# Configure and enable firewall (ufw)
+/usr/local/bin/ufw-setup.sh
+systemctl enable ufw

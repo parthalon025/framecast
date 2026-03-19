@@ -78,18 +78,34 @@ def _heal_env_file():
 
 
 def _ensure_access_pin():
-    """Generate a random 4-digit ACCESS_PIN if not already set."""
+    """Generate a random ACCESS_PIN if not already set.
+
+    Respects PIN_LENGTH setting (4 or 6 digits, default 4).
+    """
+    from modules.auth import generate_pin
+
     existing = config.get("ACCESS_PIN", "").strip()
     if existing:
         return  # PIN already configured
 
-    pin = str(secrets.randbelow(9000) + 1000)
+    try:
+        pin_length = int(config.get("PIN_LENGTH", "4"))
+        if pin_length not in (4, 6):
+            pin_length = 4
+    except (TypeError, ValueError):
+        pin_length = 4
+
+    pin = generate_pin(pin_length)
     config.save({"ACCESS_PIN": pin})
     config.reload()
-    log.info("Generated new ACCESS_PIN (shown on TV display)")
+    log.info("Generated new %d-digit ACCESS_PIN (shown on TV display)", pin_length)
 
 
 _heal_env_file()
+
+# Rotate PIN on boot if configured
+from modules.auth import rotate_pin_on_boot
+rotate_pin_on_boot()
 
 
 # --- Config ---
