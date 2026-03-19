@@ -340,7 +340,7 @@ export function Slideshow() {
   useEffect(() => {
     let cancelled = false;
 
-    async function init() {
+    async function init(retryCount = 0) {
       try {
         // Fetch playlist and settings in parallel
         const [playlistData, settingsRes] = await Promise.all([
@@ -374,10 +374,10 @@ export function Slideshow() {
           resetTimer();
         }
       } catch (err) {
-        console.error("Slideshow: fetch failed", err);
-        // Retry after 5 seconds if we have no photos
-        if (photoList.value.length === 0) {
-          setTimeout(() => { if (!cancelled) init(); }, 5000);
+        console.error("Slideshow: init failed (attempt %d)", retryCount + 1, err);
+        if (retryCount < 4 && !cancelled) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+          setTimeout(() => { if (!cancelled) init(retryCount + 1); }, delay);
         }
       }
     }

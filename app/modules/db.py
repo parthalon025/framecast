@@ -583,22 +583,28 @@ def _flush_stats():
         batch = list(_stats_buffer)
         _stats_buffer.clear()
 
-    with _write_lock:
-        with closing(get_db()) as conn:
-            conn.executemany(
-                """INSERT INTO display_stats (photo_id, duration_seconds, transition_type)
-                   VALUES (?, ?, ?)""",
-                batch,
-            )
-            # Update view_count and last_shown_at on photos
-            for photo_id, _dur, _trans in batch:
-                conn.execute(
-                    """UPDATE photos SET view_count = view_count + 1,
-                       last_shown_at = strftime('%Y-%m-%dT%H:%M:%S','now')
-                       WHERE id = ?""",
-                    (photo_id,),
+    try:
+        with _write_lock:
+            with closing(get_db()) as conn:
+                conn.executemany(
+                    """INSERT INTO display_stats (photo_id, duration_seconds, transition_type)
+                       VALUES (?, ?, ?)""",
+                    batch,
                 )
-            conn.commit()
+                # Update view_count and last_shown_at on photos
+                for photo_id, _dur, _trans in batch:
+                    conn.execute(
+                        """UPDATE photos SET view_count = view_count + 1,
+                           last_shown_at = strftime('%Y-%m-%dT%H:%M:%S','now')
+                           WHERE id = ?""",
+                        (photo_id,),
+                    )
+                conn.commit()
+    except Exception as exc:
+        log.error("STATS: flush failed, re-queuing %d entries: %s", len(batch), exc)
+        with _stats_buffer_lock:
+            _stats_buffer.extend(batch)
+        return
 
     _stats_last_flush = time.monotonic()
     log.info("STATS: FLUSHED %d display entries", len(batch))
@@ -606,8 +612,12 @@ def _flush_stats():
 
 def _periodic_flush():
     """Called by timer thread to flush stats periodically."""
-    _flush_stats()
-    _start_flush_timer()
+    try:
+        _flush_stats()
+    except Exception as exc:
+        log.error("STATS: periodic flush error: %s", exc)
+    finally:
+        _start_flush_timer()
 
 
 def _start_flush_timer():
@@ -783,8 +793,8 @@ def _extract_exif_date(filepath):
                 # DateTimeOriginal (tag 36867) or DateTime (tag 306)
                 date_str = exif.get(36867) or exif.get(306)
                 return date_str
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("MIGRATION: EXIF extraction failed for %s: %s", filepath, exc)
     return None
 
 
@@ -798,7 +808,8 @@ def _get_image_dimensions(filepath):
     try:
         with PILImage.open(str(filepath)) as img:
             return img.size
-    except Exception:
+    except Exception as exc:
+        log.warning("MIGRATION: image dimension extraction failed for %s: %s", filepath, exc)
         return None, None
 
 

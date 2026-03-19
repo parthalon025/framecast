@@ -536,14 +536,14 @@ def _do_upload():
                 from PIL import Image as PILImage
                 with PILImage.open(str(dest)) as img:
                     width, height = img.size
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to extract dimensions for %s: %s", filename, exc)
 
         # Compute checksum
         try:
             checksum = db._compute_sha256(str(dest))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("Failed to compute checksum for %s: %s", filename, exc)
 
         # Unquarantine and update metadata in DB
         from contextlib import closing as _closing
