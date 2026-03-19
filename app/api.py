@@ -189,8 +189,9 @@ def update_settings():
 @api.route("/events")
 def events():
     """SSE endpoint for real-time event streaming."""
+    last_event_id = request.headers.get("Last-Event-ID")
     return Response(
-        sse.subscribe(),
+        sse.subscribe(last_event_id=last_event_id),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

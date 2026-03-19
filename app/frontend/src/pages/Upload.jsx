@@ -49,8 +49,10 @@ function fetchStatus() {
 export function Upload() {
   const sseRef = useRef(null);
   const reconnectTimer = useRef(null);
+  const sseBackoff = useRef(1000);
+  const SSE_BACKOFF_MAX = 60000;
 
-  /** Connect to SSE endpoint with auto-reconnect. */
+  /** Connect to SSE endpoint with exponential backoff reconnect. */
   function connectSSE() {
     if (sseRef.current) {
       sseRef.current.close();
@@ -69,12 +71,17 @@ export function Upload() {
       fetchStatus();
     });
 
+    es.onopen = () => {
+      // Reset backoff on successful connection
+      sseBackoff.current = 1000;
+    };
+
     es.onerror = () => {
       es.close();
       sseRef.current = null;
-      // Auto-reconnect after 3 seconds
       clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(connectSSE, 3000);
+      reconnectTimer.current = setTimeout(connectSSE, sseBackoff.current);
+      sseBackoff.current = Math.min(sseBackoff.current * 2, SSE_BACKOFF_MAX);
     };
   }
 
