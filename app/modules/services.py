@@ -1,16 +1,35 @@
-"""System service control - slideshow status, restart, reboot."""
+"""System service control for FrameCast.
+
+Manages systemd services: status checks, restarts, and bulk status queries.
+"""
 
 import logging
 import subprocess
 
 log = logging.getLogger(__name__)
 
+# Logical name -> systemd unit name
+SERVICE_MAP = {
+    "app": "framecast",
+    "kiosk": "framecast-kiosk",
+    "wifi": "wifi-manager",
+    "update": "framecast-update",
+}
 
-def is_slideshow_running():
-    """Check if the slideshow systemd service is active."""
+
+def is_service_active(name):
+    """Check if a systemd service is active by logical name.
+
+    Args:
+        name: Logical service name (key in SERVICE_MAP) or raw unit name.
+
+    Returns:
+        True if the service is active, False otherwise.
+    """
+    unit = SERVICE_MAP.get(name, name)
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", "slideshow"],
+            ["systemctl", "is-active", unit],
             capture_output=True,
             text=True,
             timeout=5,
@@ -20,17 +39,49 @@ def is_slideshow_running():
         return False
 
 
-def restart_slideshow():
-    """Restart the slideshow service. Returns (success, message)."""
+def restart_service(name):
+    """Restart a systemd service by logical name.
+
+    Args:
+        name: Logical service name (key in SERVICE_MAP) or raw unit name.
+
+    Returns:
+        Tuple of (success: bool, message: str).
+    """
+    unit = SERVICE_MAP.get(name, name)
     try:
         subprocess.run(
-            ["sudo", "systemctl", "restart", "slideshow"],
+            ["sudo", "systemctl", "restart", unit],
             check=True,
             capture_output=True,
             timeout=10,
         )
-        log.info("Slideshow restarted via web UI")
-        return True, "Slideshow restarted"
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        log.error("Failed to restart slideshow")
-        return False, "Failed to restart slideshow"
+        log.info("Service %s (%s) restarted", name, unit)
+        return True, f"Service {name} restarted"
+    except subprocess.CalledProcessError as exc:
+        log.error("Failed to restart %s: %s", unit, exc.stderr)
+        return False, f"Failed to restart {name}"
+    except subprocess.TimeoutExpired:
+        log.error("Timeout restarting %s", unit)
+        return False, f"Timeout restarting {name}"
+
+
+def all_service_status():
+    """Return status of all known services.
+
+    Returns:
+        Dict mapping logical name to bool (active or not).
+    """
+    return {name: is_service_active(name) for name in SERVICE_MAP}
+
+
+# --- Backward-compatible aliases ---
+
+def is_slideshow_running():
+    """Check if the kiosk/slideshow service is active."""
+    return is_service_active("kiosk")
+
+
+def restart_slideshow():
+    """Restart the kiosk/slideshow service. Returns (success, message)."""
+    return restart_service("kiosk")
