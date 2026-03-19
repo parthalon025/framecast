@@ -3,7 +3,7 @@
 Provides endpoints for the SPA frontend to list photos, get status,
 read/write settings, retrieve GPS locations, and manage albums/tags/users.
 
-Includes per-IP rate limiting (60 requests/minute) on all API endpoints.
+Includes per-IP rate limiting (60 requests/minute) on state-changing API endpoints.
 """
 
 import logging
@@ -40,9 +40,12 @@ _api_limiter = RateLimiter(max_attempts=60, window_seconds=60, evict_after=180)
 
 @api.before_request
 def _api_rate_limit():
-    """Enforce per-IP rate limiting on all /api/ endpoints."""
+    """Enforce per-IP rate limiting on state-changing /api/ endpoints."""
     # SSE endpoint is long-lived — exempt from rate limiting
     if request.path == "/api/events":
+        return None
+    # Only rate-limit state-changing requests; GETs are read-only
+    if request.method == "GET":
         return None
 
     client_ip = request.remote_addr or "unknown"

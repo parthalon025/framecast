@@ -19,9 +19,10 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S'): HDMI: $*"; }
 
 case "$ACTION" in
   on)
-    if cec-ctl --playback -t0 --image-view-on 2>/dev/null; then
+    if OUTPUT=$(cec-ctl --playback -t0 --image-view-on 2>&1); then
       log "CEC: TV powered on"
     elif [ -n "$HDMI_OUTPUT" ]; then
+      log "CEC: failed — $OUTPUT"
       wlr-randr --output "$HDMI_OUTPUT" --on
       log "FALLBACK: wlr-randr enabled $HDMI_OUTPUT"
     else
@@ -30,9 +31,10 @@ case "$ACTION" in
     fi
     ;;
   off)
-    if cec-ctl --playback -t0 --standby 2>/dev/null; then
+    if OUTPUT=$(cec-ctl --playback -t0 --standby 2>&1); then
       log "CEC: TV standby"
     elif [ -n "$HDMI_OUTPUT" ]; then
+      log "CEC: failed — $OUTPUT"
       wlr-randr --output "$HDMI_OUTPUT" --off
       log "FALLBACK: wlr-randr disabled $HDMI_OUTPUT"
     else

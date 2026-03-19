@@ -32,11 +32,14 @@ export async function fetchWithTimeout(url, opts = {}) {
   try {
     const res = await fetch(url, fetchOpts);
 
-    // Rate limit handling
+    // Rate limit handling — backend sends retry_after in JSON body
     if (res.status === 429) {
-      const retryAfter = res.headers.get("Retry-After");
-      const seconds = retryAfter ? parseInt(retryAfter, 10) : 30;
-      throw new Error(`RATE LIMITED. RETRY IN ${seconds}s`);
+      let retryAfter = 30;
+      try {
+        const body = await res.json();
+        retryAfter = body.retry_after || 30;
+      } catch (_) {}
+      throw new Error(`RATE LIMITED. RETRY IN ${retryAfter}s`);
     }
 
     return res;

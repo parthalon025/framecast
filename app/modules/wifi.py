@@ -166,8 +166,8 @@ def _has_ap_clients():
     if len(parts) == 2:
         try:
             return int(parts[1]) > 0
-        except (ValueError, IndexError):
-            pass
+        except (ValueError, IndexError) as exc:
+            log.warning("WiFi: failed to parse AP client count: %s", exc)
     return False
 
 
