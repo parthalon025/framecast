@@ -65,10 +65,8 @@ function AlbumsIcon() {
 const navItems = [
   { path: "/", label: "Upload", icon: UploadIcon },
   { path: "/albums", label: "Albums", icon: AlbumsIcon },
-  { path: "/settings", label: "Settings", icon: SettingsIcon },
   { path: "/map", label: "Map", icon: MapIcon },
-  { path: "/stats", label: "Stats", icon: StatsIcon },
-  { path: "/update", label: "System", icon: SystemIcon, system: true },
+  { path: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 /**

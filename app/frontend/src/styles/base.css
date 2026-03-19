@@ -1,0 +1,43 @@
+/**
+ * FrameCast — Base Components
+ * Dropzone states.
+ */
+
+.sh-dropzone {
+  border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* Touch target: entire dropzone is tappable */
+}
+
+.sh-dropzone[data-sh-dropzone="idle"] {
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+}
+
+.sh-dropzone[data-sh-dropzone="hover"] {
+  border-color: var(--sh-phosphor);
+  background: oklch(85% 0.18 145 / 0.05);
+  box-shadow: 0 0 16px var(--sh-phosphor-glow);
+}
+
+.sh-dropzone[data-sh-dropzone="receiving"] {
+  border-color: var(--sh-phosphor);
+  border-style: solid;
+  background: oklch(85% 0.18 145 / 0.08);
+  pointer-events: none;
+}
+
+.sh-dropzone[data-sh-dropzone="error"] {
+  border-color: var(--status-critical, #ff4444);
+  background: oklch(50% 0.2 30 / 0.05);
+}

@@ -1,0 +1,65 @@
+/**
+ * FrameCast — Responsive Breakpoints
+ * Mobile-first: base = phone. Scale up with min-width only.
+ * Breakpoints: 768px (tablet), 1024px (desktop), 1400px (TV/wide)
+ */
+
+/* ── Tablet (768px+) ── */
+@media (min-width: 768px) {
+  .fc-page {
+    padding: var(--space-5, 20px);
+    padding-bottom: var(--space-5, 20px); /* no bottom nav on tablet — sidebar */
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sh-dropzone {
+    padding: 48px 24px;
+    min-height: 200px;
+  }
+
+  .qr-overlay {
+    bottom: 32px;
+    right: 32px;
+    padding: 12px;
+  }
+
+  .fc-setting-row .sh-input,
+  .fc-setting-row .sh-select {
+    max-width: 180px;
+  }
+
+  .fc-toast-container {
+    left: auto;
+    right: var(--space-5, 20px);
+    max-width: 400px;
+  }
+}
+
+/* ── Desktop (1024px+) ── */
+@media (min-width: 1024px) {
+  .fc-page {
+    max-width: 960px;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── TV / Wide (1400px+) ── */
+@media (min-width: 1400px) {
+  .boot-screen {
+    padding: 48px;
+  }
+
+  .qr-overlay {
+    bottom: 48px;
+    right: 48px;
+    padding: 16px;
+  }
+}

@@ -1,0 +1,45 @@
+/**
+ * FrameCast — Motion
+ * Reduced motion preferences (single deduplicated section).
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-fade-in,
+  .fc-fade-out,
+  .fc-slide-in,
+  .fc-slide-out,
+  .fc-kenburns-in,
+  .fc-kenburns-out,
+  .fc-dissolve-in,
+  .fc-dissolve-out {
+    animation: none;
+  }
+
+  .fc-fade-in,
+  .fc-slide-in,
+  .fc-kenburns-in,
+  .fc-dissolve-in {
+    opacity: 1;
+  }
+
+  .fc-fade-out,
+  .fc-slide-out,
+  .fc-kenburns-out,
+  .fc-dissolve-out {
+    opacity: 0;
+  }
+
+  .fc-otd-overlay {
+    /* Keep OTD overlay visible but disable any animation */
+  }
+
+  /* Disable page entrance animation */
+  .sh-animate-page-enter {
+    animation: none;
+  }
+
+  /* Static offline banner — no transition */
+  .fc-offline-banner {
+    transition: none;
+  }
+}
