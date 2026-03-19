@@ -1,15 +1,18 @@
 /** @fileoverview State-based router for the TV display surface.
  *
  * Determines what to show on the TV:
- *   "boot"      - Startup animation (placeholder)
- *   "setup"     - WiFi/network setup screen (placeholder)
- *   "welcome"   - No photos yet, show upload instructions (placeholder)
+ *   "boot"      - Startup animation (bootSequence typewriter)
+ *   "setup"     - WiFi/network setup screen (AP mode)
+ *   "welcome"   - No photos yet, show upload instructions + QR
  *   "slideshow" - Photo slideshow
  *
  * Connects to SSE /api/events for real-time state transitions.
  */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import { Boot } from "./Boot.jsx";
+import { Welcome } from "./Welcome.jsx";
+import { Setup } from "./Setup.jsx";
 import { Slideshow } from "./Slideshow.jsx";
 
 /** Current display state -- exported for other components to read. */
@@ -17,17 +20,6 @@ export const displayState = signal("boot");
 
 /** Access PIN fetched from /api/status -- shown on TV screens. */
 const accessPin = signal("");
-
-// --- Screen components ---
-
-function BootScreen() {
-  return (
-    <div class="boot-screen">
-      <div class="boot-logo">FrameCast</div>
-      <div class="boot-status">Starting...</div>
-    </div>
-  );
-}
 
 /** PIN display shown on Setup and Welcome screens. */
 function PinDisplay() {
@@ -45,76 +37,53 @@ function PinDisplay() {
   );
 }
 
-function SetupScreen() {
-  return (
-    <div class="boot-screen">
-      <div class="boot-logo">FrameCast</div>
-      <div class="boot-status">Setup required</div>
-      <PinDisplay />
-    </div>
-  );
-}
+/**
+ * After boot animation completes, check /api/status to determine
+ * which screen to show next.
+ */
+async function handleBootComplete() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
 
-function WelcomeScreen() {
-  return (
-    <div class="boot-screen">
-      <div class="boot-logo">FrameCast</div>
-      <div class="boot-status">
-        No photos yet. Upload photos from your phone to get started.
-      </div>
-      <PinDisplay />
-    </div>
-  );
+    if (data.access_pin) {
+      accessPin.value = data.access_pin;
+    }
+
+    const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+    if (totalMedia > 0) {
+      displayState.value = "slideshow";
+    } else {
+      displayState.value = "welcome";
+    }
+  } catch (err) {
+    console.error("DisplayRouter: status fetch failed", err);
+    // Default to welcome on error -- SSE will correct if needed
+    displayState.value = "welcome";
+  }
 }
 
 /** Map state name to component. */
 function renderState(stateName) {
   switch (stateName) {
     case "boot":
-      return <BootScreen />;
+      return <Boot onComplete={handleBootComplete} />;
     case "setup":
-      return <SetupScreen />;
+      return <Setup />;
     case "welcome":
-      return <WelcomeScreen />;
+      return <Welcome />;
     case "slideshow":
       return <Slideshow />;
     default:
-      return <BootScreen />;
+      return <Boot onComplete={handleBootComplete} />;
   }
 }
 
 export function DisplayRouter() {
-  // On mount: determine initial state from /api/status
+  // SSE: react to photo changes after initial boot
   useEffect(() => {
     let cancelled = false;
 
-    async function determineState() {
-      try {
-        const res = await fetch("/api/status");
-        if (cancelled) return;
-        const data = await res.json();
-
-        // Store PIN for display on TV screens
-        if (data.access_pin) {
-          accessPin.value = data.access_pin;
-        }
-
-        const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
-        if (totalMedia > 0) {
-          displayState.value = "slideshow";
-        } else {
-          displayState.value = "welcome";
-        }
-      } catch (err) {
-        console.error("DisplayRouter: status fetch failed", err);
-        // Stay on boot screen on error -- will retry via SSE
-        displayState.value = "welcome";
-      }
-    }
-
-    determineState();
-
-    // SSE: react to photo changes
     const source = new EventSource("/api/events");
 
     source.addEventListener("photo:added", () => {
@@ -146,9 +115,17 @@ export function DisplayRouter() {
     };
   }, []);
 
+  const state = displayState.value;
+  const showPin = state === "setup" || state === "welcome";
+
   return (
     <div style="position:fixed;inset:0;background:#000;">
-      {renderState(displayState.value)}
+      {renderState(state)}
+      {showPin && (
+        <div style="position:fixed;bottom:48px;left:0;right:0;text-align:center;">
+          <PinDisplay />
+        </div>
+      )}
     </div>
   );
 }
