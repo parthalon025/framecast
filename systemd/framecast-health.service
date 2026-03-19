@@ -1,0 +1,10 @@
+[Unit]
+Description=FrameCast Post-Update Health Check
+After=framecast.service framecast-kiosk.service
+Wants=framecast.service framecast-kiosk.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/framecast/scripts/health-check.sh
+StandardOutput=journal
+StandardError=journal
