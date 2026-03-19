@@ -2,12 +2,15 @@
 
 Provides endpoints for the SPA frontend to list photos, get status,
 read/write settings, retrieve GPS locations, and manage albums/tags/users.
+
+Includes per-IP rate limiting (60 requests/minute) on all API endpoints.
 """
 
 import logging
 import re
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request, send_file
@@ -19,6 +22,72 @@ from modules.auth import require_pin
 log = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__, url_prefix="/api")
+
+# ---------------------------------------------------------------------------
+# API rate limiting — 60 requests/minute per IP (in-memory counter)
+# Same pattern as auth.py rate limiter.
+# ---------------------------------------------------------------------------
+
+_rate_counts: dict[str, dict] = {}  # ip -> {"count": int, "window_start": float}
+_rate_lock = threading.Lock()
+_RATE_LIMIT = 60  # requests per window
+_RATE_WINDOW = 60.0  # seconds
+_RATE_EVICT_AFTER = _RATE_WINDOW * 3  # evict stale entries
+
+
+def _check_rate_limit(ip: str) -> int | None:
+    """Check if *ip* has exceeded the rate limit.
+
+    Returns None if under the limit, or the number of seconds until
+    the window resets if over the limit.
+    """
+    now = time.monotonic()
+    with _rate_lock:
+        # Amortized eviction of stale entries
+        stale = [
+            k for k, v in _rate_counts.items()
+            if now - v["window_start"] > _RATE_EVICT_AFTER
+        ]
+        for k in stale:
+            del _rate_counts[k]
+
+        if ip not in _rate_counts:
+            _rate_counts[ip] = {"count": 0, "window_start": now}
+
+        record = _rate_counts[ip]
+
+        # Reset window if expired
+        if now - record["window_start"] >= _RATE_WINDOW:
+            record["count"] = 0
+            record["window_start"] = now
+
+        record["count"] += 1
+
+        if record["count"] > _RATE_LIMIT:
+            retry_after = int(_RATE_WINDOW - (now - record["window_start"])) + 1
+            return max(retry_after, 1)
+
+    return None
+
+
+@api.before_request
+def _api_rate_limit():
+    """Enforce per-IP rate limiting on all /api/ endpoints."""
+    # SSE endpoint is long-lived — exempt from rate limiting
+    if request.path == "/api/events":
+        return None
+
+    client_ip = request.remote_addr or "unknown"
+    retry_after = _check_rate_limit(client_ip)
+    if retry_after is not None:
+        log.warning(
+            "API rate limited: %s %s from %s",
+            request.method, request.path, client_ip,
+        )
+        return jsonify({
+            "error": "RATE LIMITED",
+            "retry_after": retry_after,
+        }), 429
 
 
 def _do_reboot():
@@ -565,7 +634,8 @@ def apply_update():
     if not updater.validate_tag(tag):
         return jsonify({"error": f"Invalid tag format: {tag}"}), 400
 
-    success, message = updater.apply_update(tag)
+    expected_sha = data.get("expected_sha", "")
+    success, message = updater.apply_update(tag, expected_sha=expected_sha)
     if success:
         sse.notify("update:rebooting", {"version": tag})
         # Schedule reboot in 5 seconds (let the HTTP response return first)
