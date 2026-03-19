@@ -118,8 +118,8 @@ def update_settings():
 
     # --- Validate before touching config ---
 
-    # Numeric fields must be positive integers
-    for key in ("photo_duration", "qr_display_seconds", "max_upload_mb", "auto_resize_max"):
+    # Numeric fields must be positive integers (qr_display_seconds allows 0 = disable)
+    for key in ("photo_duration", "max_upload_mb", "auto_resize_max"):
         if key in data:
             try:
                 val = int(data[key])
@@ -127,6 +127,15 @@ def update_settings():
                     raise ValueError
             except (TypeError, ValueError):
                 return jsonify({"error": f"Invalid value for {key}: must be a positive integer"}), 400
+
+    # qr_display_seconds: 0 = disable, otherwise positive integer
+    if "qr_display_seconds" in data:
+        try:
+            val = int(data["qr_display_seconds"])
+            if val < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid value for qr_display_seconds: must be 0 or a positive integer"}), 400
 
     # Time fields must be HH:MM (00:00–23:59)
     for key in ("hdmi_off_time", "hdmi_on_time"):
