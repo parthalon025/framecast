@@ -278,10 +278,14 @@ def _generate_video_thumbnail(video_path, filename):
         log.warning("Thumbnail generation failed for %s: %s", filename, exc)
 
 
+_RESIZE_TIMEOUT = 30  # seconds
+
+
 def _auto_resize_image(image_path):
     """Downscale an image if it exceeds AUTO_RESIZE_MAX on its longest side.
 
     Uses Pillow. Silently skips if Pillow is not installed.
+    Enforces a 30s timeout via SIGALRM to prevent hangs on corrupt images.
     """
     if AUTO_RESIZE_MAX <= 0:
         return
@@ -290,6 +294,17 @@ def _auto_resize_image(image_path):
     except ImportError:
         log.debug("Pillow not installed, skipping auto-resize")
         return
+
+    # Set up SIGALRM timeout (Unix only)
+    has_alarm = hasattr(signal, "SIGALRM")
+    old_handler = None
+    if has_alarm:
+        def _resize_timeout_handler(signum, frame):
+            raise TimeoutError(f"Image resize timed out after {_RESIZE_TIMEOUT}s")
+
+        old_handler = signal.signal(signal.SIGALRM, _resize_timeout_handler)
+        signal.alarm(_RESIZE_TIMEOUT)
+
     try:
         # Limit decompression to ~178MP (1GB RAM) to prevent OOM on Pi 3B.
         # Default Pillow limit is 178MP but we lower it for safety on 1GB devices.
@@ -311,8 +326,14 @@ def _auto_resize_image(image_path):
                 save_kwargs["exif"] = exif
             resized.save(str(image_path), **save_kwargs)
             log.info("Resized %s: %dx%d -> %dx%d", image_path.name, w, h, new_w, new_h)
+    except TimeoutError:
+        log.error("Auto-resize timed out after %ds for %s", _RESIZE_TIMEOUT, image_path.name)
     except Exception as exc:
         log.warning("Auto-resize failed for %s: %s", image_path.name, exc)
+    finally:
+        if has_alarm:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
 
 
 # --- Routes ---
