@@ -2,6 +2,8 @@
 import { render } from "preact";
 import { Router, route, navigate } from "./components/Router.jsx";
 import { PhoneLayout } from "./components/PhoneLayout.jsx";
+import { Upload } from "./pages/Upload.jsx";
+import { DisplayRouter } from "./display/DisplayRouter.jsx";
 import { detectCapability, applyCapability } from "superhot-ui";
 
 // --- Surface detection ---
@@ -11,9 +13,6 @@ function isDisplay() {
 }
 
 // --- Placeholder page components ---
-function UploadPage() {
-  return <div class="sh-frame" style="padding: 20px;">Upload</div>;
-}
 function SettingsPage() {
   return <div class="sh-frame" style="padding: 20px;">Settings</div>;
 }
@@ -32,7 +31,7 @@ function DisplayPage() {
 
 // --- Route definitions ---
 const phoneRoutes = [
-  { path: "/", component: UploadPage },
+  { path: "/", component: Upload },
   { path: "/settings", component: SettingsPage },
   { path: "/map", component: MapPage },
   { path: "/update", component: UpdatePage },
