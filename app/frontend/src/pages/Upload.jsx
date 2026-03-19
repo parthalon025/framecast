@@ -1,4 +1,4 @@
-/** @fileoverview Upload page — dropzone + batch progress + photo grid + storage + user filter.
+/** @fileoverview Upload page — dropzone + batch progress + filter bar + photo grid + lightbox + storage + user filter.
  *
  * Batch upload shows per-file status, auto-retries failed uploads (3 attempts,
  * exponential backoff), and displays a completion summary.
@@ -11,6 +11,8 @@ import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { OfflineBanner } from "../components/OfflineBanner.jsx";
+import { ContextMenu } from "../components/PhotoCard.jsx";
+import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
 import { createSSE } from "../lib/sse.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import {
@@ -23,17 +25,36 @@ import {
 const photos = signal([]);
 const disk = signal({ percent: 0, used: "\u2014", total: "\u2014", free: "\u2014" });
 const loading = signal(true);
+const filter = signal("all");
 const userFilter = signal("all");
 const availableUsers = signal([]);
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
-/** Fetch photos list from API. */
+/** Build ASCII storage bar: [|||...] */
+function storageBar(pct) {
+  const width = 20;
+  const filled = Math.round((pct / 100) * width);
+  const empty = width - filled;
+  return "[" + "\u2593".repeat(filled) + "\u2591".repeat(empty) + "]";
+}
+
+/** Fetch photos list from API with optional filter. */
 function fetchPhotos() {
-  return fetchWithTimeout("/api/photos")
+  const currentFilter = filter.value;
+  let url = "/api/photos";
+  if (currentFilter === "favorites") url += "?filter=favorites";
+  else if (currentFilter === "hidden") url += "?filter=hidden";
+
+  return fetchWithTimeout(url)
     .then((resp) => resp.json())
     .then((data) => {
+      // Ensure name field exists for PhotoCard compatibility
+      for (const photo of data) {
+        photo.name = photo.name || photo.filename;
+        photo.size_human = photo.size_human || "";
+      }
       photos.value = data;
       // Extract unique uploaders for filter dropdown
       const uploaders = [...new Set(data.map((p) => p.uploaded_by).filter(Boolean))];
@@ -54,6 +75,32 @@ function fetchStatus() {
     .catch((err) => {
       console.warn("Upload: fetchStatus fault", err);
     });
+}
+
+function handleToggleFavorite(photo) {
+  fetch(`/api/photos/${photo.id}/favorite`, { method: "POST" })
+    .then((resp) => resp.json())
+    .then(() => fetchPhotos())
+    .catch((err) => console.warn("Favorite toggle error:", err));
+}
+
+function handlePhotoSelect(photo) {
+  const photoList = photos.value;
+  const idx = photoList.findIndex((p) => p.id === photo.id);
+  openLightbox(photoList, idx >= 0 ? idx : 0);
+}
+
+function handleAddTag(photo, tagName) {
+  fetch(`/api/photos/${photo.id}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: tagName }),
+  }).catch((err) => console.warn("Add tag error:", err));
+}
+
+function handleRemoveTag(photo, tag) {
+  fetch(`/api/photos/${photo.id}/tags/${tag.id}`, { method: "DELETE" })
+    .catch((err) => console.warn("Remove tag error:", err));
 }
 
 /**
@@ -116,7 +163,7 @@ function uploadFileWithRetry(file, onProgress, attempt = 0) {
 
 /**
  * Upload — main upload page.
- * Combines ShDropzone, batch upload progress, PhotoGrid, disk space display, and user filter.
+ * Combines ShDropzone, batch upload progress, filter bar, PhotoGrid, Lightbox, disk space display, and user filter.
  * Prompts "WHO IS UPLOADING?" on first upload if no cookie set.
  * Subscribes to SSE for real-time photo:added/photo:deleted events.
  */
@@ -156,6 +203,11 @@ export function Upload() {
       applyThreshold(storageBarRef.current, disk.value.percent || 0);
     }
   }, [disk.value]);
+
+  // Re-fetch when filter changes
+  useEffect(() => {
+    if (!loading.value) fetchPhotos();
+  }, [filter.value]);
 
   /** Handle batch file selection from dropzone. */
   const handleBatchUpload = useCallback(async (fileList) => {
@@ -237,6 +289,7 @@ export function Upload() {
   const diskPct = currentDisk.percent || 0;
   const isLowDisk = diskPct >= 90;
   const isUploadBlocked = diskPct >= 95;
+  const currentFilter = filter.value;
 
   // Apply user filter
   const allPhotos = photos.value;
@@ -384,8 +437,49 @@ export function Upload() {
         </div>
       )}
 
+      {/* Filter bar */}
+      <div class="sh-filter-panel" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <span
+          class={`sh-filter-chip${currentFilter === "all" ? " sh-filter-chip--active" : ""}`}
+          onClick={() => { filter.value = "all"; }}
+          style="cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; padding: 4px 10px;"
+        >
+          ALL
+        </span>
+        <span
+          class={`sh-filter-chip${currentFilter === "favorites" ? " sh-filter-chip--active" : ""}`}
+          onClick={() => { filter.value = "favorites"; }}
+          style="cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; padding: 4px 10px;"
+        >
+          FAVORITES
+        </span>
+        <span
+          class={`sh-filter-chip${currentFilter === "hidden" ? " sh-filter-chip--active" : ""}`}
+          onClick={() => { filter.value = "hidden"; }}
+          style="cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; padding: 4px 10px;"
+        >
+          HIDDEN
+        </span>
+      </div>
+
       {/* Photo grid */}
-      <PhotoGrid photos={filteredPhotos} onDelete={handleDelete} />
+      <PhotoGrid
+        photos={filteredPhotos}
+        onDelete={handleDelete}
+        onToggleFavorite={handleToggleFavorite}
+        onSelect={handlePhotoSelect}
+      />
+
+      {/* Context menu (long-press) */}
+      <ContextMenu />
+
+      {/* Lightbox */}
+      <Lightbox
+        onToggleFavorite={handleToggleFavorite}
+        onDelete={handleDelete}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+      />
 
       {/* Toast */}
       {toast && (

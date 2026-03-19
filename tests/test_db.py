@@ -4,10 +4,7 @@ Covers: schema creation, WAL mode, CRUD for photos/albums/tags/users,
 duplicate detection, stats buffering, migration, and smart albums.
 """
 
-import os
 import sqlite3
-import tempfile
-import threading
 from contextlib import closing
 from pathlib import Path
 from unittest import mock

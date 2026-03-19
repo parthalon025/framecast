@@ -6,6 +6,7 @@ import { Upload } from "./pages/Upload.jsx";
 import { Settings } from "./pages/Settings.jsx";
 import { Map } from "./pages/Map.jsx";
 import { Update } from "./pages/Update.jsx";
+import { Albums } from "./pages/Albums.jsx";
 import { Onboard } from "./pages/Onboard.jsx";
 import { Stats } from "./pages/Stats.jsx";
 import { Users } from "./pages/Users.jsx";
@@ -22,6 +23,7 @@ function isDisplay() {
 // --- Route definitions ---
 const phoneRoutes = [
   { path: "/", component: Upload },
+  { path: "/albums", component: Albums },
   { path: "/settings", component: Settings },
   { path: "/map", component: Map },
   { path: "/stats", component: Stats },
