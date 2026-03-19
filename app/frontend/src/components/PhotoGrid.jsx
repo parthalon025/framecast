@@ -1,6 +1,7 @@
 /** @fileoverview Photo thumbnail grid with delete confirmation modal. */
 import { signal } from "@preact/signals";
 import { ShModal } from "superhot-ui/preact";
+import { PhotoCard } from "./PhotoCard.jsx";
 
 /** Currently selected photo for delete confirmation. null = modal closed. */
 const deleteTarget = signal(null);
@@ -64,29 +65,11 @@ export function PhotoGrid({ photos = [], onDelete }) {
     <div>
       <div class="sh-grid sh-grid-3">
         {photos.map((photo) => (
-          <div
+          <PhotoCard
             key={photo.name}
-            class="sh-card sh-clickable"
-            onClick={() => openDeleteModal(photo)}
-            role="button"
-            tabIndex={0}
-            aria-label={`${photo.name} — click to delete`}
-          >
-            <img
-              src={photo.is_video ? `/thumbnail/${photo.name}` : `/media/${photo.name}`}
-              alt={photo.name}
-              loading="lazy"
-              style="width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-radius: 4px;"
-            />
-            {photo.is_video && (
-              <span class="sh-status-badge" data-sh-status="active" style="position: absolute; top: 6px; right: 6px;">
-                VIDEO
-              </span>
-            )}
-            <div class="sh-ansi-dim" style="padding: 6px 0 0; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              {photo.name}
-            </div>
-          </div>
+            photo={photo}
+            onDelete={openDeleteModal}
+          />
         ))}
       </div>
 
