@@ -35,6 +35,7 @@ import sse
 from api import api
 from modules import config, media, services
 from modules.auth import auth_api, require_pin
+from modules.boot_config import apply_boot_config
 
 logging.basicConfig(
     level=logging.INFO,
