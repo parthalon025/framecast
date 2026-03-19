@@ -14,7 +14,7 @@
     "leaflet": "^1.9.4",
     "preact": "^10.25.0",
     "qrcode-generator": "^2.0.4",
-    "superhot-ui": "^0.3.0"
+    "superhot-ui": "^0.3.1"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
