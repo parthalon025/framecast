@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -u -o pipefail
 # Boot configuration
 install -m 644 files/config.txt "${ROOTFS_DIR}/boot/firmware/config.txt"
 install -m 644 files/cmdline.txt "${ROOTFS_DIR}/boot/firmware/cmdline.txt"

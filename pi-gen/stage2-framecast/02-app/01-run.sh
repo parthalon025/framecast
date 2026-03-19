@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -u -o pipefail
 # Copy application files (clone on host, not in chroot — avoids QEMU git issues)
 FRAMECAST_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 

@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -u -o pipefail
 # Runs inside the chroot (Pi filesystem)
 
 # Enable services
@@ -30,8 +31,15 @@ chmod +x /opt/framecast/kiosk/browser.js
 chmod +x /opt/framecast/scripts/hdmi-control.sh
 
 # Scoped sudoers for service restart and reboot
-echo "pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart framecast, /usr/bin/systemctl restart framecast-kiosk, /usr/sbin/reboot, /usr/sbin/shutdown" > /etc/sudoers.d/framecast
-chmod 440 /etc/sudoers.d/framecast
+SUDOERS_TMP=$(mktemp)
+echo "pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart framecast, /usr/bin/systemctl restart framecast-kiosk, /usr/sbin/reboot, /usr/sbin/shutdown" > "$SUDOERS_TMP"
+if visudo -cf "$SUDOERS_TMP" >/dev/null 2>&1; then
+    cp "$SUDOERS_TMP" /etc/sudoers.d/framecast
+    chmod 440 /etc/sudoers.d/framecast
+else
+    echo "WARNING: sudoers validation failed, skipping"
+fi
+rm -f "$SUDOERS_TMP"
 
 # Build frontend (node/npm available in chroot)
 cd /opt/framecast/app/frontend
@@ -39,8 +47,8 @@ npm install --production
 npm run build
 rm -rf node_modules  # Save image space
 
-# Install Python deps
-pip3 install --break-system-packages -q gunicorn
+# Install Python deps (pinned from requirements.txt)
+pip3 install --break-system-packages -q -r /opt/framecast/requirements.txt
 
 # mDNS service advertisement
 mkdir -p /etc/avahi/services
@@ -59,7 +67,10 @@ AVAHI
 # Generate .env from example
 cp /opt/framecast/app/.env.example /opt/framecast/app/.env
 SECRET=$(python3 -c "import secrets; print(secrets.token_hex(24))")
-sed -i "s|^FLASK_SECRET_KEY=.*|FLASK_SECRET_KEY=$SECRET|" /opt/framecast/app/.env
+# Use printf to avoid sed injection from special characters
+grep -v '^FLASK_SECRET_KEY=' /opt/framecast/app/.env > /opt/framecast/app/.env.tmp || true
+printf 'FLASK_SECRET_KEY=%s\n' "$SECRET" >> /opt/framecast/app/.env.tmp
+mv /opt/framecast/app/.env.tmp /opt/framecast/app/.env
 sed -i "s|^MEDIA_DIR=.*|MEDIA_DIR=/home/pi/media|" /opt/framecast/app/.env
 chmod 600 /opt/framecast/app/.env
 chown 1000:1000 /opt/framecast/app/.env

@@ -20,5 +20,8 @@ for stage in stage0 stage1 stage2; do
     touch "${PIGEN_DIR}/${stage}/SKIP_IMAGES"
 done
 
-cd "$PIGEN_DIR"
+cd "$PIGEN_DIR" || {
+    echo "ERROR: Cannot cd to $PIGEN_DIR — did git clone fail?"
+    exit 1
+}
 ./build-docker.sh

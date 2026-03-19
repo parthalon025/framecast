@@ -1,4 +1,5 @@
 #!/bin/bash -e
+set -u -o pipefail
 # SD card longevity and system hardening
 
 # Journal limits

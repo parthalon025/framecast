@@ -36,7 +36,7 @@ for svc in framecast framecast-kiosk; do
     fi
 done
 
-if $HEALTHY; then
+if [[ "$HEALTHY" == "true" ]]; then
     echo "Health check PASSED — update confirmed"
     rm -f "$ROLLBACK_FILE"
     exit 0
@@ -44,13 +44,17 @@ fi
 
 # Rollback
 echo "Health check FAILED — rolling back to $PREV_TAG"
-cd "$INSTALL_DIR"
-if ! git checkout "$PREV_TAG" 2>&1; then
+cd "$INSTALL_DIR" || {
+    echo "CRITICAL: Cannot cd to $INSTALL_DIR"
+    exit 1
+}
+if ! git checkout --force "$PREV_TAG" 2>&1; then
     echo "ERROR: git checkout $PREV_TAG failed, trying main"
-    if ! git checkout main 2>&1; then
+    if ! git checkout --force main 2>&1; then
         echo "CRITICAL: All rollback attempts failed. Manual intervention required."
         exit 1
     fi
 fi
+git clean -fd 2>/dev/null || true
 rm -f "$ROLLBACK_FILE"
 sudo reboot
