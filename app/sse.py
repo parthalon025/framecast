@@ -60,14 +60,14 @@ def subscribe():
         log.info("SSE client disconnected (total: %d)", count)
 
 
-def notify(event, data=None):
+def notify(event: str, data: dict | None = None):
     """Push an event to all connected SSE clients.
 
     Drops the event for clients whose queues are full (stale clients).
 
     Args:
         event: Event name string (e.g., "photo:added").
-        data: JSON-serializable data payload.
+        data: JSON-serializable dict payload.
     """
     if data is None:
         data = {}

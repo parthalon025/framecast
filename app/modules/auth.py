@@ -14,7 +14,7 @@ import hmac
 import logging
 import threading
 import time
-from collections import defaultdict
+
 
 from flask import Blueprint, jsonify, make_response, request
 
@@ -36,10 +36,23 @@ _SKIP_PREFIXES = (
 )
 
 # --- Rate limiting for PIN verification ---
-_fail_counts = defaultdict(lambda: {"count": 0, "last": 0.0})
+_fail_counts: dict[str, dict] = {}
 _fail_counts_lock = threading.Lock()
 _MAX_ATTEMPTS = 5
 _LOCKOUT_SECONDS = 300
+_EVICT_AFTER = _LOCKOUT_SECONDS * 2  # Evict entries older than 2x lockout
+
+
+def _get_fail_record(ip: str) -> dict:
+    """Get or create a fail record for an IP, evicting stale entries."""
+    now = time.monotonic()
+    # Evict expired entries (amortized cleanup)
+    stale = [k for k, v in _fail_counts.items() if now - v["last"] > _EVICT_AFTER]
+    for k in stale:
+        del _fail_counts[k]
+    if ip not in _fail_counts:
+        _fail_counts[ip] = {"count": 0, "last": 0.0}
+    return _fail_counts[ip]
 
 
 def _make_auth_token(pin):
@@ -127,7 +140,7 @@ def verify_pin():
     now = time.monotonic()
 
     with _fail_counts_lock:
-        record = _fail_counts[client_ip]
+        record = _get_fail_record(client_ip)
 
         # Reset if lockout has expired
         if record["count"] >= _MAX_ATTEMPTS and (now - record["last"]) >= _LOCKOUT_SECONDS:
@@ -152,7 +165,7 @@ def verify_pin():
 
     if not hmac.compare_digest(submitted, stored):
         with _fail_counts_lock:
-            record = _fail_counts[client_ip]
+            record = _get_fail_record(client_ip)
             record["count"] += 1
             record["last"] = now
             log.warning("PIN verification failed from %s (attempt %d/%d)", client_ip, record["count"], _MAX_ATTEMPTS)
@@ -160,7 +173,7 @@ def verify_pin():
 
     # Success — reset failure count
     with _fail_counts_lock:
-        record = _fail_counts[client_ip]
+        record = _get_fail_record(client_ip)
         record["count"] = 0
         record["last"] = 0.0
 
