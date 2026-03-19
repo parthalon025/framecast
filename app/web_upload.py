@@ -318,6 +318,14 @@ def index():
     )
 
 
+def _is_xhr():
+    """Check if the request is from an XHR/fetch client (SPA frontend)."""
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "")
+    )
+
+
 @app.route("/upload", methods=["POST"])
 @require_pin
 @log_post_request
@@ -325,6 +333,8 @@ def index():
 def upload():
     # Limit concurrent uploads to prevent OOM on Pi 3B (1GB RAM)
     if not _upload_semaphore.acquire(blocking=False):
+        if _is_xhr():
+            return jsonify({"error": "Another upload is in progress"}), 429
         flash("Another upload is in progress. Please wait and try again.", "warning")
         return redirect(url_for("index"))
     try:
@@ -334,17 +344,24 @@ def upload():
 
 
 def _do_upload():
+    xhr = _is_xhr()
+
     if "files" not in request.files:
+        if xhr:
+            return jsonify({"error": "No files selected"}), 400
         flash("No files selected", "error")
         return redirect(url_for("index"))
 
     # Check disk space before accepting uploads (reserve 50MB for system use)
     disk = media.get_disk_usage()
     if disk["percent"] >= 95 or disk.get("free_bytes", 0) < 50 * 1024 * 1024:
+        if xhr:
+            return jsonify({"error": "Not enough disk space"}), 507
         flash("Not enough disk space. Delete files or use a larger SD card.", "error")
         return redirect(url_for("index"))
 
     uploaded = 0
+    uploaded_names = []
     skipped = 0
     for f in request.files.getlist("files"):
         if f.filename == "":
@@ -362,7 +379,8 @@ def _do_upload():
         # during multi-file uploads
         current_disk = media.get_disk_usage()
         if current_disk["percent"] >= 95 or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-            flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
+            if not xhr:
+                flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
             break
 
         dest = Path(MEDIA_DIR) / filename
@@ -401,7 +419,15 @@ def _do_upload():
             media.update_location_cache(filename, coords)
 
         uploaded += 1
+        uploaded_names.append(filename)
         sse.notify("photo:added", {"filename": filename})
+
+    if xhr:
+        return jsonify({
+            "uploaded": uploaded_names,
+            "uploaded_count": uploaded,
+            "skipped": skipped,
+        }), 200 if uploaded > 0 else 400
 
     if uploaded > 0:
         flash(f"Uploaded {uploaded} file(s) successfully", "success")
@@ -415,8 +441,11 @@ def _do_upload():
 @require_pin
 @log_post_request
 def delete():
+    xhr = _is_xhr()
     filename = request.form.get("filename", "")
     if not filename:
+        if xhr:
+            return jsonify({"error": "No file specified"}), 400
         flash("No file specified", "error")
         return redirect(url_for("index"))
 
@@ -425,6 +454,8 @@ def delete():
     try:
         filepath.resolve().relative_to(Path(MEDIA_DIR).resolve())
     except ValueError:
+        if xhr:
+            return jsonify({"error": "Invalid file path"}), 400
         flash("Invalid file path", "error")
         return redirect(url_for("index"))
 
@@ -438,8 +469,12 @@ def delete():
         filepath.unlink()
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
+        if xhr:
+            return jsonify({"status": "ok", "filename": filename})
         flash("File deleted", "success")
     else:
+        if xhr:
+            return jsonify({"error": "File not found"}), 404
         flash("File not found", "error")
 
     return redirect(url_for("index"))
