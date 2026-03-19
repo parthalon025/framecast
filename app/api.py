@@ -374,6 +374,25 @@ def remove_photo_tag(photo_id, tag_id):
 
 
 # ---------------------------------------------------------------------------
+# Slideshow playlist endpoint
+# ---------------------------------------------------------------------------
+
+
+@api.route("/slideshow/playlist")
+def slideshow_playlist():
+    """Return a weighted playlist of photos for the slideshow."""
+    try:
+        count = _safe_int(request.args.get("count"), 50)
+        count = max(1, min(count, 200))  # clamp to reasonable range
+        from modules import rotation
+        result = rotation.generate_playlist(count=count)
+        return jsonify(result)
+    except Exception:
+        log.error("Failed to generate slideshow playlist", exc_info=True)
+        return jsonify({"photos": [], "playlist_id": "error"}), 500
+
+
+# ---------------------------------------------------------------------------
 # Stats endpoint
 # ---------------------------------------------------------------------------
 

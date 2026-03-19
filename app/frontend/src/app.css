@@ -100,7 +100,112 @@
 
 /* ================================================================
    4. Transition Animations
+   ================================================================
+   New fc-* classes use --fc-transition-ms custom property (set by JS).
+   Legacy slideshow-* classes kept for backward compat.
    ================================================================ */
+
+/* --- Custom property defaults --- */
+.slideshow-layer {
+  --fc-transition-ms: 1000ms;
+  --kb-start: 50% 50%;
+  --kb-end: 50% 0%;
+  --kb-scale: 1.2;
+}
+
+/* --- Fade --- */
+
+@keyframes fcFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fcFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.fc-fade-in {
+  animation: fcFadeIn var(--fc-transition-ms) ease-in forwards;
+}
+
+.fc-fade-out {
+  animation: fcFadeOut var(--fc-transition-ms) ease-out forwards;
+}
+
+/* --- Slide --- */
+
+@keyframes fcSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes fcSlideOut {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+.fc-slide-in {
+  animation: fcSlideIn var(--fc-transition-ms) ease-out forwards;
+}
+
+.fc-slide-out {
+  animation: fcSlideOut var(--fc-transition-ms) ease-in forwards;
+}
+
+/* --- Ken Burns (improved) ---
+   - Randomized start/end via --kb-start, --kb-end (JS sets per slide)
+   - Scale range 1.0 -> --kb-scale (1.15 to 1.3, JS randomizes)
+   - will-change: transform for GPU acceleration
+   - Aspect-aware pan via anchor points (JS selects vertical/horizontal)
+   ---------------------------------------------------------------- */
+
+@keyframes fcKenBurns {
+  0%   {
+    transform: scale(1);
+    transform-origin: var(--kb-start);
+  }
+  100% {
+    transform: scale(var(--kb-scale));
+    transform-origin: var(--kb-end);
+  }
+}
+
+.fc-kenburns-in {
+  will-change: transform;
+  animation: fcFadeIn var(--fc-transition-ms) ease-in forwards,
+             fcKenBurns 12s ease-in-out forwards;
+}
+
+.fc-kenburns-in img {
+  will-change: transform;
+}
+
+.fc-kenburns-out {
+  animation: fcFadeOut var(--fc-transition-ms) ease-out forwards;
+}
+
+/* --- Dissolve (cross-fade with scale shift) --- */
+
+@keyframes fcDissolveIn {
+  from { opacity: 0; filter: brightness(1.2); }
+  to   { opacity: 1; filter: brightness(1);   }
+}
+
+@keyframes fcDissolveOut {
+  from { opacity: 1; filter: brightness(1);   }
+  to   { opacity: 0; filter: brightness(0.8); }
+}
+
+.fc-dissolve-in {
+  animation: fcDissolveIn var(--fc-transition-ms) ease-in-out forwards;
+}
+
+.fc-dissolve-out {
+  animation: fcDissolveOut var(--fc-transition-ms) ease-in-out forwards;
+}
+
+/* --- Legacy classes (backward compat) --- */
 
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -122,12 +227,6 @@
   to   { transform: translateX(-100%); opacity: 0; }
 }
 
-@keyframes kenBurns {
-  0%   { transform: scale(1)    translate(0, 0); }
-  50%  { transform: scale(1.08) translate(-1%, -1%); }
-  100% { transform: scale(1.12) translate(1%, 0.5%); }
-}
-
 .slideshow-fade-in {
   animation: fadeIn 1s ease-in forwards;
 }
@@ -144,8 +243,30 @@
   animation: slideOut 0.6s ease-in forwards;
 }
 
-.slideshow-ken-burns {
-  animation: kenBurns 12s ease-in-out infinite alternate;
+/* --- "On This Day" overlay --- */
+
+.fc-otd-overlay {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.fc-otd-label {
+  display: inline-block;
+  padding: 8px 20px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.75rem, 1.5vw, 1.25rem);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--sh-phosphor-glow);
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
 }
 
 /* ================================================================
@@ -323,17 +444,36 @@
   .slideshow-fade-out,
   .slideshow-slide-in,
   .slideshow-slide-out,
-  .slideshow-ken-burns {
+  .fc-fade-in,
+  .fc-fade-out,
+  .fc-slide-in,
+  .fc-slide-out,
+  .fc-kenburns-in,
+  .fc-kenburns-out,
+  .fc-dissolve-in,
+  .fc-dissolve-out {
     animation: none;
   }
 
   .slideshow-fade-in,
-  .slideshow-slide-in {
+  .slideshow-slide-in,
+  .fc-fade-in,
+  .fc-slide-in,
+  .fc-kenburns-in,
+  .fc-dissolve-in {
     opacity: 1;
   }
 
   .slideshow-fade-out,
-  .slideshow-slide-out {
+  .slideshow-slide-out,
+  .fc-fade-out,
+  .fc-slide-out,
+  .fc-kenburns-out,
+  .fc-dissolve-out {
     opacity: 0;
+  }
+
+  .fc-otd-overlay {
+    /* Keep OTD overlay visible but disable any animation */
   }
 }
