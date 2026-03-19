@@ -10,8 +10,10 @@
     "dev": "node esbuild.config.js --watch"
   },
   "dependencies": {
-    "preact": "^10.25.0",
     "@preact/signals": "^2.0.0",
+    "leaflet": "^1.9.4",
+    "preact": "^10.25.0",
+    "qrcode-generator": "^2.0.4",
     "superhot-ui": "file:../../../superhot-ui"
   },
   "devDependencies": {
