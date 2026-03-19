@@ -32,7 +32,7 @@ from werkzeug.utils import secure_filename
 
 import sse
 from api import api
-from modules import config, media, services
+from modules import config, db, media, services
 from modules.auth import auth_api, require_pin
 from modules.boot_config import apply_boot_config
 
@@ -152,6 +152,9 @@ _cleanup_tmp_files()
 
 # --- Boot partition WiFi config ---
 apply_boot_config()
+
+# --- Initialize SQLite content model ---
+db.init_db()
 
 
 # --- Request timeout ---
@@ -430,6 +433,27 @@ def _do_upload():
             filename = f"{stem}_{uuid.uuid4().hex[:8]}{suffix}"
             dest = Path(MEDIA_DIR) / filename
 
+        is_vid = media.is_video(filename)
+
+        # DB INSERT before file write (Lesson #1670) — quarantined until file is safe
+        try:
+            import hashlib as _hashlib
+            photo_id = db.insert_photo(
+                filename=filename,
+                filepath=str(dest),
+                is_video=is_vid,
+                quarantined=True,
+                quarantine_reason="upload in progress",
+            )
+        except Exception as db_exc:
+            if "UNIQUE" in str(db_exc):
+                log.warning("Duplicate filename in DB: %s", filename)
+                skipped += 1
+                continue
+            log.error("DB insert failed for %s: %s", filename, db_exc)
+            skipped += 1
+            continue
+
         # Atomic upload: write to .tmp file, fsync, then rename.
         # This prevents truncated/corrupt files if power is lost mid-upload.
         tmp_dest = Path(MEDIA_DIR) / (filename + ".tmp")
@@ -446,11 +470,13 @@ def _do_upload():
                 tmp_dest.unlink(missing_ok=True)
             except OSError as cleanup_exc:
                 log.warning("Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc)
+            # Mark DB record as quarantined with reason
+            db.update_photo_quarantine(photo_id, True, "file write failed")
             raise
         log.info("Uploaded: %s (%s)", filename, media.format_size(dest.stat().st_size))
 
         # Validate image integrity before processing
-        if not media.is_video(filename):
+        if not is_vid:
             try:
                 from PIL import Image as PILImage
                 with PILImage.open(str(dest)) as check_img:
@@ -465,21 +491,55 @@ def _do_upload():
                     log.info("Quarantined corrupt file: %s", filename)
                 except OSError as mv_exc:
                     log.error("Failed to quarantine %s: %s", filename, mv_exc)
+                db.update_photo_quarantine(photo_id, True, "corrupt image")
                 skipped += 1
                 continue
 
         # Post-upload processing
-        if media.is_video(filename):
+        gps_lat, gps_lon = None, None
+        file_size = dest.stat().st_size
+        width, height = None, None
+        checksum = None
+
+        if is_vid:
             _generate_video_thumbnail(dest, filename)
         else:
             _auto_resize_image(dest)
-            # Extract GPS and update location cache
+            # Extract GPS
             coords = media.extract_gps(dest)
-            media.update_location_cache(filename, coords)
+            if coords:
+                gps_lat, gps_lon = coords
+            # Get dimensions
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(str(dest)) as img:
+                    width, height = img.size
+            except Exception:
+                pass
+
+        # Compute checksum
+        try:
+            checksum = db._compute_sha256(str(dest))
+        except Exception:
+            pass
+
+        # Unquarantine and update metadata in DB
+        from contextlib import closing as _closing
+        with db._write_lock:
+            with _closing(db.get_db()) as conn:
+                conn.execute(
+                    """UPDATE photos SET
+                       quarantined = 0, quarantine_reason = NULL,
+                       file_size = ?, width = ?, height = ?,
+                       checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
+                       WHERE id = ?""",
+                    (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
+                )
+                conn.commit()
 
         uploaded += 1
         uploaded_names.append(filename)
-        sse.notify("photo:added", {"filename": filename})
+        sse.notify("photo:added", {"filename": filename, "photo_id": photo_id})
 
     if xhr:
         return jsonify({
@@ -519,12 +579,15 @@ def delete():
         return redirect(url_for("index"))
 
     if filepath.exists() and filepath.is_file():
+        # Mark as quarantined in DB first, then delete file async
+        photo_row = db.get_photo_by_filename(filename)
+        if photo_row:
+            db.update_photo_quarantine(photo_row["id"], True, "deleted by user")
+
         # Remove associated thumbnail if it exists
         thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
         if thumb_path.exists():
             thumb_path.unlink()
-        # Remove from GPS locations cache
-        media.remove_from_location_cache(filepath.name)
         filepath.unlink()
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
