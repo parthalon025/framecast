@@ -34,6 +34,7 @@ from werkzeug.utils import secure_filename
 import sse
 from api import api
 from modules import config, media, services
+from modules.auth import require_pin
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +85,6 @@ THUMBNAIL_DIR = str(Path(MEDIA_DIR) / "thumbnails")
 PORT = int(config.get("WEB_PORT", "8080"))
 MAX_UPLOAD_MB = int(config.get("MAX_UPLOAD_MB", "200"))
 AUTO_RESIZE_MAX = int(config.get("AUTO_RESIZE_MAX", "1920"))
-WEB_PASSWORD = config.get("WEB_PASSWORD", "").strip()
 
 # Semaphore to limit concurrent uploads (Pi 3B has only 1GB RAM).
 # A single large upload can use 200MB+; two simultaneous ones cause OOM.
@@ -204,40 +204,6 @@ def security_headers(response):
         "style-src 'self' 'unsafe-inline' https://unpkg.com"
     )
     return response
-
-
-# --- PIN authentication ---
-
-
-def _check_auth(username, password):
-    """Verify credentials against the configured WEB_PASSWORD."""
-    return password == WEB_PASSWORD
-
-
-def _auth_required_response():
-    """Return a 401 response that prompts for Basic Auth."""
-    return Response(
-        "Authentication required. Please provide the configured PIN.",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Pi Photo Display"'},
-    )
-
-
-def require_pin(f):
-    """Decorator to require HTTP Basic Auth on POST routes when WEB_PASSWORD is set.
-
-    If WEB_PASSWORD is empty or not configured, the route is unprotected
-    (preserving the default open-access behavior for local networks).
-    """
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        if not WEB_PASSWORD:
-            return f(*args, **kwargs)
-        auth = request.authorization
-        if not auth or not _check_auth(auth.username, auth.password):
-            return _auth_required_response()
-        return f(*args, **kwargs)
-    return decorated
 
 
 # --- Request logging ---
@@ -654,7 +620,7 @@ def _periodic_thumbnail_cleanup():
             if removed:
                 log.info("Cleaned up %d orphan thumbnail(s)", removed)
         except Exception:
-            pass
+            log.warning("Periodic thumbnail cleanup failed", exc_info=True)
 
 
 @app.route("/api/restart-slideshow", methods=["POST"])

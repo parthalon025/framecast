@@ -6,8 +6,10 @@ import os
 # Bind to all interfaces on WEB_PORT (default 8080)
 bind = f"0.0.0.0:{os.environ.get('WEB_PORT', '8080')}"
 
-# Workers: min of CPU count and 2 (Pi has limited RAM)
-workers = int(os.environ.get("GUNICORN_WORKERS", min(multiprocessing.cpu_count(), 2)))
+# Default to 1 worker: SSE client list is per-process, so events don't
+# propagate across workers.  1 worker + gthread is sufficient for Pi
+# hardware.  Override via GUNICORN_WORKERS env var if needed.
+workers = int(os.environ.get("GUNICORN_WORKERS", 1))
 
 # Use gthread worker class for SSE streaming support
 worker_class = "gthread"

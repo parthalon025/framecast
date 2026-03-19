@@ -36,6 +36,7 @@ def is_service_active(name):
         )
         return result.stdout.strip() == "active"
     except Exception:
+        log.debug("Failed to check service %s", unit, exc_info=True)
         return False
 
 

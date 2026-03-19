@@ -5,12 +5,14 @@ read/write settings, and retrieve GPS locations.
 """
 
 import logging
+import re
 from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
 import sse
 from modules import config, media
+from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +20,11 @@ api = Blueprint("api", __name__, url_prefix="/api")
 
 SCRIPT_DIR = Path(__file__).parent
 VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
+
+# Allowed enum values for constrained settings
+_VALID_TRANSITION_TYPES = {"fade", "slide", "zoom", "dissolve", "none"}
+_VALID_PHOTO_ORDERS = {"shuffle", "newest", "oldest", "alphabetical"}
+_HH_MM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def _read_version():
@@ -28,25 +35,34 @@ def _read_version():
         return "unknown"
 
 
+def _safe_int(val, default):
+    """Convert *val* to int, returning *default* on failure."""
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _current_settings():
     """Build the current settings dict from config."""
     return {
-        "photo_duration": int(config.get("PHOTO_DURATION", "10")),
+        "photo_duration": _safe_int(config.get("PHOTO_DURATION", "10"), 10),
         "shuffle": config.get("SHUFFLE", "yes").lower() == "yes",
         "transition_type": config.get("TRANSITION_TYPE", "fade"),
         "photo_order": config.get("PHOTO_ORDER", "shuffle"),
-        "qr_display_seconds": int(config.get("QR_DISPLAY_SECONDS", "30")),
+        "qr_display_seconds": _safe_int(config.get("QR_DISPLAY_SECONDS", "30"), 30),
         "hdmi_schedule_enabled": config.get("HDMI_SCHEDULE_ENABLED", "no").lower() == "yes",
         "hdmi_off_time": config.get("HDMI_OFF_TIME", "22:00"),
         "hdmi_on_time": config.get("HDMI_ON_TIME", "08:00"),
-        "max_upload_mb": int(config.get("MAX_UPLOAD_MB", "200")),
-        "auto_resize_max": int(config.get("AUTO_RESIZE_MAX", "1920")),
+        "max_upload_mb": _safe_int(config.get("MAX_UPLOAD_MB", "200"), 200),
+        "auto_resize_max": _safe_int(config.get("AUTO_RESIZE_MAX", "1920"), 1920),
         "auto_update_enabled": config.get("AUTO_UPDATE_ENABLED", "no").lower() == "yes",
-        "web_port": int(config.get("WEB_PORT", "8080")),
+        "web_port": _safe_int(config.get("WEB_PORT", "8080"), 8080),
     }
 
 
-# Settings keys that map to .env keys with their type converters
+# Settings keys that map to .env keys with their type converters.
+# web_port is intentionally excluded — changing it via API could lock users out.
 _SETTINGS_ENV_MAP = {
     "photo_duration": ("PHOTO_DURATION", str),
     "shuffle": ("SHUFFLE", lambda v: "yes" if v else "no"),
@@ -59,7 +75,6 @@ _SETTINGS_ENV_MAP = {
     "max_upload_mb": ("MAX_UPLOAD_MB", str),
     "auto_resize_max": ("AUTO_RESIZE_MAX", str),
     "auto_update_enabled": ("AUTO_UPDATE_ENABLED", lambda v: "yes" if v else "no"),
-    "web_port": ("WEB_PORT", str),
 }
 
 
@@ -91,11 +106,43 @@ def get_settings():
 
 
 @api.route("/settings", methods=["POST"])
+@require_pin
 def update_settings():
     """Update settings from JSON body. Expects {"key": value, ...}."""
     data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
+
+    # --- Validate before touching config ---
+
+    # Numeric fields must be positive integers
+    for key in ("photo_duration", "qr_display_seconds", "max_upload_mb", "auto_resize_max"):
+        if key in data:
+            try:
+                val = int(data[key])
+                if val < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify({"error": f"Invalid value for {key}: must be a positive integer"}), 400
+
+    # Time fields must be HH:MM (00:00–23:59)
+    for key in ("hdmi_off_time", "hdmi_on_time"):
+        if key in data:
+            if not isinstance(data[key], str) or not _HH_MM_RE.match(data[key]):
+                return jsonify({"error": f"Invalid value for {key}: must be HH:MM (00:00–23:59)"}), 400
+
+    # Enum fields
+    if "transition_type" in data and data["transition_type"] not in _VALID_TRANSITION_TYPES:
+        return jsonify({
+            "error": f"Invalid transition_type: must be one of {sorted(_VALID_TRANSITION_TYPES)}",
+        }), 400
+
+    if "photo_order" in data and data["photo_order"] not in _VALID_PHOTO_ORDERS:
+        return jsonify({
+            "error": f"Invalid photo_order: must be one of {sorted(_VALID_PHOTO_ORDERS)}",
+        }), 400
+
+    # --- Build update map ---
 
     updates = {}
     for key, value in data.items():
