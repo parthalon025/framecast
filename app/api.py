@@ -109,6 +109,7 @@ def update_settings():
     config.save(updates)
     config.reload()
     log.info("Settings updated via API: %s", list(updates.keys()))
+    sse.notify("settings:changed", _current_settings())
 
     return jsonify({"status": "ok", "settings": _current_settings()})
 
