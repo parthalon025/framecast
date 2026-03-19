@@ -49,16 +49,21 @@ export function PinGate() {
   const [pinValue, setPinValue] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [toast, setToast] = useState(null);
+  const [pinLength, setPinLength] = useState(4);
   const dismissTimer = useRef(null);
 
   useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => { if (data.pin_length) setPinLength(data.pin_length); })
+      .catch((err) => console.warn("PinGate: failed to fetch pin length", err));
     return () => {
       if (dismissTimer.current) clearTimeout(dismissTimer.current);
     };
   }, []);
 
   const handleVerify = useCallback(async () => {
-    if (pinValue.length !== 4 || verifying) return;
+    if (pinValue.length !== pinLength || verifying) return;
 
     setVerifying(true);
     try {
@@ -139,7 +144,7 @@ export function PinGate() {
             type="tel"
             inputMode="numeric"
             pattern="[0-9]*"
-            maxLength="4"
+            maxLength={String(pinLength)}
             value={pinValue}
             onInput={handleInput}
             onKeyDown={handleKeyDown}

@@ -70,9 +70,12 @@ export function Map() {
     const markers = locations.map((loc) =>
       L.marker([loc.lat, loc.lon], { icon: markerIcon })
         .addTo(map)
-        .bindPopup(
-          `<span style="font-family: monospace; text-transform: uppercase; font-size: 12px;">${loc.name}</span>`,
-        ),
+        .bindPopup(() => {
+          const el = document.createElement("span");
+          el.style.cssText = "font-family: monospace; text-transform: uppercase; font-size: 12px;";
+          el.textContent = loc.name;
+          return el;
+        }),
     );
 
     if (markers.length === 1) {
