@@ -1,0 +1,12 @@
+[Unit]
+Description=FrameCast WiFi Manager
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/framecast/scripts/wifi-check.sh
+
+[Install]
+WantedBy=multi-user.target

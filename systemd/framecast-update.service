@@ -1,0 +1,12 @@
+[Unit]
+Description=FrameCast OTA Update Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/framecast
+ExecStart=/opt/framecast/scripts/update-check.sh
+StandardOutput=journal
+StandardError=journal
