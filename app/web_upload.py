@@ -428,6 +428,25 @@ def _do_upload():
             raise
         log.info("Uploaded: %s (%s)", filename, media.format_size(dest.stat().st_size))
 
+        # Validate image integrity before processing
+        if not media.is_video(filename):
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(str(dest)) as check_img:
+                    check_img.verify()
+            except Exception as verify_exc:
+                log.warning("Corrupt image detected: %s — %s", filename, verify_exc)
+                quarantine_dir = Path(MEDIA_DIR) / "quarantine"
+                quarantine_dir.mkdir(exist_ok=True)
+                quarantine_dest = quarantine_dir / filename
+                try:
+                    dest.rename(quarantine_dest)
+                    log.info("Quarantined corrupt file: %s", filename)
+                except OSError as mv_exc:
+                    log.error("Failed to quarantine %s: %s", filename, mv_exc)
+                skipped += 1
+                continue
+
         # Post-upload processing
         if media.is_video(filename):
             _generate_video_thumbnail(dest, filename)

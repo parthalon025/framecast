@@ -121,6 +121,13 @@ function setLayerContent(layer, photo, onVideoEnded) {
     img.alt = photo.name;
     img.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-orientation:from-image;";
+    img.onerror = () => {
+      console.warn("Slideshow: failed to load image", photo.name);
+      // Advance to next photo after 3s on broken image
+      if (onVideoEnded) {
+        setTimeout(onVideoEnded, 3000);
+      }
+    };
     layer.appendChild(img);
   }
 }
