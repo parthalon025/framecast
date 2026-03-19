@@ -12,6 +12,7 @@ import functools
 import hashlib
 import hmac
 import logging
+import threading
 import time
 from collections import defaultdict
 
@@ -36,6 +37,7 @@ _SKIP_PREFIXES = (
 
 # --- Rate limiting for PIN verification ---
 _fail_counts = defaultdict(lambda: {"count": 0, "last": 0.0})
+_fail_counts_lock = threading.Lock()
 _MAX_ATTEMPTS = 5
 _LOCKOUT_SECONDS = 300
 
@@ -43,7 +45,7 @@ _LOCKOUT_SECONDS = 300
 def _make_auth_token(pin):
     """Create an HMAC-SHA256 token from the PIN (never store raw PIN in cookie)."""
     secret = config.get("FLASK_SECRET_KEY", "fallback-key")
-    return hmac.new(secret.encode(), pin.encode(), hashlib.sha256).hexdigest()
+    return hmac.HMAC(secret.encode(), pin.encode(), hashlib.sha256).hexdigest()
 
 
 def _is_ap_active():
@@ -123,17 +125,19 @@ def verify_pin():
     # --- Rate limiting ---
     client_ip = request.remote_addr or "unknown"
     now = time.monotonic()
-    record = _fail_counts[client_ip]
 
-    # Reset if lockout has expired
-    if record["count"] >= _MAX_ATTEMPTS and (now - record["last"]) >= _LOCKOUT_SECONDS:
-        record["count"] = 0
-        record["last"] = 0.0
+    with _fail_counts_lock:
+        record = _fail_counts[client_ip]
 
-    if record["count"] >= _MAX_ATTEMPTS:
-        remaining = int(_LOCKOUT_SECONDS - (now - record["last"]))
-        log.warning("Rate limited PIN attempt from %s (%ds remaining)", client_ip, remaining)
-        return jsonify({"error": "TOO MANY ATTEMPTS — TRY AGAIN LATER", "retry_after": remaining}), 429
+        # Reset if lockout has expired
+        if record["count"] >= _MAX_ATTEMPTS and (now - record["last"]) >= _LOCKOUT_SECONDS:
+            record["count"] = 0
+            record["last"] = 0.0
+
+        if record["count"] >= _MAX_ATTEMPTS:
+            remaining = int(_LOCKOUT_SECONDS - (now - record["last"]))
+            log.warning("Rate limited PIN attempt from %s (%ds remaining)", client_ip, remaining)
+            return jsonify({"error": "TOO MANY ATTEMPTS — TRY AGAIN LATER", "retry_after": remaining}), 429
 
     data = request.get_json(silent=True)
     if not data or not isinstance(data.get("pin"), str):
@@ -146,15 +150,19 @@ def verify_pin():
         # No PIN configured -- succeed immediately, no cookie needed
         return jsonify({"status": "ok", "message": "AUTHORIZED -- open access"})
 
-    if submitted != stored:
-        record["count"] += 1
-        record["last"] = now
-        log.warning("PIN verification failed from %s (attempt %d/%d)", client_ip, record["count"], _MAX_ATTEMPTS)
+    if not hmac.compare_digest(submitted, stored):
+        with _fail_counts_lock:
+            record = _fail_counts[client_ip]
+            record["count"] += 1
+            record["last"] = now
+            log.warning("PIN verification failed from %s (attempt %d/%d)", client_ip, record["count"], _MAX_ATTEMPTS)
         return jsonify({"error": "ACCESS DENIED", "needs_pin": True}), 401
 
     # Success — reset failure count
-    record["count"] = 0
-    record["last"] = 0.0
+    with _fail_counts_lock:
+        record = _fail_counts[client_ip]
+        record["count"] = 0
+        record["last"] = 0.0
 
     log.info("PIN verified successfully from %s", client_ip)
     resp = make_response(jsonify({"status": "ok", "message": "AUTHORIZED"}))

@@ -28,6 +28,11 @@ _SUBPROCESS_TIMEOUT = 30
 _TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
+def validate_tag(tag: str) -> bool:
+    """Return True if *tag* matches the expected release tag format (vX.Y.Z)."""
+    return bool(_TAG_RE.match(tag))
+
+
 def get_current_version() -> str:
     """Read version from VERSION file."""
     try:

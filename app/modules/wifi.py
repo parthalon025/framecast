@@ -5,6 +5,7 @@ All subprocess calls use timeout=15 to prevent hangs.
 """
 
 import logging
+import re
 import subprocess
 
 log = logging.getLogger(__name__)
@@ -85,20 +86,21 @@ def scan_networks():
     networks = []
     seen_ssids = set()
     for line in stdout.splitlines():
-        # nmcli -t uses ':' as separator. SSID might contain ':'
-        # Format: SSID:SIGNAL:SECURITY (SECURITY can contain ':' too)
-        # Use rsplit to handle SSIDs with colons
-        parts = line.split(":")
+        # nmcli -t uses ':' as separator but escapes literal colons in
+        # values as '\:'.  Split on unescaped colons only (max 3 fields:
+        # SSID, SIGNAL, SECURITY).
+        parts = re.split(r"(?<!\\):", line, maxsplit=2)
         if len(parts) < 3:
             continue
-        ssid = parts[0]
+        # Unescape literal colons in each field
+        ssid = parts[0].replace("\\:", ":")
         if not ssid or ssid in seen_ssids:
             continue
         try:
-            signal = int(parts[1])
+            signal = int(parts[1].replace("\\:", ":"))
         except (ValueError, IndexError):
             signal = 0
-        security = ":".join(parts[2:]) if len(parts) > 2 else ""
+        security = parts[2].replace("\\:", ":") if len(parts) > 2 else ""
         seen_ssids.add(ssid)
         networks.append({
             "ssid": ssid,

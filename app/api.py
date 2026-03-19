@@ -20,6 +20,16 @@ log = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
+
+def _do_reboot():
+    """Execute a reboot, logging any failures instead of swallowing them."""
+    try:
+        result = subprocess.run(["sudo", "reboot"], capture_output=True, timeout=10)
+        if result.returncode != 0:
+            log.error("reboot failed (rc=%d): %s", result.returncode, result.stderr)
+    except Exception:
+        log.error("reboot subprocess raised", exc_info=True)
+
 SCRIPT_DIR = Path(__file__).parent
 VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
 
@@ -278,13 +288,13 @@ def apply_update():
     if not tag:
         return jsonify({"error": "No tag specified"}), 400
 
-    if not updater._TAG_RE.match(tag):
+    if not updater.validate_tag(tag):
         return jsonify({"error": f"Invalid tag format: {tag}"}), 400
 
     success, message = updater.apply_update(tag)
     if success:
         sse.notify("update:rebooting", {"version": tag})
         # Schedule reboot in 5 seconds (let the HTTP response return first)
-        threading.Timer(5.0, lambda: subprocess.run(["sudo", "reboot"])).start()
+        threading.Timer(5.0, _do_reboot).start()
 
     return jsonify({"success": success, "message": message})

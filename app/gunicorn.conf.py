@@ -11,6 +11,15 @@ bind = f"0.0.0.0:{os.environ.get('WEB_PORT', '8080')}"
 # hardware.  Override via GUNICORN_WORKERS env var if needed.
 workers = int(os.environ.get("GUNICORN_WORKERS", 1))
 
+if workers > 1:
+    import warnings
+
+    warnings.warn(
+        f"GUNICORN_WORKERS={workers} may break SSE — events are per-process. "
+        "Set workers=1 or use a Redis pub/sub broker.",
+        stacklevel=1,
+    )
+
 # Use gthread worker class for SSE streaming support
 worker_class = "gthread"
 

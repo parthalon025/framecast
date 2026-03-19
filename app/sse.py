@@ -30,16 +30,15 @@ def subscribe():
     Yields:
         SSE-formatted strings (event + data lines, or keepalive comments).
     """
+    q = Queue(maxsize=_MAX_QUEUE_SIZE)
     with _clients_lock:
         if len(_clients) >= _MAX_CLIENTS:
             log.warning("SSE connection rejected: max clients (%d) reached", _MAX_CLIENTS)
             yield f"event: error\ndata: {{\"error\": \"Too many connections\"}}\n\n"
             return
-
-    q = Queue(maxsize=_MAX_QUEUE_SIZE)
-    with _clients_lock:
         _clients.append(q)
-    log.info("SSE client connected (total: %d)", len(_clients))
+        count = len(_clients)
+    log.info("SSE client connected (total: %d)", count)
 
     try:
         while True:
@@ -57,7 +56,8 @@ def subscribe():
                 _clients.remove(q)
             except ValueError:
                 pass
-        log.info("SSE client disconnected (total: %d)", len(_clients))
+            count = len(_clients)
+        log.info("SSE client disconnected (total: %d)", count)
 
 
 def notify(event, data=None):

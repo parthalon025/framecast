@@ -205,6 +205,37 @@
    7. Utility — reduced motion
    ================================================================ */
 
+/* ================================================================
+   8. Responsive Breakpoints
+   ================================================================ */
+
+/* Phone (< 480px): tighter spacing, 2-column grid */
+@media (max-width: 480px) {
+  .sh-grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .sh-dropzone { padding: var(--space-4); min-height: 150px; }
+  .boot-screen { padding: var(--space-4); }
+  .boot-screen h1 { font-size: 2rem; }
+  .qr-overlay { bottom: var(--space-3); right: var(--space-3); padding: var(--space-2); }
+}
+
+/* Tablet (481px - 1023px): default 3-column grid, standard spacing */
+
+/* Desktop/TV (>= 1024px): 4-column grid, larger display elements */
+@media (min-width: 1024px) {
+  .sh-grid-3 { grid-template-columns: repeat(4, 1fr); }
+  .boot-screen h1 { font-size: 4rem; }
+}
+
+/* TV full-screen (>= 1920px): maximize display elements */
+@media (min-width: 1920px) {
+  .boot-screen h1 { font-size: 5rem; }
+  .boot-screen .sh-label { font-size: 1.5rem; }
+}
+
+/* ================================================================
+   9. Utility — reduced motion
+   ================================================================ */
+
 @media (prefers-reduced-motion: reduce) {
   .slideshow-fade-in,
   .slideshow-fade-out,
