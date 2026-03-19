@@ -3,6 +3,9 @@ import { render } from "preact";
 import { Router, route, navigate } from "./components/Router.jsx";
 import { PhoneLayout } from "./components/PhoneLayout.jsx";
 import { Upload } from "./pages/Upload.jsx";
+import { Settings } from "./pages/Settings.jsx";
+import { Map } from "./pages/Map.jsx";
+import { Update } from "./pages/Update.jsx";
 import { DisplayRouter } from "./display/DisplayRouter.jsx";
 import { detectCapability, applyCapability } from "superhot-ui";
 
@@ -13,24 +16,15 @@ function isDisplay() {
 }
 
 // --- Placeholder page components ---
-function SettingsPage() {
-  return <div class="sh-frame" style="padding: 20px;">Settings</div>;
-}
-function MapPage() {
-  return <div class="sh-frame" style="padding: 20px;">Map</div>;
-}
-function UpdatePage() {
-  return <div class="sh-frame" style="padding: 20px;">System Update</div>;
-}
 function SetupPage() {
   return <div class="sh-frame" style="padding: 20px;">Setup</div>;
 }
 // --- Route definitions ---
 const phoneRoutes = [
   { path: "/", component: Upload },
-  { path: "/settings", component: SettingsPage },
-  { path: "/map", component: MapPage },
-  { path: "/update", component: UpdatePage },
+  { path: "/settings", component: Settings },
+  { path: "/map", component: Map },
+  { path: "/update", component: Update },
   { path: "/setup", component: SetupPage },
 ];
 
