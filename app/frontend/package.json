@@ -1,0 +1,18 @@
+{
+  "name": "framecast-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "dev": "node esbuild.config.js --watch"
+  },
+  "dependencies": {
+    "preact": "^10.25.0",
+    "@preact/signals": "^2.0.0",
+    "superhot-ui": "file:../../../../superhot-ui"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
