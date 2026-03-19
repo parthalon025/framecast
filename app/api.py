@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Blueprint, Response, jsonify, request
 
 import sse
-from modules import config, media
+from modules import config, media, wifi
 from modules.auth import require_pin
 
 log = logging.getLogger(__name__)
@@ -179,3 +179,63 @@ def locations():
     """Return GPS locations for all photos as JSON."""
     locs = media.get_photo_locations()
     return jsonify(locs)
+
+
+# ---------------------------------------------------------------------------
+# WiFi endpoints
+# ---------------------------------------------------------------------------
+
+
+@api.route("/wifi/status")
+def wifi_status():
+    """Return WiFi connection status, current SSID, AP state, and AP SSID."""
+    return jsonify({
+        "connected": wifi.is_connected(),
+        "ssid": wifi.get_current_ssid(),
+        "ap_active": wifi.is_ap_active(),
+        "ap_ssid": wifi.get_ap_ssid(),
+    })
+
+
+@api.route("/wifi/scan")
+def wifi_scan():
+    """Scan for available WiFi networks with signal strength."""
+    networks = wifi.scan_networks()
+    return jsonify(networks)
+
+
+@api.route("/wifi/connect", methods=["POST"])
+@require_pin
+def wifi_connect():
+    """Connect to a WiFi network. Body: {"ssid": "...", "password": "..."}."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "")
+
+    if not ssid:
+        return jsonify({"error": "SSID is required"}), 400
+
+    success, message = wifi.connect(ssid, password)
+    status_code = 200 if success else 502
+    return jsonify({"success": success, "message": message}), status_code
+
+
+@api.route("/wifi/ap/start", methods=["POST"])
+@require_pin
+def wifi_ap_start():
+    """Start WiFi AP mode."""
+    success, message = wifi.start_ap()
+    status_code = 200 if success else 502
+    return jsonify({"success": success, "message": message}), status_code
+
+
+@api.route("/wifi/ap/stop", methods=["POST"])
+@require_pin
+def wifi_ap_stop():
+    """Stop WiFi AP mode."""
+    success, message = wifi.stop_ap()
+    status_code = 200 if success else 502
+    return jsonify({"success": success, "message": message}), status_code
