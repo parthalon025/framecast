@@ -27,49 +27,93 @@ Eliminate the install step. User flashes an SD card, boots the Pi, and FrameCast
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│              FrameCast OS Image                  │
-│         (pi-gen custom stage, arm64)             │
-├─────────────────────────────────────────────────┤
-│                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │ VLC      │  │ Flask    │  │ WiFi Manager │  │
-│  │ Slideshow│  │ Web App  │  │ (forked from │  │
-│  │          │  │ (superhot│  │  comitup)    │  │
-│  │ systemd  │  │  -ui)    │  │              │  │
-│  │ service  │  │          │  │ NetworkMgr   │  │
-│  └──────────┘  │ Upload   │  │ AP+Captive   │  │
-│                │ Settings │  │ Portal       │  │
-│  ┌──────────┐  │ Update   │  └──────────────┘  │
-│  │ Openbox  │  │ Onboard  │                     │
-│  │ (minimal │  └──────────┘  ┌──────────────┐  │
-│  │  X11)    │                │ OTA Updater  │  │
-│  └──────────┘                │ git-pull +   │  │
-│                              │ health check │  │
-│  ┌──────────┐                └──────────────┘  │
-│  │ HW       │                                   │
-│  │ Watchdog │                                   │
-│  └──────────┘                                   │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│                 FrameCast OS Image                     │
+│            (pi-gen custom stage, arm64)                │
+├───────────────────────────────────────────────────────┤
+│                                                        │
+│  ┌───────────────────────────────┐  ┌──────────────┐  │
+│  │ Flask Web App (superhot-ui)   │  │ WiFi Manager │  │
+│  │                               │  │ (forked from │  │
+│  │  Phone UI:     TV Display:    │  │  comitup)    │  │
+│  │  - Upload      - Slideshow    │  │              │  │
+│  │  - Settings    - Transitions  │  │ NetworkMgr   │  │
+│  │  - Map         - Boot seq     │  │ AP+Captive   │  │
+│  │  - Update      - QR codes     │  │ Portal       │  │
+│  │  - Onboard     - Welcome      │  └──────────────┘  │
+│  │                               │                     │
+│  │  One app, two surfaces        │  ┌──────────────┐  │
+│  └───────────────────────────────┘  │ OTA Updater  │  │
+│                                     │ git-pull +   │  │
+│  ┌───────────────┐                  │ health check │  │
+│  │ Kiosk Browser │                  └──────────────┘  │
+│  │ (cage +       │                                     │
+│  │  GTK-WebKit)  │  ┌──────────┐                      │
+│  │ Wayland, no   │  │ HW       │                      │
+│  │ X11           │  │ Watchdog │                      │
+│  └───────────────┘  └──────────┘                      │
+└───────────────────────────────────────────────────────┘
 ```
+
+**Key insight:** The slideshow IS the web app. Flask serves two surfaces from one codebase:
+- **Phone** → upload, settings, map, update, onboarding (accessed via browser)
+- **TV** → slideshow with CSS transitions, boot sequence, QR codes (displayed in kiosk browser)
+
+No VLC. No mpv. No separate slideshow engine. Photo transitions are CSS animations.
+Video playback via HTML5 `<video>` element.
 
 ### Systemd Services
 
 | Service | Purpose | Type |
 |---------|---------|------|
-| `slideshow` | VLC fullscreen on X11/openbox | existing, unchanged |
-| `photo-upload` | Flask web app (superhot-ui frontend) | rewritten |
+| `framecast` | Flask web app (both phone UI and TV display) | rewritten |
+| `framecast-kiosk` | Kiosk browser pointed at `localhost:8080/display` | new |
 | `wifi-manager` | NetworkManager WiFi provisioning (forked from comitup) | new |
 | `framecast-update.timer` | OTA checker (daily, opt-in) | new |
 | `watchdog` | Hardware watchdog (bcm2835_wdt) | existing |
 
 ### Display Stack
 
-Minimal X11 — no desktop environment:
-- Openbox window manager (lightest WM with EWMH compliance for VLC)
-- Auto-login on tty1 → `startx` → `.xinitrc` → openbox → VLC
-- No LightDM, no LXDE, no taskbar
+No X11. Wayland-based kiosk:
+- **cage** — single-window Wayland compositor designed for kiosks (used by rpi-image-gen webkiosk example)
+- **GTK-WebKit (GJS)** — lightweight browser, much less RAM than Chromium (~50MB vs ~200MB). Used by kiosk.pi.
+- Auto-login on tty1 → cage → GJS browser → `http://localhost:8080/display`
 - Screen blanking disabled
+- Fallback: if GTK-WebKit has issues with HTML5 video on Pi, swap to Chromium in kiosk mode (heavier but proven)
+
+### TV Display Routes
+
+| Route | Purpose |
+|-------|---------|
+| `/display` | Main TV route — slideshow with transitions |
+| `/display/welcome` | No-photos welcome screen with QR code |
+| `/display/setup` | AP mode setup screen with QR to captive portal |
+| `/display/boot` | Boot sequence animation (`bootSequence()`) |
+
+The kiosk browser loads `/display` which auto-routes based on state:
+- No WiFi → redirects to `/display/setup`
+- No photos → redirects to `/display/welcome`
+- Photos exist → shows slideshow (with 30s QR overlay on boot)
+
+### Photo Transitions (CSS)
+
+All transitions are pure CSS animations on the TV display page:
+
+| Transition | CSS Technique |
+|------------|--------------|
+| Fade | `opacity` transition between stacked images |
+| Slide | `transform: translateX()` with timing function |
+| Zoom | `transform: scale()` — Ken Burns effect |
+| None | Instant swap (for low-capability detection) |
+
+User selects transition type in settings. `detectCapability()` auto-downgrades to simpler transitions on Pi 3.
+
+### Open Question: HTML5 Video on Pi
+
+HTML5 `<video>` hardware decode on Raspberry Pi via browser needs validation:
+- Pi 4/5: V4L2 H.264/HEVC decode should work through Wayland
+- Pi 3: May need `--enable-features=VaapiVideoDecoder` or similar flags
+- If browser video is insufficient, fall back to launching mpv externally for video files only (hybrid approach)
 
 ---
 
@@ -78,31 +122,42 @@ Minimal X11 — no desktop environment:
 ```
 Power on
   │
-  ├─ openbox starts (minimal X11)
-  ├─ VLC slideshow service starts
+  ├─ cage starts (Wayland kiosk compositor)
+  ├─ GJS/WebKit browser opens http://localhost:8080/display
+  ├─ /display/boot plays bootSequence() typewriter:
+  │     "FRAMECAST v1.0"
+  │     "INITIALIZING..."
+  │     "CHECKING NETWORK..."
   │
   ├─ WiFi configured?
-  │   ├─ NO → AP mode ("FrameCast-XXXX")
-  │   │       TV shows welcome screen:
-  │   │         bootSequence() typewriter:
-  │   │           "FRAMECAST v1.0"
-  │   │           "NO NETWORK CONFIGURED"
-  │   │           "SETUP REQUIRED"
-  │   │         QR code → http://192.168.4.1:8080
-  │   │         "CONNECT TO WIFI: FrameCast-XXXX"
+  │   ├─ NO → /display/setup:
+  │   │       bootSequence() continues:
+  │   │         "NO NETWORK CONFIGURED"
+  │   │         "SETUP REQUIRED"
+  │   │       QR code → http://192.168.4.1:8080
+  │   │       "CONNECT TO WIFI: FrameCast-XXXX"
   │   │       [persistent until WiFi configured]
+  │   │       [Flask serves captive portal on same port]
   │   │
   │   └─ YES → Photos exist?
-  │       ├─ NO → Welcome screen:
+  │       ├─ NO → /display/welcome:
   │       │       QR code → http://framecast.local:8080
   │       │       "AWAITING INPUT" mantra
   │       │       [persistent until photos uploaded]
+  │       │       [auto-refreshes when first photo lands]
   │       │
-  │       └─ YES → QR overlay for 30s (configurable)
-  │               then → normal slideshow
+  │       └─ YES → /display (slideshow):
+  │               QR overlay for 30s (configurable)
+  │               then → slideshow with CSS transitions
+  │               [WebSocket push updates when new photos uploaded]
 ```
 
 The 30-second QR on reboot is a safety net — family members who need to add more photos catch it after any power cycle.
+
+The `/display` route uses WebSocket (or SSE) from Flask to react in real-time:
+- New photo uploaded → slideshow adds it without page reload
+- Settings changed (transition type, duration) → applies immediately
+- WiFi lost → transitions to `/display/setup` automatically
 
 ---
 
@@ -215,27 +270,29 @@ stage2-framecast/
   prerun.sh                      # copy_previous
   EXPORT_IMAGE                   # triggers .img export
   00-packages/
-    00-packages                  # vlc, openbox, python3-flask, ffmpeg,
-                                 # xdotool, watchdog, qrencode, avahi-daemon,
-                                 # network-manager, python3-pil, python3-pip
+    00-packages                  # cage, gjs, gir1.2-webkit2-4.0,
+                                 # python3-flask, ffmpeg, watchdog,
+                                 # qrencode, avahi-daemon, network-manager,
+                                 # python3-pil, python3-pip, nodejs (for esbuild)
   01-config/
     01-run.sh                    # boot config, display settings, watchdog
     files/
       config.txt                 # GPU mem (Pi 3), disable splash
       cmdline.txt                # quiet boot
   02-app/
-    01-run.sh                    # copy app files, install npm deps
+    01-run.sh                    # copy app files, build frontend (npm run build)
     01-run-chroot.sh             # enable services, create user, sudoers
     files/
-      slideshow.service
-      photo-upload.service
+      framecast.service          # Flask web app
+      framecast-kiosk.service    # cage + GJS browser → localhost:8080/display
       wifi-manager.service
       framecast-update.timer
       framecast-update.service
   03-system/
     01-run.sh                    # SD card longevity (journal, tmpfs, noatime)
     files/
-      .xinitrc                   # openbox → VLC
+      kiosk.sh                   # cage → GJS browser fullscreen
+      kiosk-browser.js           # GJS/WebKit browser script
       pi-photo-display.conf      # journald limits
 ```
 
@@ -278,21 +335,36 @@ framecast/
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── FUNDING.yml               # if applicable
 ├── app/                           # Flask web app (existing, rewritten)
-│   ├── static/                    # superhot-ui dist, assets
-│   ├── templates/                 # Jinja2 templates
+│   ├── static/                    # superhot-ui dist, built frontend assets
+│   ├── templates/                 # Jinja2 templates (minimal — Preact SPA)
 │   ├── modules/                   # Python modules
-│   ├── frontend/                  # Preact source (esbuild)
+│   │   ├── config.py              # existing
+│   │   ├── media.py               # existing (GPS, locations, file management)
+│   │   ├── services.py            # existing
+│   │   ├── wifi.py                # NetworkManager WiFi provisioning (from comitup)
+│   │   └── updater.py             # OTA update logic
+│   ├── frontend/                  # Preact + superhot-ui source (esbuild)
 │   │   ├── src/
-│   │   │   ├── pages/             # Onboard, Upload, Settings, Update
-│   │   │   ├── components/        # ShDropzone, WiFiList, PhotoGrid
-│   │   │   └── app.jsx            # Router + ShNav
+│   │   │   ├── pages/
+│   │   │   │   ├── Upload.jsx     # Photo upload with ShDropzone
+│   │   │   │   ├── Settings.jsx   # All settings
+│   │   │   │   ├── Map.jsx        # Photo map (Leaflet + GPS)
+│   │   │   │   ├── Update.jsx     # OTA update UI
+│   │   │   │   └── Onboard.jsx    # WiFi setup wizard
+│   │   │   ├── display/           # TV display pages (kiosk browser)
+│   │   │   │   ├── Slideshow.jsx  # Photo slideshow with CSS transitions
+│   │   │   │   ├── Welcome.jsx    # No-photos QR screen
+│   │   │   │   ├── Setup.jsx      # AP mode QR screen
+│   │   │   │   └── Boot.jsx       # bootSequence() animation
+│   │   │   ├── components/        # ShDropzone, WiFiList, PhotoGrid, QRCode
+│   │   │   └── app.jsx            # Router + ShNav (phone) / display router (TV)
 │   │   ├── package.json
 │   │   └── esbuild.config.js
-│   ├── web_upload.py              # Flask routes
-│   ├── wifi_manager.py            # NetworkManager WiFi provisioning
-│   ├── updater.py                 # OTA update logic
-│   ├── slideshow.sh               # existing
+│   ├── web_upload.py              # Flask routes (phone + TV display)
 │   └── .env.example
+├── kiosk/                         # Kiosk browser scripts
+│   ├── kiosk.sh                   # cage → GJS browser
+│   └── browser.js                 # GJS/WebKit fullscreen browser
 ├── pi-gen/                        # pi-gen build config
 │   ├── config                     # IMG_NAME, STAGE_LIST, etc.
 │   ├── stage2-framecast/          # custom stage
@@ -301,6 +373,11 @@ framecast/
 │   ├── smoke-test.sh              # existing
 │   └── health-check.sh            # post-update rollback check
 ├── systemd/                       # service/timer definitions
+│   ├── framecast.service          # Flask web app
+│   ├── framecast-kiosk.service    # cage + GJS browser
+│   ├── wifi-manager.service       # WiFi provisioning
+│   ├── framecast-update.service   # OTA updater
+│   └── framecast-update.timer     # daily update check
 ├── docs/
 │   └── plans/                     # design docs, research
 ├── install.sh                     # kept for dev/manual install
@@ -370,6 +447,64 @@ States via `data-sh-dropzone` attribute:
 
 ---
 
+## Slideshow Engine (Browser-Based)
+
+The slideshow is a Preact SPA page (`/display`) running in the kiosk browser. No VLC, no mpv.
+
+### How It Works
+
+1. Flask serves `/display` → Preact app loads photo list via `/api/photos`
+2. Two `<img>` elements stacked (current + next), CSS transition between them
+3. WebSocket/SSE from Flask pushes events: new photo, deleted photo, settings change
+4. Timer advances photos at configured interval (`PHOTO_DURATION`)
+5. Video files play via HTML5 `<video>` with `autoplay muted` (unmuted if only video)
+
+### Transition Implementation
+
+```
+┌──────────────────────────┐
+│ .slideshow-container      │
+│ ┌──────────────────────┐ │
+│ │ img.current (z: 2)   │ │  ← visible photo
+│ │ opacity: 1            │ │
+│ ├──────────────────────┤ │
+│ │ img.next (z: 1)      │ │  ← preloaded next photo
+│ │ opacity: 0            │ │
+│ └──────────────────────┘ │
+└──────────────────────────┘
+
+On advance:
+  1. Set next.src = photos[i+1], preload
+  2. Apply transition class to current (e.g. .fade-out)
+  3. Apply transition class to next (e.g. .fade-in)
+  4. On transitionend: swap z-index, reset classes
+```
+
+| Transition | CSS | Emotional Fit |
+|------------|-----|---------------|
+| Fade | `opacity 0→1 / 1→0` over 1.5s ease | Calm, default |
+| Slide | `translateX(100%) → 0` | Motion, energy |
+| Ken Burns | `scale(1) → scale(1.1)` + slow pan | Cinematic, photos |
+| Dissolve | Crossfade with slight blur | Soft, dreamy |
+| None | Instant swap | Low-capability fallback |
+
+### Real-Time Updates
+
+Flask → browser communication via WebSocket (flask-socketio or SSE):
+- `photo:added` → insert into rotation, preload
+- `photo:deleted` → remove from rotation, skip if current
+- `settings:changed` → apply new duration/transition immediately
+- `wifi:lost` → show setup screen
+- `update:rebooting` → show boot sequence
+
+### QR Code Overlay
+
+On boot with photos present: 30s overlay at bottom-right showing QR code to web UI.
+Generated client-side using a JS QR library (qrcode.js) — no server-side qrencode needed for the display.
+Server-side qrencode still used for the static welcome images (no-WiFi and no-photos states).
+
+---
+
 ## v2 Backlog
 
 Captured for next iteration — not in v1 scope:
@@ -383,6 +518,7 @@ Captured for next iteration — not in v1 scope:
 7. **Multiple frame discovery** — if a household has 2+ frames, the web UI could show a "FRAMES" page listing all discovered frames via mDNS.
 8. **HDMI-CEC remote control** — map TV remote buttons to slideshow controls (pause, next, previous) via `cec-utils`.
 9. **Auto-update rollback logging** — write rollback events to persistent log for debugging.
+10. **HTML5 video hardware decode validation** — verify H.264/HEVC hardware decode through GTK-WebKit on Pi 3/4/5 via Wayland. If insufficient, hybrid approach: browser for photos, launch mpv externally for video files only.
 
 ---
 
