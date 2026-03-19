@@ -95,6 +95,7 @@ API calls (photo list, WebSocket events). With 2 workers, uploads and display ru
 | `framecast-kiosk` | Kiosk browser pointed at `localhost:8080/display` | new |
 | `wifi-manager` | NetworkManager WiFi provisioning (forked from comitup) | new |
 | `framecast-update.timer` | OTA checker (daily, opt-in) | new |
+| `avahi-daemon` | mDNS (`framecast.local` resolution) | system, enabled |
 | `watchdog` | Hardware watchdog (bcm2835_wdt) | existing |
 
 ### Display Stack
@@ -279,7 +280,7 @@ User clicks "CHECK FOR UPDATES" on settings/update page.
 ### Rollback (health check + git revert)
 After update + reboot:
 1. 90-second watchdog timer starts
-2. Check: are `slideshow` and `photo-upload` services both `active`?
+2. Check: are `framecast` and `framecast-kiosk` services both `active`?
 3. If YES → update confirmed, clear rollback state
 4. If NO → `git checkout <previous-tag>`, re-install, reboot
 5. Failure mode: "frame shows old version" not "frame is bricked"
@@ -515,18 +516,154 @@ On advance:
 
 ### Real-Time Updates
 
-Flask → browser communication via WebSocket (flask-socketio or SSE):
-- `photo:added` → insert into rotation, preload
-- `photo:deleted` → remove from rotation, skip if current
-- `settings:changed` → apply new duration/transition immediately
-- `wifi:lost` → show setup screen
-- `update:rebooting` → show boot sequence
+Flask → browser communication via **SSE** (Server-Sent Events), not WebSocket:
+- SSE is simpler than WebSocket — one-direction push is all the TV display needs
+- No gevent/eventlet dependency required (WebSocket + gunicorn needs special worker class)
+- Native browser support via `EventSource` API
+- Events:
+  - `photo:added` → insert into rotation, preload
+  - `photo:deleted` → remove from rotation, skip if current
+  - `settings:changed` → apply new duration/transition immediately
+  - `wifi:lost` → show setup screen
+  - `update:rebooting` → show boot sequence
 
 ### QR Code Overlay
 
 On boot with photos present: 30s overlay at bottom-right showing QR code to web UI.
 Generated client-side using a JS QR library (qrcode.js) — no server-side qrencode needed for the display.
 Server-side qrencode still used for the static welcome images (no-WiFi and no-photos states).
+
+---
+
+## Security
+
+### Web UI Authentication
+
+The web UI is accessible to anyone on the local network. For a family photo frame this is
+usually fine, but a public release needs protection against unwanted uploads.
+
+**v1 approach:** Optional PIN displayed on the TV screen.
+- On first boot, generate a random 4-digit PIN, store in `.env`
+- PIN shown on the TV welcome/QR screen: `"ACCESS PIN: 7392"`
+- Phone web UI prompts for PIN on first visit, stores in cookie (30-day expiry)
+- PIN can be changed or disabled in settings
+- No PIN required when accessing from the AP captive portal (already physically present)
+
+### Default System Password
+
+`FIRST_USER_NAME="pi"` with `FIRST_USER_PASS` set to a random 12-char string generated
+at image build time and baked in. Since SSH is disabled by default, this is low risk.
+If SSH is enabled (v2), the settings page will show the system password and allow changing it.
+
+### Network Exposure
+
+- Only port 8080 open (Flask/gunicorn)
+- SSH disabled by default (v2 toggle: issue #4)
+- avahi-daemon for mDNS only (no other network services)
+- No UPnP, no port forwarding, no external access
+
+---
+
+## Display Behavior
+
+### Aspect Ratio & Orientation
+
+- Photos displayed with `object-fit: contain` — letterboxed, never cropped
+- Background: `--sh-void` (black) for letterbox bars
+- EXIF orientation handled natively by CSS: `image-orientation: from-image`
+  (supported in all modern browsers, WebKit included)
+- Resolution: renders at TV native resolution (720p, 1080p, 4K) — cage auto-detects
+
+### Image Preloading
+
+The slideshow preloads **next 2 images only** to keep browser memory bounded:
+
+```
+photos = [A, B, C, D, E, ...]
+         ↑current
+            ↑preloaded
+               ↑preloaded
+                  (not loaded)
+```
+
+- Use `new Image()` constructor for preload (no DOM insertion until transition)
+- On transition: current becomes previous (release), next becomes current, preload next+1
+- For 1000 photos on Pi 3: ~3 images in memory at any time (~15MB for 1080p JPEGs)
+
+### Photo Ordering
+
+Configurable in settings:
+- **Shuffle** (default) — random order, reshuffled each cycle
+- **Newest first** — most recently uploaded at the start
+- **Oldest first** — chronological order
+- **Alphabetical** — by filename
+
+### HDMI Schedule
+
+Turn the display off at night, on in the morning. Configurable times in settings.
+
+With cage/Wayland, HDMI control via `wlr-randr`:
+```bash
+# Off: disable the output
+wlr-randr --output HDMI-A-1 --off
+
+# On: re-enable at preferred resolution
+wlr-randr --output HDMI-A-1 --on
+```
+
+Implemented as a systemd timer that runs `hdmi-control.sh` at configured times.
+Falls back to kernel DPMS (`/sys/class/drm/card*/dpms`) if `wlr-randr` is unavailable.
+
+---
+
+## Disk & Storage
+
+### Upload Limits
+
+- **Per-file:** configurable max upload size (default 50MB, in `.env` as `MAX_UPLOAD_MB`)
+- **Concurrent uploads:** semaphore limits to 2 simultaneous uploads (prevents OOM on Pi 3)
+- **Auto-resize:** photos larger than 1920px are resized down (preserves EXIF), configurable
+
+### Disk Space Management
+
+- Upload page shows current disk usage: `"STORAGE: 2.1G / 14.2G [▓▓▓░░░░░░░]"`
+- Warning toast at 90% full: `"[STORAGE] LOW DISK SPACE"`
+- Block uploads at 95% full: `"[STORAGE] FULL — DELETE FILES TO CONTINUE"`
+- Thumbnails stored in a cache directory, regenerated if missing
+
+### SD Card Longevity
+
+Carried forward from existing installer:
+- `/tmp` mounted as tmpfs (RAM disk, 100MB)
+- `noatime` on root filesystem
+- Journal limited to 50MB / 7 days retention
+- Media writes are the primary I/O — expected and acceptable
+
+---
+
+## Network
+
+### mDNS / Service Discovery
+
+- **avahi-daemon** enabled, advertises `_http._tcp` on port 8080
+- Hostname: `framecast` → accessible at `http://framecast.local:8080`
+- Avahi service file at `/etc/avahi/services/framecast.service`
+- Added to systemd services list
+
+### Ethernet Support
+
+- If eth0 has a link on boot, skip AP mode entirely — the Pi already has network
+- WiFi onboarding page still accessible for configuring WiFi as a backup
+- Ethernet takes priority over WiFi (standard NetworkManager behavior)
+
+### Offline Operation
+
+FrameCast works fully offline after initial WiFi setup:
+- **Slideshow:** runs from local media files, no internet needed
+- **Uploads:** works over local network, no cloud dependency
+- **Settings:** all local
+- **Updates:** only feature that requires internet (checks GitHub Releases API)
+- **Map:** uses OpenStreetMap tiles — requires internet for tile loading. Tiles are not cached.
 
 ---
 
