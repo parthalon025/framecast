@@ -121,7 +121,7 @@ export function Upload() {
   }
 
   return (
-    <div class="sh-animate-page-enter" style="padding: 12px; display: flex; flex-direction: column; gap: 16px;">
+    <div class="sh-animate-page-enter fc-page">
       {/* Dropzone */}
       <ShDropzone
         onUpload={handleUpload}

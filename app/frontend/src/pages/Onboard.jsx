@@ -61,7 +61,7 @@ function NetworkItem({ network, onSelect }) {
   return (
     <div
       class="sh-frame sh-clickable"
-      style="cursor: pointer; margin-bottom: 8px;"
+      style="cursor: pointer; margin-bottom: 8px; min-height: 44px;"
       onClick={() => onSelect(network)}
       role="button"
       tabIndex={0}
@@ -205,7 +205,7 @@ export function Onboard() {
   }
 
   return (
-    <div class="sh-animate-page-enter" style="padding: 12px; display: flex; flex-direction: column; gap: 12px;">
+    <div class="sh-animate-page-enter fc-page">
       <ProgressSteps current={step} error={errorStep} />
 
       {/* STEP 1: SCANNING */}

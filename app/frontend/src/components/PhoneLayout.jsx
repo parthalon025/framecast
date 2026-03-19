@@ -56,7 +56,7 @@ const navItems = [
 export function PhoneLayout({ children }) {
   return (
     <div style="min-height: 100vh;">
-      <div style="padding-bottom: 72px;">
+      <div>
         {children}
       </div>
       <ShNav

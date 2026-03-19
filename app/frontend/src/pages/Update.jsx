@@ -200,7 +200,7 @@ export function Update() {
   }
 
   return (
-    <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px;">
+    <div class="fc-page">
       <div class="sh-frame" data-label="SYSTEM UPDATE">
         <div style="display: flex; flex-direction: column; gap: 16px;">
           {/* Version display */}

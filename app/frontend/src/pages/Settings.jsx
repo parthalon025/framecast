@@ -87,7 +87,7 @@ export function Settings() {
   const hasDirty = Object.keys(dirty).length > 0;
 
   return (
-    <div style="display: flex; flex-direction: column; gap: 12px; padding: 12px;">
+    <div class="fc-page">
       {/* DISPLAY */}
       <div class="sh-frame" data-label="DISPLAY">
         <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -98,7 +98,6 @@ export function Settings() {
               min="1"
               value={settings.photo_duration}
               onInput={(evt) => update("photo_duration", parseInt(evt.target.value, 10) || 1)}
-              style="width: 80px;"
             />
           </SettingRow>
 
@@ -137,7 +136,6 @@ export function Settings() {
               min="1"
               value={settings.qr_display_seconds}
               onInput={(evt) => update("qr_display_seconds", parseInt(evt.target.value, 10) || 1)}
-              style="width: 80px;"
             />
           </SettingRow>
         </div>
@@ -162,7 +160,6 @@ export function Settings() {
                   value={settings.hdmi_off_time}
                   placeholder="HH:MM"
                   onInput={(evt) => update("hdmi_off_time", evt.target.value)}
-                  style="width: 80px;"
                 />
               </SettingRow>
 
@@ -173,7 +170,6 @@ export function Settings() {
                   value={settings.hdmi_on_time}
                   placeholder="HH:MM"
                   onInput={(evt) => update("hdmi_on_time", evt.target.value)}
-                  style="width: 80px;"
                 />
               </SettingRow>
             </>
@@ -199,7 +195,6 @@ export function Settings() {
                 min="1"
                 value={settings.max_upload_mb}
                 onInput={(evt) => update("max_upload_mb", parseInt(evt.target.value, 10) || 1)}
-                style="width: 80px;"
               />
             </SettingRow>
 
@@ -210,7 +205,6 @@ export function Settings() {
                 min="1"
                 value={settings.auto_resize_max}
                 onInput={(evt) => update("auto_resize_max", parseInt(evt.target.value, 10) || 1)}
-                style="width: 80px;"
               />
             </SettingRow>
           </div>
@@ -255,7 +249,7 @@ export function Settings() {
 /** Row with UPPERCASE label on left, control on right. */
 function SettingRow({ label, children }) {
   return (
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <div class="fc-setting-row">
       <span class="sh-label" style="white-space: nowrap;">{label}</span>
       {children}
     </div>
