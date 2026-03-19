@@ -1,12 +1,76 @@
 /** @fileoverview FrameCast application root — routes phone UI and TV display. */
-import { signal } from "@preact/signals";
+import { render } from "preact";
+import { Router, route, navigate } from "./components/Router.jsx";
+import { detectCapability, applyCapability } from "superhot-ui";
 
-// Detect surface: TV display (/display/*) vs phone UI (everything else)
-const path = signal(window.location.pathname);
-
-export function App() {
-  // TODO: implement router
-  // Phone: ShNav + pages (Upload, Settings, Map, Update, Onboard)
-  // TV: display pages (Slideshow, Welcome, Setup, Boot)
-  return null;
+// --- Surface detection ---
+// /display* = TV display surface, everything else = phone UI
+function isDisplay() {
+  return route.value.startsWith("/display");
 }
+
+// --- Placeholder page components ---
+function UploadPage() {
+  return <div class="sh-frame" style="padding: 20px;">Upload</div>;
+}
+function SettingsPage() {
+  return <div class="sh-frame" style="padding: 20px;">Settings</div>;
+}
+function MapPage() {
+  return <div class="sh-frame" style="padding: 20px;">Map</div>;
+}
+function UpdatePage() {
+  return <div class="sh-frame" style="padding: 20px;">System Update</div>;
+}
+function SetupPage() {
+  return <div class="sh-frame" style="padding: 20px;">Setup</div>;
+}
+function DisplayPage() {
+  return <div style="position: fixed; inset: 0; background: black;">Display</div>;
+}
+
+// --- Route definitions ---
+const phoneRoutes = [
+  { path: "/", component: UploadPage },
+  { path: "/settings", component: SettingsPage },
+  { path: "/map", component: MapPage },
+  { path: "/update", component: UpdatePage },
+  { path: "/setup", component: SetupPage },
+];
+
+const displayRoutes = [
+  { path: "/display", component: DisplayPage },
+  { path: "*", component: DisplayPage },
+];
+
+// --- App shell ---
+function App() {
+  if (isDisplay()) {
+    return <Router routes={displayRoutes} />;
+  }
+  return <Router routes={phoneRoutes} />;
+}
+
+// --- Init ---
+const cap = detectCapability();
+applyCapability(cap);
+
+// Intercept hash-style links from ShNav and convert to pushState
+document.addEventListener("click", (evt) => {
+  const anchor = evt.target.closest("a[href]");
+  if (!anchor) return;
+  const href = anchor.getAttribute("href");
+  // Handle hash links from ShNav (href="#/path")
+  if (href && href.startsWith("#")) {
+    evt.preventDefault();
+    navigate(href.slice(1) || "/");
+    return;
+  }
+  // Handle internal pushState links
+  if (href && href.startsWith("/") && !href.startsWith("//")) {
+    evt.preventDefault();
+    navigate(href);
+  }
+});
+
+render(<App />, document.getElementById("app"));
