@@ -1,0 +1,10 @@
+IMG_NAME="FrameCast"
+RELEASE="bookworm"
+TARGET_HOSTNAME="framecast"
+FIRST_USER_NAME="pi"
+FIRST_USER_PASS="framecast"
+ENABLE_SSH=0
+LOCALE_DEFAULT="en_US.UTF-8"
+KEYBOARD_KEYMAP="us"
+TIMEZONE_DEFAULT="UTC"
+STAGE_LIST="stage0 stage1 stage2 stage2-framecast"
