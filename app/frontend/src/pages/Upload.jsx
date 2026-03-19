@@ -3,6 +3,7 @@ import { signal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
+import { createSSE } from "../lib/sse.js";
 
 /** Reactive state */
 const photos = signal([]);
@@ -48,41 +49,10 @@ function fetchStatus() {
  */
 export function Upload() {
   const sseRef = useRef(null);
-  const reconnectTimer = useRef(null);
-  const sseBackoff = useRef(1000);
-  const SSE_BACKOFF_MAX = 60000;
 
-  /** Connect to SSE endpoint with exponential backoff reconnect. */
-  function connectSSE() {
-    if (sseRef.current) {
-      sseRef.current.close();
-    }
-
-    const es = new EventSource("/api/events");
-    sseRef.current = es;
-
-    es.addEventListener("photo:added", () => {
-      fetchPhotos();
-      fetchStatus();
-    });
-
-    es.addEventListener("photo:deleted", () => {
-      fetchPhotos();
-      fetchStatus();
-    });
-
-    es.onopen = () => {
-      // Reset backoff on successful connection
-      sseBackoff.current = 1000;
-    };
-
-    es.onerror = () => {
-      es.close();
-      sseRef.current = null;
-      clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(connectSSE, sseBackoff.current);
-      sseBackoff.current = Math.min(sseBackoff.current * 2, SSE_BACKOFF_MAX);
-    };
+  function handleRefresh() {
+    fetchPhotos();
+    fetchStatus();
   }
 
   useEffect(() => {
@@ -91,14 +61,16 @@ export function Upload() {
       loading.value = false;
     });
 
-    // Connect SSE
-    connectSSE();
+    // Connect SSE with shared backoff utility
+    const sse = createSSE("/api/events", {
+      listeners: {
+        "photo:added": handleRefresh,
+        "photo:deleted": handleRefresh,
+      },
+    });
+    sseRef.current = sse;
 
-    // Cleanup on unmount
-    return () => {
-      if (sseRef.current) sseRef.current.close();
-      clearTimeout(reconnectTimer.current);
-    };
+    return () => sse.close();
   }, []);
 
   function handleUpload() {

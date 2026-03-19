@@ -11,6 +11,7 @@
  */
 import { signal } from "@preact/signals";
 import { useRef, useEffect, useCallback } from "preact/hooks";
+import { createSSE } from "../lib/sse.js";
 
 // --- Signals (module-level for SSE reactivity) ---
 const photoList = signal([]);
@@ -92,7 +93,10 @@ function transitionMs(type) {
 /** Remove all child nodes from a DOM element (safe alternative to innerHTML). */
 function clearChildren(el) {
   while (el.firstChild) {
-    el.removeChild(el.firstChild);
+    const child = el.firstChild;
+    // Clear any pending error timeout before removing (prevents leak)
+    if (child._errTimeout) clearTimeout(child._errTimeout);
+    el.removeChild(child);
   }
 }
 
@@ -100,7 +104,7 @@ function clearChildren(el) {
  * Set the source of a layer element (img or video).
  * Replaces the element's children to switch between img/video cleanly.
  */
-function setLayerContent(layer, photo, onVideoEnded) {
+function setLayerContent(layer, photo, onAdvance) {
   if (!layer || !photo) return;
   clearChildren(layer);
   if (photo.is_video) {
@@ -111,8 +115,8 @@ function setLayerContent(layer, photo, onVideoEnded) {
     vid.playsInline = true;
     vid.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;";
-    if (onVideoEnded) {
-      vid.addEventListener("ended", onVideoEnded, { once: true });
+    if (onAdvance) {
+      vid.addEventListener("ended", onAdvance, { once: true });
     }
     layer.appendChild(vid);
   } else {
@@ -123,9 +127,9 @@ function setLayerContent(layer, photo, onVideoEnded) {
       "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-orientation:from-image;";
     img.onerror = () => {
       console.warn("Slideshow: failed to load image", photo.name);
-      // Advance to next photo after 3s on broken image
-      if (onVideoEnded) {
-        setTimeout(onVideoEnded, 3000);
+      if (onAdvance) {
+        // Store timeout ID on the element for cleanup
+        img._errTimeout = setTimeout(onAdvance, 3000);
       }
     };
     layer.appendChild(img);
@@ -269,8 +273,6 @@ export function Slideshow() {
     init();
 
     // SSE: refresh list on photo:added / photo:deleted
-    let source = null;
-
     function handlePhotoChange() {
       if (cancelled) return;
       fetch("/api/photos")
@@ -289,42 +291,25 @@ export function Slideshow() {
         .catch((err) => console.error("Slideshow: SSE refetch failed", err));
     }
 
-    let sseBackoff = 1000;
-    const SSE_BACKOFF_MAX = 60000;
-
-    function connectSSE() {
-      if (source) source.close();
-      source = new EventSource("/api/events");
-
-      source.addEventListener("photo:added", handlePhotoChange);
-      source.addEventListener("photo:deleted", handlePhotoChange);
-      source.addEventListener("settings:changed", (evt) => {
-        if (cancelled) return;
-        try {
-          const cfg = JSON.parse(evt.data);
-          settingsData.value = cfg;
-        } catch (parseErr) {
-          console.warn("Slideshow: failed to parse settings:changed SSE data", parseErr);
-        }
-      });
-
-      source.onopen = () => {
-        // Reset backoff on successful connection
-        sseBackoff = 1000;
-      };
-
-      source.onerror = () => {
-        source.close();
-        setTimeout(connectSSE, sseBackoff);
-        sseBackoff = Math.min(sseBackoff * 2, SSE_BACKOFF_MAX);
-      };
-    }
-
-    connectSSE();
+    const sse = createSSE("/api/events", {
+      listeners: {
+        "photo:added": handlePhotoChange,
+        "photo:deleted": handlePhotoChange,
+        "settings:changed": (evt) => {
+          if (cancelled) return;
+          try {
+            const cfg = JSON.parse(evt.data);
+            settingsData.value = cfg;
+          } catch (parseErr) {
+            console.warn("Slideshow: failed to parse settings:changed SSE data", parseErr);
+          }
+        },
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (source) source.close();
+      sse.close();
       const s = state.current;
       if (s.timer) {
         clearTimeout(s.timer);
