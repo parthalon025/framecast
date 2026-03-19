@@ -10,13 +10,18 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
+from modules import config
+
 log = logging.getLogger(__name__)
 
 VERSION_FILE = Path(__file__).resolve().parent.parent.parent / "VERSION"
 INSTALL_DIR = VERSION_FILE.parent
 ROLLBACK_FILE = Path("/tmp/framecast-rollback-tag")
+# Configurable via .env for forks. Default: official FrameCast repo.
+_GITHUB_OWNER = config.get("GITHUB_OWNER", "parthalon025")
+_GITHUB_REPO = config.get("GITHUB_REPO", "framecast")
 GITHUB_API_URL = (
-    "https://api.github.com/repos/parthalon025/framecast/releases/latest"
+    f"https://api.github.com/repos/{_GITHUB_OWNER}/{_GITHUB_REPO}/releases/latest"
 )
 _SUBPROCESS_TIMEOUT = 30
 
@@ -154,4 +159,5 @@ def _version_newer(latest: str, current: str) -> bool:
         current_parts = tuple(int(x) for x in current.split("."))
         return latest_parts > current_parts
     except (ValueError, TypeError):
+        log.warning("Semver parse failed (latest=%r, current=%r), falling back to string comparison", latest, current)
         return latest > current

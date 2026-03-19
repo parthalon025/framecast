@@ -38,6 +38,7 @@ def _is_ap_active():
 
         return is_service_active("wifi")
     except Exception:
+        log.warning("Failed to check AP status", exc_info=True)
         return False
 
 

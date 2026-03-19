@@ -277,7 +277,7 @@ def _generate_video_thumbnail(video_path, filename):
             log.warning("Thumbnail generation produced empty file for %s", filename)
     except FileNotFoundError:
         log.debug("ffmpeg not found, skipping thumbnail for %s", filename)
-    except Exception as exc:
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
         log.warning("Thumbnail generation failed for %s: %s", filename, exc)
 
 
@@ -426,8 +426,8 @@ def _do_upload():
             # Clean up temp file on any failure
             try:
                 tmp_dest.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                log.warning("Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc)
             raise
         log.info("Uploaded: %s (%s)", filename, media.format_size(dest.stat().st_size))
 
@@ -530,8 +530,8 @@ def delete_all():
     if cache_path.exists():
         try:
             cache_path.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
     flash(f"Deleted {count} file(s)", "success")
     return redirect(url_for("index"))
@@ -699,7 +699,7 @@ def api_reboot():
         subprocess.Popen(["sudo", "reboot"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({"status": "ok", "message": "Device is rebooting..."})
     except Exception:
-        log.error("Failed to reboot")
+        log.error("Failed to reboot", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to reboot"}), 500
 
 
@@ -712,7 +712,7 @@ def api_shutdown():
         subprocess.Popen(["sudo", "shutdown", "-h", "now"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({"status": "ok", "message": "Device is shutting down..."})
     except Exception:
-        log.error("Failed to shut down")
+        log.error("Failed to shut down", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to shut down"}), 500
 
 

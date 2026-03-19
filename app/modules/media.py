@@ -191,6 +191,7 @@ def extract_gps(image_path):
 
             return (lat, lon)
     except Exception:
+        log.warning("GPS extraction failed for %s", image_path, exc_info=True)
         return None
 
 

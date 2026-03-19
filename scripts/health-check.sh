@@ -37,6 +37,12 @@ fi
 # Rollback
 echo "Health check FAILED — rolling back to $PREV_TAG"
 cd "$INSTALL_DIR"
-git checkout "$PREV_TAG" 2>/dev/null || git checkout main
+if ! git checkout "$PREV_TAG" 2>&1; then
+    echo "ERROR: git checkout $PREV_TAG failed, trying main"
+    if ! git checkout main 2>&1; then
+        echo "CRITICAL: All rollback attempts failed. Manual intervention required."
+        exit 1
+    fi
+fi
 rm -f "$ROLLBACK_FILE"
 sudo reboot

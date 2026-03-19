@@ -83,35 +83,48 @@ export function DisplayRouter() {
   // SSE: react to photo changes after initial boot
   useEffect(() => {
     let cancelled = false;
+    let source = null;
 
-    const source = new EventSource("/api/events");
+    function connectSSE() {
+      if (source) source.close();
+      source = new EventSource("/api/events");
 
-    source.addEventListener("photo:added", () => {
-      if (cancelled) return;
-      // If we were on welcome, switch to slideshow
-      if (displayState.value === "welcome") {
-        displayState.value = "slideshow";
-      }
-    });
+      source.addEventListener("photo:added", () => {
+        if (cancelled) return;
+        // If we were on welcome, switch to slideshow
+        if (displayState.value === "welcome") {
+          displayState.value = "slideshow";
+        }
+      });
 
-    source.addEventListener("photo:deleted", () => {
-      if (cancelled) return;
-      // Re-check if any photos remain
-      fetch("/api/status")
-        .then((res) => res.json())
-        .then((data) => {
-          if (cancelled) return;
-          const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
-          if (totalMedia === 0) {
-            displayState.value = "welcome";
-          }
-        })
-        .catch(() => {});
-    });
+      source.addEventListener("photo:deleted", () => {
+        if (cancelled) return;
+        // Re-check if any photos remain
+        fetch("/api/status")
+          .then((res) => res.json())
+          .then((data) => {
+            if (cancelled) return;
+            const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+            if (totalMedia === 0) {
+              displayState.value = "welcome";
+            }
+          })
+          .catch((err) => {
+              console.warn("DisplayRouter: status refetch after delete failed", err);
+          });
+      });
+
+      source.onerror = () => {
+        source.close();
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    connectSSE();
 
     return () => {
       cancelled = true;
-      source.close();
+      if (source) source.close();
     };
   }, []);
 

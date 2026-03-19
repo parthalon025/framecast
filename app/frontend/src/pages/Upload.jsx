@@ -24,8 +24,8 @@ function fetchPhotos() {
     .then((data) => {
       photos.value = data;
     })
-    .catch(() => {
-      // Silently handle — will retry on next event
+    .catch((err) => {
+      console.warn("Upload: fetchPhotos failed", err);
     });
 }
 
@@ -36,8 +36,8 @@ function fetchStatus() {
     .then((data) => {
       if (data.disk) disk.value = data.disk;
     })
-    .catch(() => {
-      // Silently handle
+    .catch((err) => {
+      console.warn("Upload: fetchStatus failed", err);
     });
 }
 

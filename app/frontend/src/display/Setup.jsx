@@ -21,8 +21,14 @@ export function Setup() {
           apSsid.value = data.ap_ssid;
         }
       })
-      .catch(() => {
-        // API may not exist yet — keep generic SSID
+      .catch((err) => {
+        console.warn("Setup: wifi status fetch failed, will retry", err);
+        setTimeout(() => {
+            fetch("/api/wifi/status")
+                .then((res) => res.json())
+                .then((data) => { if (data.ap_ssid) apSsid.value = data.ap_ssid; })
+                .catch(() => {});
+        }, 3000);
       });
   }, []);
 

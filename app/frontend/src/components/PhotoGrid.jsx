@@ -37,8 +37,8 @@ export function PhotoGrid({ photos = [], onDelete }) {
           onDelete?.(photo.name);
         }
       })
-      .catch(() => {
-        // Silently handle — the SSE event will confirm deletion
+      .catch((err) => {
+        console.warn("Delete request failed", err);
       })
       .finally(() => {
         deleting.value = false;

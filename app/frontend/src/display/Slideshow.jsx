@@ -252,13 +252,17 @@ export function Slideshow() {
         }
       } catch (err) {
         console.error("Slideshow: fetch failed", err);
+        // Retry after 5 seconds if we have no photos
+        if (photoList.value.length === 0) {
+          setTimeout(() => { if (!cancelled) init(); }, 5000);
+        }
       }
     }
 
     init();
 
     // SSE: refresh list on photo:added / photo:deleted
-    const source = new EventSource("/api/events");
+    let source = null;
 
     function handlePhotoChange() {
       if (cancelled) return;
@@ -278,21 +282,33 @@ export function Slideshow() {
         .catch((err) => console.error("Slideshow: SSE refetch failed", err));
     }
 
-    source.addEventListener("photo:added", handlePhotoChange);
-    source.addEventListener("photo:deleted", handlePhotoChange);
-    source.addEventListener("settings:changed", (evt) => {
-      if (cancelled) return;
-      try {
-        const cfg = JSON.parse(evt.data);
-        settingsData.value = cfg;
-      } catch (_ignore) {
-        // Malformed SSE data -- ignore
-      }
-    });
+    function connectSSE() {
+      if (source) source.close();
+      source = new EventSource("/api/events");
+
+      source.addEventListener("photo:added", handlePhotoChange);
+      source.addEventListener("photo:deleted", handlePhotoChange);
+      source.addEventListener("settings:changed", (evt) => {
+        if (cancelled) return;
+        try {
+          const cfg = JSON.parse(evt.data);
+          settingsData.value = cfg;
+        } catch (err) {
+          console.warn("Slideshow: failed to parse settings:changed SSE data", err);
+        }
+      });
+
+      source.onerror = () => {
+        source.close();
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    connectSSE();
 
     return () => {
       cancelled = true;
-      source.close();
+      if (source) source.close();
       const s = state.current;
       if (s.timer) {
         clearTimeout(s.timer);
