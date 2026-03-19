@@ -172,7 +172,7 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reason: "unsupported_codec" }),
-        }).catch(() => {});
+        }).catch((err) => console.warn("Slideshow: quarantine request failed", err));
       }
       // Skip to next
       if (onAdvance) onAdvance();

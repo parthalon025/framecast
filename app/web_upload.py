@@ -636,6 +636,21 @@ def delete_all():
     media_path = Path(MEDIA_DIR)
     image_ext, video_ext = media.get_allowed_extensions()
     all_ext = image_ext | video_ext
+
+    # Bulk-quarantine all photos in DB before unlinking files (Lesson: delete-all must update DB)
+    from contextlib import closing as _closing
+    try:
+        with db._write_lock:
+            with _closing(db.get_db()) as conn:
+                conn.execute(
+                    "UPDATE photos SET quarantined = 1, quarantine_reason = 'bulk delete' "
+                    "WHERE quarantined = 0"
+                )
+                conn.commit()
+        log.info("Bulk-quarantined all photos in DB before delete-all")
+    except Exception as db_exc:
+        log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
+
     count = 0
     for f in media_path.iterdir():
         if f.is_file() and f.suffix.lower() in all_ext:
@@ -669,7 +684,10 @@ def serve_media(filename):
 @app.route("/thumbnail/<filename>")
 def serve_thumbnail(filename):
     """Serve a video thumbnail image."""
-    thumb_name = Path(filename).stem + ".jpg"
+    safe = secure_filename(filename)
+    if not safe:
+        abort(404)
+    thumb_name = Path(safe).stem + ".jpg"
     thumb_path = Path(THUMBNAIL_DIR) / thumb_name
     if thumb_path.exists():
         return send_from_directory(THUMBNAIL_DIR, thumb_name)

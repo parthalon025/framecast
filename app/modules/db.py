@@ -546,13 +546,17 @@ def get_users():
 
 def get_or_create_user(name, is_admin=False):
     """Get a user by name, creating if needed. Returns the user id."""
-    with closing(get_db()) as conn:
-        row = conn.execute(
-            "SELECT id FROM users WHERE name = ?", (name,)
-        ).fetchone()
-        if row:
-            return row["id"]
-    return create_user(name, is_admin)
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO users (name, is_admin) VALUES (?, ?)",
+                (name, 1 if is_admin else 0),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT id FROM users WHERE name = ?", (name,)
+            ).fetchone()
+            return row["id"] if row else None
 
 
 # --- Display stats buffering ---

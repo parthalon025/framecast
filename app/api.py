@@ -98,32 +98,46 @@ def _current_settings():
         "photo_duration": _safe_int(config.get("PHOTO_DURATION", "10"), 10),
         "shuffle": config.get("SHUFFLE", "yes").lower() == "yes",
         "transition_type": config.get("TRANSITION_TYPE", "fade"),
+        "transition_mode": config.get("TRANSITION_MODE", "single"),
+        "transition_duration_ms": _safe_int(config.get("TRANSITION_DURATION_MS", "1000"), 1000),
+        "kenburns_intensity": config.get("KENBURNS_INTENSITY", "moderate"),
         "photo_order": config.get("PHOTO_ORDER", "shuffle"),
         "qr_display_seconds": _safe_int(config.get("QR_DISPLAY_SECONDS", "30"), 30),
         "hdmi_schedule_enabled": config.get("HDMI_SCHEDULE_ENABLED", "no").lower() == "yes",
         "hdmi_off_time": config.get("HDMI_OFF_TIME", "22:00"),
         "hdmi_on_time": config.get("HDMI_ON_TIME", "08:00"),
+        "schedule_days": config.get("DISPLAY_SCHEDULE_DAYS", "0,1,2,3,4,5,6"),
         "max_upload_mb": _safe_int(config.get("MAX_UPLOAD_MB", "200"), 200),
         "auto_resize_max": _safe_int(config.get("AUTO_RESIZE_MAX", "1920"), 1920),
         "auto_update_enabled": config.get("AUTO_UPDATE_ENABLED", "no").lower() == "yes",
+        "pin_length": _safe_int(config.get("PIN_LENGTH", "4"), 4),
         "web_port": _safe_int(config.get("WEB_PORT", "8080"), 8080),
     }
 
 
 # Settings keys that map to .env keys with their type converters.
 # web_port is intentionally excluded — changing it via API could lock users out.
+_VALID_TRANSITION_MODES = {"single", "random"}
+_VALID_KENBURNS_INTENSITIES = {"subtle", "moderate", "dramatic"}
+_VALID_PIN_LENGTHS = {4, 6}
+
 _SETTINGS_ENV_MAP = {
     "photo_duration": ("PHOTO_DURATION", str),
     "shuffle": ("SHUFFLE", lambda v: "yes" if v else "no"),
     "transition_type": ("TRANSITION_TYPE", str),
+    "transition_mode": ("TRANSITION_MODE", str),
+    "transition_duration_ms": ("TRANSITION_DURATION_MS", str),
+    "kenburns_intensity": ("KENBURNS_INTENSITY", str),
     "photo_order": ("PHOTO_ORDER", str),
     "qr_display_seconds": ("QR_DISPLAY_SECONDS", str),
     "hdmi_schedule_enabled": ("HDMI_SCHEDULE_ENABLED", lambda v: "yes" if v else "no"),
     "hdmi_off_time": ("HDMI_OFF_TIME", str),
     "hdmi_on_time": ("HDMI_ON_TIME", str),
+    "schedule_days": ("DISPLAY_SCHEDULE_DAYS", str),
     "max_upload_mb": ("MAX_UPLOAD_MB", str),
     "auto_resize_max": ("AUTO_RESIZE_MAX", str),
     "auto_update_enabled": ("AUTO_UPDATE_ENABLED", lambda v: "yes" if v else "no"),
+    "pin_length": ("PIN_LENGTH", str),
 }
 
 
@@ -230,6 +244,57 @@ def update_settings():
             "error": f"Invalid photo_order: must be one of {sorted(_VALID_PHOTO_ORDERS)}",
         }), 400
 
+    if "transition_mode" in data and data["transition_mode"] not in _VALID_TRANSITION_MODES:
+        return jsonify({
+            "error": f"Invalid transition_mode: must be one of {sorted(_VALID_TRANSITION_MODES)}",
+        }), 400
+
+    if "kenburns_intensity" in data and data["kenburns_intensity"] not in _VALID_KENBURNS_INTENSITIES:
+        return jsonify({
+            "error": f"Invalid kenburns_intensity: must be one of {sorted(_VALID_KENBURNS_INTENSITIES)}",
+        }), 400
+
+    if "transition_duration_ms" in data:
+        try:
+            val = int(data["transition_duration_ms"])
+            if val < 500 or val > 3000:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid transition_duration_ms: must be 500-3000"}), 400
+
+    if "pin_length" in data:
+        try:
+            val = int(data["pin_length"])
+            if val not in _VALID_PIN_LENGTHS:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid pin_length: must be 4 or 6"}), 400
+
+    # --- Handle action keys (not persistent settings) ---
+
+    # display_on is a toggle action, not a persistent setting
+    if "display_on" in data:
+        from modules import cec
+        if data["display_on"]:
+            cec.tv_power_on()
+            cec.set_active_source()
+        else:
+            cec.tv_standby()
+        # Remove from data so it doesn't hit _SETTINGS_ENV_MAP
+        data = {k: v for k, v in data.items() if k != "display_on"}
+
+    # regenerate_pin is an action, not a setting
+    if "regenerate_pin" in data:
+        from modules.auth import generate_pin
+        pin_length = int(data.get("pin_length", config.get("PIN_LENGTH", "4")))
+        if pin_length not in (4, 6):
+            pin_length = 4
+        new_pin = generate_pin(pin_length)
+        config.save({"ACCESS_PIN": new_pin})
+        config.reload()
+        log.info("PIN regenerated via settings API")
+        data = {k: v for k, v in data.items() if k != "regenerate_pin"}
+
     # --- Build update map ---
 
     updates = {}
@@ -238,13 +303,14 @@ def update_settings():
             env_key, converter = _SETTINGS_ENV_MAP[key]
             updates[env_key] = converter(value)
 
-    if not updates:
+    if updates:
+        config.save(updates)
+        config.reload()
+        log.info("Settings updated via API: %s", list(updates.keys()))
+        sse.notify("settings:changed", _current_settings())
+    elif not data:
+        # No settings and no action keys were processed
         return jsonify({"error": "No valid settings provided"}), 400
-
-    config.save(updates)
-    config.reload()
-    log.info("Settings updated via API: %s", list(updates.keys()))
-    sse.notify("settings:changed", _current_settings())
 
     return jsonify({"status": "ok", "settings": _current_settings()})
 

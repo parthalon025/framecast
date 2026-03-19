@@ -16,8 +16,9 @@ const TRANSITION_MODE_OPTIONS = [
 ];
 const ORDER_OPTIONS = [
   { value: "shuffle", label: "SHUFFLE" },
-  { value: "date", label: "BY DATE" },
-  { value: "name", label: "BY NAME" },
+  { value: "newest", label: "NEWEST FIRST" },
+  { value: "oldest", label: "OLDEST FIRST" },
+  { value: "alphabetical", label: "ALPHABETICAL" },
 ];
 const KENBURNS_OPTIONS = [
   { value: "subtle", label: "SUBTLE" },
@@ -72,14 +73,14 @@ export function Settings() {
         setStatus(data);
         if (data.access_pin) setPin(data.access_pin);
       })
-      .catch(() => {});
+      .catch((err) => console.warn("Settings: status load failed", err));
   }
 
   function loadWifiStatus() {
     fetchWithTimeout("/api/wifi/status")
       .then((res) => res.json())
       .then((data) => setWifiStatus(data))
-      .catch(() => {});
+      .catch((err) => console.warn("Settings: wifi status load failed", err));
   }
 
   const update = useCallback((key, value) => {

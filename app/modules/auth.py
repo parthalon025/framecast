@@ -78,7 +78,12 @@ def _get_pin_limiter() -> RateLimiter:
 
 def _make_auth_token(pin):
     """Create an HMAC-SHA256 token from the PIN (never store raw PIN in cookie)."""
-    secret = config.get("FLASK_SECRET_KEY", "fallback-key")
+    secret = config.get("FLASK_SECRET_KEY", "")
+    if not secret:
+        log.error("FLASK_SECRET_KEY not set — auth tokens will be insecure")
+        # Generate ephemeral key for this session (forces PIN re-entry on restart)
+        import secrets as _secrets
+        secret = _secrets.token_hex(24)
     return hmac.HMAC(secret.encode(), pin.encode(), hashlib.sha256).hexdigest()
 
 
@@ -114,8 +119,8 @@ def _should_skip_auth():
 
 
 def _pin_is_open_access(pin):
-    """Return True if the PIN indicates open-access mode (empty or '0000')."""
-    return not pin or pin == "0000"
+    """Return True if the PIN indicates open-access mode (empty string only)."""
+    return not pin
 
 
 def _validate_origin() -> bool:
