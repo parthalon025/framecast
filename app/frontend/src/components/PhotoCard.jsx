@@ -130,7 +130,7 @@ export function PhotoCard({
         style={`
           position: absolute; top: 4px; right: 4px; z-index: 2;
           background: rgba(0,0,0,0.6); border: none; cursor: pointer;
-          color: ${isFav ? "gold" : "rgba(255,255,255,0.5)"};
+          color: ${isFav ? "var(--sh-phosphor)" : "var(--sh-dim, rgba(255,255,255,0.3))"};
           font-size: 1rem; padding: 2px 4px; line-height: 1;
           border-radius: 2px;
         `}

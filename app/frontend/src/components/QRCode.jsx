@@ -39,7 +39,7 @@ export function QRCode({ url, size = 120 }) {
     ctx.fillRect(0, 0, size, size);
 
     // Phosphor green modules
-    ctx.fillStyle = "#00ff88";
+    ctx.fillStyle = "#40d670";
     for (let row = 0; row < moduleCount; row++) {
       for (let col = 0; col < moduleCount; col++) {
         if (qr.isDark(row, col)) {
