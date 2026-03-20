@@ -110,27 +110,29 @@ def subscribe(last_event_id=None):
                 yield replayed
 
         # Coalescing state: track last event type and time
+        pending_eid = None
         pending_event = None
         pending_data = None
         pending_time = 0.0
 
         while True:
             try:
-                event, data = q.get(timeout=min(_KEEPALIVE_INTERVAL, _COALESCE_WINDOW))
+                eid, event, data = q.get(timeout=min(_KEEPALIVE_INTERVAL, _COALESCE_WINDOW))
 
                 now = time.monotonic()
                 # Coalesce: if same event type arrives within window, replace
                 if pending_event == event and (now - pending_time) < _COALESCE_WINDOW:
+                    pending_eid = eid
                     pending_data = data
                     pending_time = now
                     continue
 
                 # Flush any pending coalesced event
                 if pending_event is not None:
-                    eid = _next_event_id()
-                    yield f"id: {eid}\nevent: {pending_event}\ndata: {json.dumps(pending_data)}\n\n"
+                    yield f"id: {pending_eid}\nevent: {pending_event}\ndata: {json.dumps(pending_data)}\n\n"
 
                 # Buffer this event as pending
+                pending_eid = eid
                 pending_event = event
                 pending_data = data
                 pending_time = now
@@ -138,8 +140,8 @@ def subscribe(last_event_id=None):
             except Empty:
                 # Flush any pending coalesced event before keepalive
                 if pending_event is not None:
-                    eid = _next_event_id()
-                    yield f"id: {eid}\nevent: {pending_event}\ndata: {json.dumps(pending_data)}\n\n"
+                    yield f"id: {pending_eid}\nevent: {pending_event}\ndata: {json.dumps(pending_data)}\n\n"
+                    pending_eid = None
                     pending_event = None
                     pending_data = None
 
@@ -182,7 +184,7 @@ def notify(event: str, data: dict | None = None):
     with _clients_lock:
         for q in _clients:
             try:
-                q.put_nowait((event, data))
+                q.put_nowait((eid, event, data))
             except Full:
                 stale.append(q)
 
