@@ -191,6 +191,12 @@ def request_timeout(timeout_seconds):
                 # Windows or system without SIGALRM - skip timeout
                 return f(*args, **kwargs)
 
+            # SIGALRM only works in the main thread; gthread workers
+            # dispatch requests to non-main threads where signal.signal()
+            # raises ValueError.  Fall back to gunicorn's own timeout.
+            if threading.current_thread() is not threading.main_thread():
+                return f(*args, **kwargs)
+
             def _timeout_handler(signum, frame):
                 raise TimeoutError(f"Request timed out after {timeout_seconds} seconds")
 
