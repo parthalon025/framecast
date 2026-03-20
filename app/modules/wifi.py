@@ -8,6 +8,10 @@ import logging
 import re
 import subprocess
 import threading
+import time
+from pathlib import Path
+
+from modules import config
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +21,57 @@ _TIMEOUT = 15
 _AP_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 _ap_timer = None
 _ap_timer_lock = threading.Lock()
+
+# Marker file to persist AP start time across restarts
+_AP_MARKER_FILE = Path(config.get("MEDIA_DIR", "/home/pi/media")).parent / ".ap_started"
+
+
+def _write_ap_marker():
+    """Write current timestamp to AP marker file."""
+    try:
+        _AP_MARKER_FILE.write_text(str(time.time()))
+    except OSError as exc:
+        log.warning("Failed to write AP marker: %s", exc)
+
+
+def _clear_ap_marker():
+    """Remove AP marker file."""
+    try:
+        _AP_MARKER_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def check_stale_ap(timeout_minutes=30):
+    """Check if AP has been running longer than timeout. Stop if stale.
+
+    Called at startup to handle the case where the service crashed
+    while AP was active and the in-memory timer was lost.
+    """
+    if not _AP_MARKER_FILE.exists():
+        return
+    try:
+        started = float(_AP_MARKER_FILE.read_text().strip())
+        elapsed = time.time() - started
+        if elapsed > timeout_minutes * 60:
+            log.warning(
+                "AP has been running %.0f minutes (limit: %d). Stopping.",
+                elapsed / 60,
+                timeout_minutes,
+            )
+            stop_ap()
+        else:
+            # Still within timeout — restart the timer for remaining time
+            remaining = timeout_minutes * 60 - elapsed
+            log.info(
+                "AP running for %.0f minutes, %.0f remaining. Restarting timer.",
+                elapsed / 60,
+                remaining / 60,
+            )
+            _start_ap_timer(remaining)
+    except (ValueError, OSError) as exc:
+        log.warning("Failed to read AP marker: %s. Clearing.", exc)
+        _clear_ap_marker()
 
 
 def _redact_password(cmd):
@@ -193,15 +248,21 @@ def _ap_timeout_handler():
     start_ap()
 
 
-def _start_ap_timer():
-    """Start (or restart) the AP auto-timeout timer."""
+def _start_ap_timer(seconds=None):
+    """Start (or restart) the AP auto-timeout timer.
+
+    Args:
+        seconds: Optional override for timer duration. Defaults to _AP_TIMEOUT_SECONDS.
+    """
     global _ap_timer
+    if seconds is None:
+        seconds = _AP_TIMEOUT_SECONDS
     _cancel_ap_timer()
     with _ap_timer_lock:
-        _ap_timer = threading.Timer(_AP_TIMEOUT_SECONDS, _ap_timeout_handler)
+        _ap_timer = threading.Timer(seconds, _ap_timeout_handler)
         _ap_timer.daemon = True
         _ap_timer.start()
-    log.info("AP auto-timeout set: %d minutes", _AP_TIMEOUT_SECONDS // 60)
+    log.info("AP auto-timeout set: %.0f minutes", seconds / 60)
 
 
 def start_ap(ssid=None):
@@ -237,6 +298,7 @@ def start_ap(ssid=None):
     rc, stdout, stderr = _run(cmd, timeout=30)
     if rc == 0:
         log.info("AP STATE: started — %s", ssid)
+        _write_ap_marker()
         _start_ap_timer()
         return True, f"AP STARTED: {ssid}"
     log.error("AP STATE: start failed — %s", stderr or stdout)
@@ -251,6 +313,7 @@ def stop_ap():
     """
     log.info("AP STATE: stopping")
     _cancel_ap_timer()
+    _clear_ap_marker()
     rc, stdout, stderr = _run(["nmcli", "connection", "down", "Hotspot"])
     if rc == 0:
         log.info("AP STATE: stopped")

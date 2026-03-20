@@ -18,7 +18,7 @@ from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import config, media
+from . import media
 
 log = logging.getLogger(__name__)
 
@@ -176,6 +176,10 @@ def init_db():
 
     with _write_lock:
         with closing(get_db()) as conn:
+            # Enable incremental auto-vacuum before creating tables.
+            # Must be set before any tables exist on a new database;
+            # on an existing DB this is a no-op (requires VACUUM to switch).
+            conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
             conn.executescript(_SCHEMA_SQL)
             conn.executescript(_INDEX_SQL)
 
@@ -211,6 +215,23 @@ def init_db():
     _start_flush_timer()
 
     log.info("DATABASE: INITIALIZED at %s", db_path)
+
+
+def vacuum_if_needed():
+    """Run incremental vacuum to reclaim space from deleted photos.
+
+    Uses PRAGMA incremental_vacuum which is lighter than full VACUUM
+    and safe to run while the app is serving requests (WAL mode).
+    Only runs if there are freelist pages to reclaim.
+    """
+    try:
+        with closing(get_db()) as conn:
+            freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+            if freelist > 0:
+                conn.execute("PRAGMA incremental_vacuum(100)")
+                log.info("Incremental vacuum reclaimed up to 100 pages (freelist was %d)", freelist)
+    except Exception:
+        log.warning("Incremental vacuum failed", exc_info=True)
 
 
 # --- Photo CRUD ---
@@ -711,6 +732,22 @@ def _start_flush_timer():
         _flush_timer.start()
 
 
+def register_shutdown_flush():
+    """Register signal handlers to flush stats buffer on graceful shutdown.
+
+    Prevents stat loss when systemd sends SIGTERM (up to 5min of buffered data).
+    """
+    import signal
+
+    def _shutdown_flush(signum, frame):
+        if _stats_buffer:
+            log.info("Flushing %d buffered stats on signal %d", len(_stats_buffer), signum)
+            _flush_stats()
+
+    signal.signal(signal.SIGTERM, _shutdown_flush)
+    signal.signal(signal.SIGINT, _shutdown_flush)
+
+
 def _prune_old_stats():
     """DELETE display_stats older than 30 days."""
     with _write_lock:
@@ -887,7 +924,6 @@ def _extract_exif_date(filepath):
     global _pillow_warned
     try:
         from PIL import Image as PILImage
-        from PIL import ExifTags
     except ImportError:
         if not _pillow_warned:
             log.warning("Pillow not installed — EXIF/dimension extraction disabled")

@@ -139,6 +139,46 @@ def cleanup_orphan_thumbnails():
     return removed
 
 
+def fix_orientation(image_path):
+    """Apply EXIF orientation tag and strip it from the image.
+
+    Some phones store photos rotated with an EXIF flag rather than
+    actually rotating the pixel data. This fixes that on upload so
+    the image displays correctly everywhere (slideshow, thumbnails,
+    browsers that ignore EXIF orientation).
+
+    Must be called before resize so dimensions are correct.
+
+    Returns True if the image was modified, False otherwise.
+    """
+    try:
+        from PIL import Image as PILImage, ImageOps
+    except ImportError:
+        return False
+
+    try:
+        with PILImage.open(str(image_path)) as img:
+            exif = img.getexif()
+            orientation = exif.get(0x0112)  # Orientation tag
+            if not orientation or orientation == 1:
+                return False  # Already correct orientation
+            corrected = ImageOps.exif_transpose(img)
+            if corrected is None:
+                return False  # exif_transpose returns None if no change needed
+            # Preserve EXIF but reset orientation to 1 (normal) to prevent
+            # double-rotation by viewers that respect the EXIF tag.
+            save_kwargs = {"quality": 95}
+            corrected_exif = corrected.getexif()
+            corrected_exif[0x0112] = 1  # Orientation = Normal
+            save_kwargs["exif"] = corrected_exif.tobytes()
+            corrected.save(str(image_path), **save_kwargs)
+            log.info("Fixed EXIF orientation for %s (was %d)", Path(image_path).name, orientation)
+            return True
+    except Exception:
+        log.warning("EXIF orientation fix failed for %s", image_path, exc_info=True)
+        return False
+
+
 def extract_gps(image_path):
     """Extract GPS coordinates as (lat, lon) or None from EXIF.
 

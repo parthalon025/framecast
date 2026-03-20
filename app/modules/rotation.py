@@ -18,7 +18,7 @@ from . import db
 log = logging.getLogger(__name__)
 
 
-def _compute_weight(photo, recent_shown_ids):
+def _compute_weight(photo, recent_shown_ids, total_photos=0):
     """Compute display weight for a single photo.
 
     Weight = base * recency_boost * favorite_boost * diversity_penalty
@@ -26,6 +26,8 @@ def _compute_weight(photo, recent_shown_ids):
     Args:
         photo: dict with photo columns from DB.
         recent_shown_ids: set of photo IDs shown in the recent window.
+        total_photos: total number of photos in the library (used to soften
+            the diversity penalty for small collections — issue #49).
 
     Returns:
         float weight (always > 0).
@@ -49,8 +51,16 @@ def _compute_weight(photo, recent_shown_ids):
     # Favorite boost
     favorite_boost = 3.0 if photo.get("is_favorite") else 1.0
 
-    # Diversity penalty: reduce weight if recently shown
-    diversity_penalty = 0.1 if photo.get("id") in recent_shown_ids else 1.0
+    # Diversity penalty: reduce weight if recently shown.
+    # Soften when recent_shown covers > 60% of library to prevent
+    # small collections from collapsing to uniform random (issue #49).
+    if photo.get("id") in recent_shown_ids:
+        if total_photos > 0 and len(recent_shown_ids) > total_photos * 0.6:
+            diversity_penalty = 0.5
+        else:
+            diversity_penalty = 0.1
+    else:
+        diversity_penalty = 1.0
 
     return base * recency_boost * favorite_boost * diversity_penalty
 
@@ -72,7 +82,7 @@ def _weighted_select(photos, recent_shown_ids):
     if len(photos) == 1:
         return photos[0]
 
-    weights = [_compute_weight(p, recent_shown_ids) for p in photos]
+    weights = [_compute_weight(p, recent_shown_ids, total_photos=len(photos)) for p in photos]
     cumulative = []
     total = 0.0
     for w in weights:
