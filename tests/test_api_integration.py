@@ -463,3 +463,34 @@ class TestSecurityHeaders:
         csp = resp.headers.get("Content-Security-Policy")
         assert csp is not None
         assert "default-src" in csp
+
+
+# ---------------------------------------------------------------------------
+# System control endpoints (migrated from web_upload.py)
+# ---------------------------------------------------------------------------
+
+
+class TestSystemControl:
+    """Tests for system control endpoints in the API blueprint."""
+
+    def test_restart_slideshow_in_api_blueprint(self, client):
+        """POST /api/restart-slideshow should be handled by the API blueprint."""
+        resp = client.post("/api/restart-slideshow")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+
+    def test_reboot_in_api_blueprint(self, client):
+        """POST /api/reboot should be handled by the API blueprint."""
+        with mock.patch("threading.Timer") as mock_timer:
+            resp = client.post("/api/reboot")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+        mock_timer.assert_called_once()
+
+    def test_shutdown_in_api_blueprint(self, client):
+        """POST /api/shutdown should be handled by the API blueprint."""
+        with mock.patch("threading.Timer") as mock_timer:
+            resp = client.post("/api/shutdown")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+        mock_timer.assert_called_once()

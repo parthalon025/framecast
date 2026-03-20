@@ -81,6 +81,16 @@ def _do_reboot():
     except Exception:
         log.error("reboot subprocess raised", exc_info=True)
 
+
+def _do_shutdown():
+    """Execute a shutdown, logging any failures instead of swallowing them."""
+    try:
+        result = subprocess.run(["sudo", "shutdown", "-h", "now"], capture_output=True, timeout=10)
+        if result.returncode != 0:
+            log.error("shutdown failed (rc=%d): %s", result.returncode, result.stderr)
+    except Exception:
+        log.error("shutdown subprocess raised", exc_info=True)
+
 SCRIPT_DIR = Path(__file__).parent
 VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
 
@@ -1182,6 +1192,40 @@ def discover_frames():
     except Exception:
         log.warning("Frame discovery failed", exc_info=True)
     return jsonify({"frames": frames})
+
+
+# ---------------------------------------------------------------------------
+# System control endpoints (migrated from web_upload.py)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/restart-slideshow", methods=["POST"])
+@require_pin
+def restart_slideshow():
+    """Restart the slideshow service."""
+    from modules import services
+    success, message = services.restart_slideshow()
+    if success:
+        return jsonify({"status": "ok", "message": message})
+    return jsonify({"error": message}), 500
+
+
+@api.route("/reboot", methods=["POST"])
+@require_pin
+def api_reboot():
+    """Reboot the device."""
+    log.info("Reboot requested via web UI from %s", request.remote_addr)
+    threading.Timer(0.5, _do_reboot).start()
+    return jsonify({"status": "ok", "message": "Device is rebooting..."})
+
+
+@api.route("/shutdown", methods=["POST"])
+@require_pin
+def api_shutdown():
+    """Shut down the device."""
+    log.info("Shutdown requested via web UI from %s", request.remote_addr)
+    threading.Timer(0.5, _do_shutdown).start()
+    return jsonify({"status": "ok", "message": "Device is shutting down..."})
 
 
 # ---------------------------------------------------------------------------

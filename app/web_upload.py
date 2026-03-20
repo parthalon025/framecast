@@ -33,7 +33,7 @@ from werkzeug.utils import secure_filename
 
 import sse
 from api import api
-from modules import config, db, media, services, wifi
+from modules import config, db, media, wifi
 from modules.auth import auth_api, require_pin, validate_guest_token
 from modules.boot_config import apply_boot_config, apply_boot_ssh
 
@@ -878,6 +878,7 @@ def settings_save():
 
     # Auto-restart slideshow if checkbox was checked
     if request.form.get("auto_restart") == "1":
+        from modules import services
         success, _ = services.restart_slideshow()
         if success:
             flash("Settings saved and slideshow restarted.", "success")
@@ -913,42 +914,6 @@ def _periodic_thumbnail_cleanup():
                 log.warning("Periodic thumbnail cleanup failed", exc_info=True)
     finally:
         _thumbnail_cleanup_lock.release()
-
-
-@app.route("/api/restart-slideshow", methods=["POST"])
-@require_pin
-@log_post_request
-def restart_slideshow():
-    success, message = services.restart_slideshow()
-    if success:
-        return jsonify({"status": "ok", "message": message})
-    return jsonify({"error": message}), 500
-
-
-@app.route("/api/reboot", methods=["POST"])
-@require_pin
-@log_post_request
-def api_reboot():
-    try:
-        log.info("Reboot requested via web UI")
-        subprocess.Popen(["sudo", "reboot"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return jsonify({"status": "ok", "message": "Device is rebooting..."})
-    except Exception:
-        log.error("Failed to reboot", exc_info=True)
-        return jsonify({"error": "Failed to reboot"}), 500
-
-
-@app.route("/api/shutdown", methods=["POST"])
-@require_pin
-@log_post_request
-def api_shutdown():
-    try:
-        log.info("Shutdown requested via web UI")
-        subprocess.Popen(["sudo", "shutdown", "-h", "now"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return jsonify({"status": "ok", "message": "Device is shutting down..."})
-    except Exception:
-        log.error("Failed to shut down", exc_info=True)
-        return jsonify({"error": "Failed to shut down"}), 500
 
 
 # --- SPA routes ---
