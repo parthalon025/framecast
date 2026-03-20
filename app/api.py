@@ -561,6 +561,37 @@ def remove_photo_tag(photo_id, tag_id):
 # ---------------------------------------------------------------------------
 
 
+@api.route("/slideshow/now-playing", methods=["POST"])
+def slideshow_now_playing():
+    """Called by the TV display when the slideshow advances.
+
+    Broadcasts the current photo to phone clients via SSE so the phone
+    can show a "now playing" indicator.
+    """
+    data = request.get_json(silent=True) or {}
+    sse.notify("slideshow:now_playing", {
+        "photo_id": data.get("photo_id"),
+        "filename": data.get("filename"),
+    })
+    return jsonify({"status": "ok"})
+
+
+@api.route("/slideshow/show/<int:photo_id>", methods=["POST"])
+@require_pin
+def slideshow_show_photo(photo_id):
+    """Tell the TV slideshow to immediately display a specific photo."""
+    photo = db.get_photo_by_id(photo_id)
+    if not photo:
+        abort(404)
+    sse.notify("slideshow:show", {
+        "photo_id": photo["id"],
+        "filename": photo["filename"],
+        "filepath": photo["filepath"],
+        "is_video": bool(photo["is_video"]),
+    })
+    return jsonify({"status": "ok", "photo_id": photo_id})
+
+
 @api.route("/slideshow/playlist")
 def slideshow_playlist():
     """Return a weighted playlist of photos for the slideshow."""

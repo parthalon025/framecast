@@ -1,7 +1,13 @@
-/** @fileoverview Photo Map — Leaflet map of GPS-tagged photo locations. */
+/** @fileoverview Photo Map — Leaflet map of GPS-tagged photo locations.
+ *
+ * Tiles are cached via the Cache API (tile-cache.js) so the map works
+ * offline with whatever zoom levels were previously viewed. Cache is
+ * capped at 500 tiles to protect the Pi's SD card.
+ */
 import { useState, useEffect, useRef } from "preact/hooks";
 import L from "leaflet";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { cachedTileFetch, pruneTileCache } from "../lib/tile-cache.js";
 
 // Leaflet CSS bundled locally at /static/css/leaflet.css (copied by postbuild)
 const LEAFLET_CSS = "/static/css/leaflet.css";
@@ -63,10 +69,37 @@ export function Map() {
       attributionControl: true,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // Cached tile layer — serves from Cache API when available, fetches
+    // from network otherwise. Previously-viewed tiles work offline.
+    const CachedTileLayer = L.TileLayer.extend({
+      createTile: function (coords, done) {
+        const tile = document.createElement("img");
+        const url = this.getTileUrl(coords);
+
+        cachedTileFetch(url)
+          .then((response) => response.blob())
+          .then((blob) => {
+            tile.src = URL.createObjectURL(blob);
+            done(null, tile);
+          })
+          .catch(() => {
+            // Network + cache both failed — let Leaflet show its
+            // default broken-tile placeholder.
+            tile.src = url;
+            done(null, tile);
+          });
+
+        return tile;
+      },
+    });
+
+    new CachedTileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap",
       maxZoom: 19,
     }).addTo(map);
+
+    // Prune old tiles in the background (non-blocking)
+    pruneTileCache();
 
     const markers = locations.map((loc) =>
       L.marker([loc.lat, loc.lon], { icon: markerIcon })

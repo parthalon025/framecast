@@ -11,6 +11,8 @@ import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { OfflineBanner } from "../components/OfflineBanner.jsx";
+import { NowPlaying, nowPlaying } from "../components/NowPlaying.jsx";
+import { onHeartbeat } from "../components/ConnectionBanner.jsx";
 import { ContextMenu } from "../components/PhotoCard.jsx";
 import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
 import { createSSE } from "../lib/sse.js";
@@ -278,6 +280,16 @@ export function Upload() {
       listeners: {
         "photo:added": handleRefresh,
         "photo:deleted": handleRefresh,
+        "slideshow:now_playing": (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            nowPlaying.value = data;
+          } catch (parseErr) {
+            console.warn("Upload: failed to parse now_playing", parseErr);
+          }
+        },
+        "heartbeat": () => onHeartbeat(),
+        "sync": () => handleRefresh(),
       },
     });
     sseRef.current = sse;
@@ -412,6 +424,9 @@ export function Upload() {
         </div>
       )}
       <OfflineBanner />
+
+      {/* Now playing — current photo on TV */}
+      <NowPlaying />
 
       {/* User select modal (shown on first upload if no cookie) */}
       <UserSelectModal onSelected={handleUserSelected} />

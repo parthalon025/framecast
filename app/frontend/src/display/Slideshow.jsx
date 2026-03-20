@@ -208,6 +208,15 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
   currentPhotoData.value = photo;
   currentPhotoIndex.value = (currentPhotoIndex.value + 1) | 0;
 
+  // Notify server for "now playing" on phone
+  if (photo.id) {
+    fetch("/api/slideshow/now-playing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photo_id: photo.id, filename: photo.filename || photo.name }),
+    }).catch(() => {});
+  }
+
   // Show "On This Day" overlay if applicable
   if (photo.on_this_day && photo.years_ago) {
     const yearsAgo = photo.years_ago;
@@ -458,6 +467,41 @@ export function Slideshow() {
             settingsData.value = cfg;
           } catch (parseErr) {
             console.warn("Slideshow: failed to parse settings:changed SSE data", parseErr);
+          }
+        },
+        "sync": handlePhotoChange,
+        "slideshow:show": (evt) => {
+          if (cancelled) return;
+          try {
+            const photo = JSON.parse(evt.data);
+            const s = state.current;
+            if (!s.transitioning) {
+              const cfg = settingsData.value;
+              const activeEl = s.activeLayer === "A" ? layerARef.current : layerBRef.current;
+              const standbyEl = s.activeLayer === "A" ? layerBRef.current : layerARef.current;
+              setLayerContent(standbyEl, photo, advance, cfg);
+              standbyEl.style.zIndex = "3";
+              standbyEl.style.opacity = "1";
+              standbyEl.className = "slideshow-layer fc-fade-in";
+              activeEl.className = "slideshow-layer fc-fade-out";
+              standbyEl.style.setProperty("--fc-transition-ms", "500ms");
+              activeEl.style.setProperty("--fc-transition-ms", "500ms");
+              setTimeout(() => {
+                s.activeLayer = s.activeLayer === "A" ? "B" : "A";
+                const newActive = s.activeLayer === "A" ? layerARef.current : layerBRef.current;
+                const newStandby = s.activeLayer === "A" ? layerBRef.current : layerARef.current;
+                newActive.style.zIndex = "2";
+                newActive.className = "slideshow-layer";
+                newActive.setAttribute("aria-hidden", "false");
+                newStandby.style.zIndex = "1";
+                newStandby.style.opacity = "0";
+                newStandby.className = "slideshow-layer";
+                newStandby.setAttribute("aria-hidden", "true");
+                resetTimer();
+              }, 500);
+            }
+          } catch (parseErr) {
+            console.warn("Slideshow: failed to parse slideshow:show", parseErr);
           }
         },
       },

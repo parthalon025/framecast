@@ -4,6 +4,7 @@ import { route, navigate } from "./Router.jsx";
 import { uploadProgress } from "../pages/Upload.jsx";
 import { SearchModal, openSearch } from "./SearchModal.jsx";
 import { openLightbox } from "./Lightbox.jsx";
+import { ConnectionBanner } from "./ConnectionBanner.jsx";
 
 // --- Nav icons (inline SVG, 20x20) ---
 function UploadIcon() {
@@ -93,6 +94,7 @@ function handleSearchSelect(photo) {
 export function PhoneLayout({ children }) {
   return (
     <div style="min-height: 100dvh;">
+      <ConnectionBanner />
       {/* Header bar with search */}
       <div
         class="fc-header"
