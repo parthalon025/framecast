@@ -339,6 +339,16 @@ def get_photos(
         return [dict(r) for r in rows]
 
 
+def get_playlist_candidates():
+    """Get all non-quarantined, non-hidden photos for slideshow rotation."""
+    with closing(get_db()) as conn:
+        rows = conn.execute(
+            """SELECT id, filename, uploaded_at, exif_date, is_favorite, view_count
+               FROM photos WHERE quarantined = 0 AND is_hidden = 0"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def update_photo_quarantine(photo_id, quarantined, reason=None):
     """Set quarantine status for a photo."""
     with _write_lock:
