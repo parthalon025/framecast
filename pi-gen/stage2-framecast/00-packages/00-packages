@@ -13,5 +13,6 @@ python3-pil
 python3-pip
 nodejs
 npm
+git
 ufw
 v4l-utils

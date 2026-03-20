@@ -346,6 +346,61 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------
+# 12. OTA Update Infrastructure
+# -----------------------------------------------------------------------
+echo "--- OTA Update ---"
+
+if command -v git &>/dev/null; then
+    pass "git is installed"
+else
+    fail "git is not installed (required for OTA updates)"
+fi
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+    pass "Git repo initialized at $INSTALL_DIR"
+else
+    fail "No git repo at $INSTALL_DIR — OTA updates will fail"
+fi
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+    REMOTE_URL=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "")
+    if [ -n "$REMOTE_URL" ]; then
+        pass "Git remote origin: $REMOTE_URL"
+    else
+        fail "Git remote origin not configured"
+    fi
+
+    CURRENT_TAG=$(git -C "$INSTALL_DIR" describe --tags --exact-match 2>/dev/null || echo "")
+    if [ -n "$CURRENT_TAG" ]; then
+        pass "Current git tag: $CURRENT_TAG"
+    else
+        warn "No git tag on current commit (expected vX.Y.Z)"
+    fi
+fi
+
+if [ -x "$INSTALL_DIR/scripts/update-check.sh" ]; then
+    pass "update-check.sh is executable"
+else
+    fail "update-check.sh missing or not executable"
+fi
+
+if [ -x "$INSTALL_DIR/scripts/health-check.sh" ]; then
+    pass "health-check.sh is executable"
+else
+    fail "health-check.sh missing or not executable"
+fi
+
+for TIMER in framecast-update framecast-health; do
+    if systemctl is-enabled "${TIMER}.timer" &>/dev/null; then
+        pass "${TIMER}.timer is enabled"
+    else
+        warn "${TIMER}.timer is not enabled"
+    fi
+done
+
+echo ""
+
+# -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
 TOTAL=$((PASS + FAIL + WARN))
