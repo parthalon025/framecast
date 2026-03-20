@@ -6,7 +6,7 @@
  */
 import { signal } from "@preact/signals";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { ShToast, ShFrozen, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
+import { ShToast, ShFrozen, ShPageBanner, ShEmptyState, ShErrorState, ShThreatPulse, ShStatusBadge } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
@@ -15,8 +15,10 @@ import { NowPlaying, nowPlaying } from "../components/NowPlaying.jsx";
 import { onHeartbeat } from "../components/ConnectionBanner.jsx";
 import { ContextMenu } from "../components/PhotoCard.jsx";
 import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
+import { SearchModal, openSearch } from "../components/SearchModal.jsx";
 import { createSSE } from "../lib/sse.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 import {
   currentUser,
   ensureUserIdentified,
@@ -244,6 +246,7 @@ function handleBatchDelete() {
   })
     .then((resp) => resp.json())
     .then((data) => {
+      showToast(`${ids.length} QUARANTINED`, "info");
       exitSelectionMode();
       fetchPhotos();
       fetchStatus();
@@ -262,6 +265,7 @@ function handleBatchFavorite() {
   })
     .then((resp) => resp.json())
     .then(() => {
+      showToast(`${ids.length} TOGGLED`, "info");
       fetchPhotos();
     })
     .catch((err) => console.warn("Batch favorite error:", err));
@@ -505,13 +509,26 @@ export function Upload() {
 
   return (
     <main class="sh-animate-page-enter fc-page" role="main" ref={pageRef}>
-      <ShPageBanner namespace="FRAMECAST" page="UPLOAD" />
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <ShPageBanner namespace="FRAMECAST" page="UPLOAD" />
+        <button
+          class="sh-input sh-clickable"
+          style="min-width: 44px; min-height: 44px; padding: 8px; background: none; border: none; color: var(--sh-phosphor); font-size: 1.2rem; cursor: pointer; flex-shrink: 0;"
+          onClick={openSearch}
+          aria-label="Search photos"
+        >
+          &#x1F50D;
+        </button>
+      </div>
       {pullDistance > 0 && (
         <div class="fc-pull-indicator" style={{ opacity: Math.min(pullDistance / 80, 1), transform: `translateY(${Math.min(pullDistance * 0.5, 40)}px)` }}>
           {pullDistance >= 80 ? "RELEASE TO REFRESH" : "PULL TO REFRESH"}
         </div>
       )}
       <OfflineBanner />
+
+      {/* Search modal */}
+      <SearchModal onSelect={handlePhotoSelect} />
 
       {/* Now playing — current photo on TV */}
       <NowPlaying />
@@ -700,9 +717,7 @@ export function Upload() {
       {/* Floating bulk action bar */}
       {selectionMode.value && (
         <div class="fc-bulk-bar" role="toolbar" aria-label="Bulk actions">
-          <span class="fc-bulk-bar__count">
-            {selectedIds.value.size} SELECTED
-          </span>
+          <ShStatusBadge status="warning" label={`${selectedIds.value.size} SELECTED`} />
           <div class="fc-bulk-bar__actions">
             <button
               class="fc-bulk-bar__btn"
@@ -725,13 +740,15 @@ export function Upload() {
             >
               FAVORITE
             </button>
-            <button
-              class="fc-bulk-bar__btn fc-bulk-bar__btn--danger"
-              onClick={handleBatchDelete}
-              type="button"
-            >
-              DELETE
-            </button>
+            <ShThreatPulse active={selectedIds.value.size > 0}>
+              <button
+                class="fc-bulk-bar__btn fc-bulk-bar__btn--danger"
+                onClick={handleBatchDelete}
+                type="button"
+              >
+                DELETE
+              </button>
+            </ShThreatPulse>
             <button
               class="fc-bulk-bar__btn fc-bulk-bar__btn--exit"
               onClick={exitSelectionMode}
