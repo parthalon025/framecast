@@ -19,15 +19,18 @@ def load_env():
     """Load .env file into a dict."""
     env = {}
     if ENV_FILE.exists():
-        with open(ENV_FILE) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    key, _, value = line.partition("=")
-                    value = value.strip().strip("'\"")
-                    env[key.strip()] = value
+        try:
+            with open(ENV_FILE) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        key, _, value = line.partition("=")
+                        value = value.strip().strip("'\"")
+                        env[key.strip()] = value
+        except (OSError, UnicodeDecodeError) as exc:
+            log.error("Failed to read .env at %s: %s", ENV_FILE, exc)
     return env
 
 

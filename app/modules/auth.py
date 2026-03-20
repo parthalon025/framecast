@@ -57,6 +57,7 @@ def _get_pin_length() -> int:
         length = int(config.get("PIN_LENGTH", "4"))
         if length in (4, 6):
             return length
+        log.warning("Invalid PIN_LENGTH=%d (must be 4 or 6), defaulting to 4", length)
     except (TypeError, ValueError):
         log.warning("Invalid PIN_LENGTH in config, defaulting to 4")
     return 4

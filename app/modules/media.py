@@ -220,7 +220,8 @@ def _load_locations_cache():
     try:
         with open(cache_path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("Locations cache corrupt or unreadable, rebuilding: %s", exc)
         return {}
 
 
