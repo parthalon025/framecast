@@ -132,7 +132,7 @@ def _atomic_write(path: Path, content: str):
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, str(path))
-    except BaseException:
+    except Exception:
         try:
             os.unlink(tmp_path)
         except OSError as cleanup_exc:

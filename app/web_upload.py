@@ -646,13 +646,23 @@ def delete():
             db.update_photo_quarantine(photo_row["id"], True, "deleted by user")
 
         # Remove associated thumbnail if it exists
+        thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
         try:
-            thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
             if thumb_path.exists():
                 thumb_path.unlink()
         except OSError as exc:
             log.warning("Failed to remove thumbnail for %s: %s", filepath.name, exc)
-        filepath.unlink()
+
+        try:
+            filepath.unlink()
+        except OSError as exc:
+            log.error("Failed to delete file %s: %s — un-quarantining in DB", filepath.name, exc)
+            if photo_row:
+                db.update_photo_quarantine(photo_row["id"], False, None)
+            if xhr:
+                return jsonify({"error": "File deletion failed"}), 500
+            flash("File deletion failed", "error")
+            return redirect(url_for("index"))
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
         if xhr:
@@ -685,6 +695,8 @@ def delete_all():
         log.info("Bulk-quarantined all photos in DB before delete-all")
     except Exception as db_exc:
         log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
+        flash("Delete all failed: database error. Try rebooting.", "error")
+        return redirect(url_for("index"))
 
     count = 0
     for f in media_path.iterdir():
@@ -848,21 +860,27 @@ def settings_save():
 # --- Periodic thumbnail cleanup ---
 _thumbnail_cleanup_last = 0
 _THUMBNAIL_CLEANUP_INTERVAL = 3600  # hourly
+_thumbnail_cleanup_lock = threading.Lock()
 
 
 @app.before_request
 def _periodic_thumbnail_cleanup():
     """Run orphan thumbnail cleanup hourly, triggered by any request."""
     global _thumbnail_cleanup_last
-    now = time.monotonic()
-    if now - _thumbnail_cleanup_last > _THUMBNAIL_CLEANUP_INTERVAL:
-        _thumbnail_cleanup_last = now
-        try:
-            removed = media.cleanup_orphan_thumbnails()
-            if removed:
-                log.info("Cleaned up %d orphan thumbnail(s)", removed)
-        except Exception:
-            log.warning("Periodic thumbnail cleanup failed", exc_info=True)
+    if not _thumbnail_cleanup_lock.acquire(blocking=False):
+        return  # Another thread is already cleaning
+    try:
+        now = time.monotonic()
+        if now - _thumbnail_cleanup_last > _THUMBNAIL_CLEANUP_INTERVAL:
+            _thumbnail_cleanup_last = now
+            try:
+                removed = media.cleanup_orphan_thumbnails()
+                if removed:
+                    log.info("Cleaned up %d orphan thumbnail(s)", removed)
+            except Exception:
+                log.warning("Periodic thumbnail cleanup failed", exc_info=True)
+    finally:
+        _thumbnail_cleanup_lock.release()
 
 
 @app.route("/api/restart-slideshow", methods=["POST"])
