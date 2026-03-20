@@ -1,7 +1,7 @@
 /** @fileoverview User management — "Who's uploading?" modal + user CRUD. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal } from "superhot-ui/preact";
+import { ShModal, ShPageBanner } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 
@@ -137,6 +137,7 @@ export function Users() {
 
   return (
     <div class="sh-animate-page-enter fc-page">
+      <ShPageBanner namespace="FRAMECAST" page="USERS" />
       {/* User table */}
       {rows.length > 0 ? (
         <ShDataTable

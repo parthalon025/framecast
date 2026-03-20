@@ -10,6 +10,7 @@
  */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import { ShPageBanner } from "superhot-ui/preact";
 import { createSSE } from "../lib/sse.js";
 import { Boot } from "./Boot.jsx";
 import { Welcome } from "./Welcome.jsx";
@@ -148,6 +149,7 @@ export function DisplayRouter() {
 
   return (
     <div style="position:fixed;inset:0;background:#000;">
+      <ShPageBanner namespace="FRAMECAST" page="DISPLAY" />
       {renderState(state)}
       {showPin && (
         <div style="position:fixed;bottom:48px;left:0;right:0;text-align:center;">

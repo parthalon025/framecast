@@ -5,7 +5,7 @@
  * piOS voice throughout: STANDBY, FAULT, CONFIRM, etc.
  */
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
-import { ShCollapsible, ShModal, ShToast, ShSkeleton } from "superhot-ui/preact";
+import { ShCollapsible, ShModal, ShToast, ShSkeleton, ShPageBanner } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { navigate } from "../components/Router.jsx";
@@ -358,6 +358,7 @@ export function Settings() {
 
   return (
     <main class="sh-animate-page-enter fc-page" role="main">
+      <ShPageBanner namespace="FRAMECAST" page="SETTINGS" />
       {/* ── DISPLAY ── */}
       <section aria-label="Display settings">
         <ShCollapsible title="DISPLAY" defaultOpen={true}>

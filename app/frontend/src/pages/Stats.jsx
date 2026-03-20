@@ -6,7 +6,7 @@ import { ShStatsGrid } from "superhot-ui/preact";
 import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { ShFrozen } from "superhot-ui/preact";
-import { ShCollapsible, ShSkeleton } from "superhot-ui/preact";
+import { ShCollapsible, ShSkeleton, ShPageBanner } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
 
@@ -183,6 +183,7 @@ export function Stats() {
 
   return (
     <ShFrozen timestamp={lastUpdated} class="sh-animate-page-enter fc-page">
+      <ShPageBanner namespace="FRAMECAST" page="STATS" />
       {/* Summary cards */}
       <div class="sh-frame" data-label="OVERVIEW">
         <div style="padding: 12px;">

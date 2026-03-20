@@ -6,7 +6,7 @@
  */
 import { signal } from "@preact/signals";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { ShToast, ShFrozen } from "superhot-ui/preact";
+import { ShToast, ShFrozen, ShPageBanner } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
@@ -505,6 +505,7 @@ export function Upload() {
 
   return (
     <main class="sh-animate-page-enter fc-page" role="main" ref={pageRef}>
+      <ShPageBanner namespace="FRAMECAST" page="UPLOAD" />
       {pullDistance > 0 && (
         <div class="fc-pull-indicator" style={{ opacity: Math.min(pullDistance / 80, 1), transform: `translateY(${Math.min(pullDistance * 0.5, 40)}px)` }}>
           {pullDistance >= 80 ? "RELEASE TO REFRESH" : "PULL TO REFRESH"}

@@ -1,7 +1,7 @@
 /** @fileoverview Albums page — album management with smart albums, create/delete, photo grid. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal, ShFrozen, ShToast } from "superhot-ui/preact";
+import { ShModal, ShFrozen, ShToast, ShPageBanner } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
@@ -305,11 +305,9 @@ export function Albums() {
   // --- Album grid view ---
   return (
     <div class="sh-animate-page-enter fc-page">
+      <ShPageBanner namespace="FRAMECAST" page="ALBUMS" />
       {/* Header + create button */}
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-        <span style="font-family: var(--font-mono, monospace); font-size: 1rem; font-weight: 700;">
-          ALBUMS
-        </span>
         <button
           class="fc-action-btn"
           onClick={() => { createOpen.value = true; }}

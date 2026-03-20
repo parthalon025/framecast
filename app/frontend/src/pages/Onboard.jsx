@@ -6,7 +6,7 @@
  * piOS voice: terse, uppercase, no conversational language.
  */
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
-import { ShSkeleton, ShToast } from "superhot-ui/preact";
+import { ShSkeleton, ShToast, ShPageBanner } from "superhot-ui/preact";
 import { navigate } from "../components/Router.jsx";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { fetchWithTimeout } from "../lib/fetch.js";
@@ -297,6 +297,7 @@ export function Onboard() {
 
   return (
     <main class="sh-animate-page-enter fc-page" role="main">
+      <ShPageBanner namespace="FRAMECAST" page="ONBOARD" />
       <WizardSteps currentStep={step} errorStep={errorStep} />
 
       {/* ── STEP 1: CONNECT ── */}
