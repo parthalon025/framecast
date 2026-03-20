@@ -16,8 +16,8 @@ fi
 # noatime on root filesystem
 sed -i '/^\(\/dev\/\|PARTUUID=\).*\s\+\/\s\+ext4/ s/defaults/defaults,noatime/' "${ROOTFS_DIR}/etc/fstab" 2>/dev/null || true
 
-# Disable screen blanking
-mkdir -p "${ROOTFS_DIR}/etc/systemd/system/getty@tty1.service.d"
+# Mask getty on tty1 — kiosk service takes the VT directly, no login prompt
+ln -sf /dev/null "${ROOTFS_DIR}/etc/systemd/system/getty@tty1.service"
 
 # Watchdog config
 install -m 644 files/watchdog.conf "${ROOTFS_DIR}/etc/watchdog.conf"

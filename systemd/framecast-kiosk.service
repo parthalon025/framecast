@@ -9,6 +9,13 @@ StartLimitAction=reboot
 [Service]
 Type=simple
 User=pi
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=no
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/opt/framecast/kiosk/kiosk.sh
 Restart=always

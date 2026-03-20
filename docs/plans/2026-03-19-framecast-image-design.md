@@ -92,20 +92,24 @@ API calls (photo list, WebSocket events). With 2 workers, uploads and display ru
 | Service | Purpose | Type |
 |---------|---------|------|
 | `framecast` | gunicorn + Flask web app (both phone UI and TV display) | rewritten |
-| `framecast-kiosk` | Kiosk browser pointed at `localhost:8080/display` | new |
+| `framecast-kiosk` | cage + GJS browser (TTYPath=/dev/tty1, PAMName=login) | new |
 | `wifi-manager` | NetworkManager WiFi provisioning (forked from comitup) | new |
 | `framecast-update.timer` | OTA checker (daily, opt-in) | new |
-| `avahi-daemon` | mDNS (`framecast.local` resolution) | system, enabled |
+| `framecast-health.timer` | Post-update rollback check (90s after boot) | new |
+| `framecast-schedule.timer` | HDMI-CEC display schedule (every minute) | new |
+| `framecast-hostname` | First-boot MAC-based hostname (oneshot, self-disabling) | new |
+| `avahi-daemon` | mDNS (`framecast-XXXX.local` resolution) | system, enabled |
 | `watchdog` | Hardware watchdog (bcm2835_wdt) | existing |
 
 ### Display Stack
 
-No X11. Wayland-based kiosk:
-- **cage** — single-window Wayland compositor designed for kiosks (used by rpi-image-gen webkiosk example)
-- **GTK-WebKit (GJS)** — lightweight browser, much less RAM than Chromium (~50MB vs ~200MB). Used by kiosk.pi.
-- Auto-login on tty1 → cage → GJS browser → `http://localhost:8080/display`
-- Screen blanking disabled
-- Fallback: if GTK-WebKit has issues with HTML5 video on Pi, swap to Chromium in kiosk mode (heavier but proven)
+No X11. Wayland-based kiosk, keyboard-free:
+- **cage** — single-window Wayland compositor designed for kiosks
+- **GTK-WebKit (GJS)** — lightweight browser (~50MB vs Chromium ~200MB)
+- `getty@tty1` masked — no login prompt, no auto-login
+- `framecast-kiosk.service` owns tty1 directly via `TTYPath=/dev/tty1` + `PAMName=login`
+- Boot params: `quiet loglevel=0 vt.global_cursor_default=0` (no kernel output on screen)
+- Fallback: if GTK-WebKit has issues with HTML5 video on Pi, swap to Chromium in kiosk mode
 
 ### TV Display Routes
 
@@ -145,37 +149,46 @@ HTML5 `<video>` hardware decode on Raspberry Pi via browser needs validation:
 
 ## Boot Flow
 
+Keyboard-free. No login prompts, no console output. Black screen → kiosk → QR.
+
 ```
 Power on
   │
+  ├─ Kernel: quiet, loglevel=0, no console=tty1, cursor hidden
+  ├─ getty@tty1 masked — no login prompt
+  ├─ framecast-kiosk.service starts (TTYPath=/dev/tty1, PAMName=login)
   ├─ cage starts (Wayland kiosk compositor)
   ├─ GJS/WebKit browser opens http://localhost:8080/display
-  ├─ /display/boot plays bootSequence() typewriter:
-  │     "FRAMECAST v1.0"
+  │
+  ├─ Phase 1: Boot.jsx — bootSequence() typewriter (facility: normal)
+  │     "piOS v2.0"
+  │     "FRAMECAST PHOTO SYSTEM"
   │     "INITIALIZING..."
   │     "CHECKING NETWORK..."
+  │     "LOADING MEDIA..."
   │
-  ├─ WiFi configured?
-  │   ├─ NO → /display/setup:
-  │   │       bootSequence() continues:
-  │   │         "NO NETWORK CONFIGURED"
-  │   │         "SETUP REQUIRED"
+  ├─ Phase 2: Boot.jsx checks /api/status → narrator greeting
+  │     WiFi OK → GLaDOS greeting, facility stays normal
+  │     WiFi missing → Wheatley greeting, facility shifts to alert
+  │
+  ├─ DisplayRouter routes based on status:
+  │   ├─ No WiFi → /display/setup (facility: alert, Wheatley narrator):
+  │   │       ShAnnouncement with warning phrase
   │   │       QR code → http://192.168.4.1:8080
   │   │       "CONNECT TO WIFI: FrameCast-XXXX"
   │   │       [persistent until WiFi configured]
-  │   │       [Flask serves captive portal on same port]
   │   │
-  │   └─ YES → Photos exist?
-  │       ├─ NO → /display/welcome:
+  │   └─ WiFi OK → Photos exist?
+  │       ├─ NO → /display/welcome (facility: normal, GLaDOS narrator):
+  │       │       ShAnnouncement with empty-state phrase
   │       │       QR code → http://framecast.local:8080
   │       │       "AWAITING INPUT" mantra
-  │       │       [persistent until photos uploaded]
-  │       │       [auto-refreshes when first photo lands]
+  │       │       [auto-transitions to slideshow when first photo lands]
   │       │
-  │       └─ YES → /display (slideshow):
+  │       └─ YES → /display (slideshow, facility: normal):
   │               QR overlay for 30s (configurable)
   │               then → slideshow with CSS transitions
-  │               [WebSocket push updates when new photos uploaded]
+  │               [SSE push updates when new photos uploaded]
 ```
 
 The 30-second QR on reboot is a safety net — family members who need to add more photos catch it after any power cycle.
@@ -296,30 +309,30 @@ stage2-framecast/
   prerun.sh                      # copy_previous
   EXPORT_IMAGE                   # triggers .img export
   00-packages/
-    00-packages                  # cage, gjs, gir1.2-webkit2-4.0, wlr-randr,
+    00-packages                  # cage, gjs, gir1.2-webkit2-4.1, wlr-randr,
                                  # python3-flask, gunicorn, ffmpeg, watchdog,
                                  # qrencode, avahi-daemon, network-manager,
-                                 # python3-pil, python3-pip, nodejs (for esbuild)
+                                 # python3-pil, python3-pip, nodejs, npm, git,
+                                 # ufw, v4l-utils
   01-config/
     01-run.sh                    # boot config, display settings, watchdog
     files/
-      config.txt                 # GPU mem (Pi 3), disable splash
-      cmdline.txt                # quiet boot + vc4.force_hotplug=1
-  02-app/
-    01-run.sh                    # copy app files, build frontend (npm run build)
-    01-run-chroot.sh             # enable services, create user, sudoers
-    files/
-      framecast.service          # Flask web app
-      framecast-kiosk.service    # cage + GJS browser → localhost:8080/display
-      wifi-manager.service
-      framecast-update.timer
-      framecast-update.service
+      config.txt                 # GPU mem (Pi 3), disable splash/overscan
+      cmdline.txt                # quiet, loglevel=0, no console=tty1, cursor hidden
+  02-app/                        # SKIPPABLE — SKIP file excludes from --base-only
+    01-run.sh                    # HOST: copy app files, build frontend (native x86),
+                                 #       pre-download arm64 wheels, init git, systemd
+    01-run-chroot.sh             # CHROOT: enable services, pip install, ufw, .env
   03-system/
-    01-run.sh                    # SD card longevity (journal, tmpfs, noatime)
+    01-run.sh                    # SD card longevity (journal, tmpfs, noatime),
+                                 #   mask getty@tty1, watchdog, ufw script,
+                                 #   hostname generator, avahi service
     files/
-      kiosk.sh                   # cage → GJS browser fullscreen
-      kiosk-browser.js           # GJS/WebKit browser script
-      pi-photo-display.conf      # journald limits
+      framecast-journal.conf     # journald limits (50M, 7d)
+      watchdog.conf              # bcm2835_wdt, 15s timeout
+      ufw-setup.sh               # firewall: 8080/tcp private + 5353/udp mDNS
+      framecast-hostname.sh      # first-boot MAC-based unique hostname
+      framecast.service          # avahi mDNS advertisement
 ```
 
 ### Build Config
@@ -329,7 +342,7 @@ IMG_NAME="FrameCast"
 RELEASE="bookworm"
 TARGET_HOSTNAME="framecast"
 FIRST_USER_NAME="pi"
-FIRST_USER_PASS="framecast"
+FIRST_USER_PASS=""
 ENABLE_SSH=0
 LOCALE_DEFAULT="en_US.UTF-8"
 KEYBOARD_KEYMAP="us"
@@ -338,9 +351,28 @@ STAGE_LIST="stage0 stage1 stage2 stage2-framecast"
 ```
 
 ### Build Method
-- Docker-based (`build-docker.sh`) for reproducibility
-- GitHub Actions CI on release tags → publish `.img.xz` to Releases
-- Build host: any Linux x86_64 with Docker (10-20GB disk, 20-60min)
+
+Native or Docker. Native requires `sudo` + `debootstrap`, `qemu-user-static`, etc.
+Pi-gen branch: `bookworm-arm64` (64-bit arm64 images).
+
+```bash
+./build.sh                 # Full build (~30-40 min, first time)
+./build.sh --base-only     # OS-only, skip FrameCast app
+./build.sh --continue      # Add app layer to existing base (~5 min)
+./build.sh --app-only      # Rebuild ONLY app stage (~3 min, fastest iteration)
+./build.sh --docker        # Full build via Docker
+./build.sh --clean         # Wipe work/ and deploy/ first
+```
+
+**Iteration workflow:** `--base-only` once → validate app → `--continue` → iterate with `--app-only`.
+
+**Speed optimizations:**
+- Frontend builds on **native x86_64** host (not QEMU arm64 chroot)
+- Python wheels pre-downloaded on host, installed from cache in chroot
+- `--app-only` skips stages 0-2 + base sub-stages entirely
+- Pi-gen `CONTINUE=1` reuses cached rootfs across rebuilds
+
+Build host: Linux x86_64 with sudo (native) or Docker. ~15GB disk, 30-40min first build.
 
 ---
 

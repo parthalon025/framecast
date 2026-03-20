@@ -38,7 +38,8 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 | `pi-gen/` | Custom pi-gen stage for OS image build |
 | `systemd/` | Service and timer definitions |
 | `scripts/` | Health check, HDMI control, smoke tests |
-| `tests/` | pytest suites (test_db, test_rotation, test_users, test_cec, test_albums, test_auth, test_rate_limiter, test_config) |
+| `app/templates/` | Single template: `spa.html` (SPA shell for both phone + TV) |
+| `tests/` | pytest suites (test_db, test_rotation, test_users, test_cec, test_albums, test_auth, test_rate_limiter, test_config, test_api_integration) |
 | `docs/plans/` | Design docs, implementation plans, research |
 
 ## Python Modules
@@ -93,11 +94,20 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - DB public API only — never reach into `_write_lock` directly from routes; use the named functions in `db.py`
 - `createSSE` helper (sse.js) used on both Phone SPA and TV DisplayRouter — handles exponential backoff and page-background pause
 
+## Frontend Infrastructure
+
+- **Centralized toast:** `lib/toast.js` — signal-based, single stack rendered in PhoneLayout. Import `showToast(message, type, duration)` from any page.
+- **Incident state:** `lib/incident.js` — signal-based device-level alerts. `raiseIncident(message, severity)` / `clearIncident()`.
+- **Heartbeat:** `app.jsx` — 30s polling to `/api/status`. After 3 failures: raises incident, sets facility `alert`. On recovery: clears incident, triggers `recoverySequence`.
+- **superhot-ui components used (19/28):** ShNav, ShModal, ShToast, ShFrozen, ShSkeleton, ShCollapsible, ShStatsGrid, ShDataTable, ShPageBanner, ShStatusBadge, ShErrorState, ShEmptyState, ShMantra, ShIncidentHUD, ShHeroCard, ShTimeChart, ShThreatPulse, ShDropzone (custom), ShAnnouncement.
+
 ## Design Docs
 
 - `docs/plans/2026-03-19-framecast-image-design.md` — v2.0 design document
 - `docs/plans/2026-03-19-framecast-v2-polish-design.md` — v2.1 polish design (gap analysis + 8-phase plan)
 - `docs/plans/2026-03-19-framecast-v2-polish-plan.md` — v2.1 implementation plan (72 tasks, 8 batches)
+- `docs/plans/2026-03-20-api-ui-integration-design.md` — API consolidation + superhot-ui maximization design
+- `docs/plans/2026-03-20-api-ui-superhot-plan.md` — API consolidation implementation plan (12 batches)
 - `docs/plans/2026-03-19-v2-polish-research.md` — Competitive research (PhotoPrism, Immich, CEC, rotation algorithms)
 - `docs/plans/2026-03-19-pi-gen-photo-frame-kiosk-research.md` — Pi-gen kiosk research
 - `docs/plans/2026-03-19-mpv-vs-vlc-display-stack-research.md` — Display stack research
