@@ -32,6 +32,8 @@ chown -R 1000:1000 /opt/framecast
 chmod +x /opt/framecast/kiosk/kiosk.sh
 chmod +x /opt/framecast/kiosk/browser.js
 chmod +x /opt/framecast/scripts/hdmi-control.sh
+chmod +x /opt/framecast/scripts/update-check.sh
+chmod +x /opt/framecast/scripts/health-check.sh
 
 # Scoped sudoers for service restart and reboot
 SUDOERS_TMP=$(mktemp)

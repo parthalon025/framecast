@@ -157,7 +157,7 @@ export function Update() {
       const res = await authedFetch("/api/update/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tag }),
+        body: JSON.stringify({ tag, expected_sha: updateInfo.target_commitish }),
       });
 
       clearInterval(progressTimer.current);
