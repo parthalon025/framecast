@@ -19,8 +19,8 @@
 
 .qr-overlay img {
   display: block;
-  width: 120px;
-  height: 120px;
+  width: clamp(80px, 15vw, 160px);
+  height: clamp(80px, 15vw, 160px);
   image-rendering: pixelated;
 }
 
@@ -68,4 +68,55 @@
   padding: 8px 16px;
   border: 1px solid var(--sh-threat);
   z-index: 30;
+}
+
+/* ── Ambient Clock ── */
+
+.fc-ambient-clock {
+  position: fixed;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.fc-clock-time {
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(2rem, 8vw, 6rem);
+  font-weight: 700;
+  color: var(--sh-phosphor);
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px var(--sh-phosphor-glow), 0 0 40px var(--sh-phosphor-glow);
+  line-height: 1;
+}
+
+.fc-clock-separator {
+  opacity: 0.6;
+  animation: fcClockBlink 1s step-end infinite;
+}
+
+@keyframes fcClockBlink {
+  50% { opacity: 0.1; }
+}
+
+.fc-clock-digits--seconds {
+  font-size: 0.5em;
+  opacity: 0.5;
+  vertical-align: baseline;
+}
+
+.fc-clock-separator--seconds {
+  font-size: 0.5em;
+  vertical-align: baseline;
+}
+
+.fc-clock-date {
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.75rem, 2vw, 1.25rem);
+  color: var(--sh-phosphor);
+  opacity: 0.5;
+  letter-spacing: 0.2em;
+  margin-top: 12px;
 }

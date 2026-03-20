@@ -283,6 +283,19 @@ export function Settings() {
                 ))}
               </select>
             </SettingRow>
+
+            <SettingRow label="MAX VIDEO DURATION (S)">
+              <input
+                class="sh-range"
+                type="range"
+                min="5"
+                max="300"
+                step="5"
+                value={settings.max_video_duration || 30}
+                onInput={(evt) => update("max_video_duration", parseInt(evt.target.value, 10))}
+              />
+              <span class="sh-value fc-range-value">{settings.max_video_duration || 30}s</span>
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>

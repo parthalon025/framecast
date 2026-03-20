@@ -21,6 +21,8 @@ const photoList = signal([]);
 const settingsData = signal(null);
 const onThisDayText = signal("");
 const connectionLost = signal(false);
+const currentPhotoData = signal(null);
+const currentPhotoIndex = signal(0);
 
 // --- Constants ---
 const TRANSITION_TYPES = ["fc-fade", "fc-slide", "fc-kenburns", "fc-dissolve"];
@@ -154,8 +156,8 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
     vid.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;";
 
-    // Cap video duration at SLIDESHOW_DURATION * 3 (default 30s)
-    const maxDuration = ((cfg ? cfg.photo_duration : 10) || 10) * 3;
+    // Cap video duration at configured max (default 30s)
+    const maxDuration = (cfg ? cfg.max_video_duration : 30) || 30;
     vid.addEventListener("loadedmetadata", () => {
       if (vid.duration > maxDuration) {
         // Auto-advance after max duration
@@ -202,11 +204,26 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
     layer.appendChild(img);
   }
 
+  // Update info overlay signals
+  currentPhotoData.value = photo;
+  currentPhotoIndex.value = (currentPhotoIndex.value + 1) | 0;
+
   // Show "On This Day" overlay if applicable
   if (photo.on_this_day && photo.years_ago) {
     const yearsAgo = photo.years_ago;
     onThisDayText.value = yearsAgo === 1 ? "1 YEAR AGO" : `${yearsAgo} YEARS AGO`;
   }
+}
+
+/** Format photo metadata for the info overlay. */
+function formatPhotoInfo(photo) {
+  if (!photo) return "";
+  const parts = [];
+  const name = photo.filename || photo.name || "";
+  if (name) parts.push(name);
+  if (photo.exif_date) parts.push(photo.exif_date);
+  if (photo.gps_lat && photo.gps_lon) parts.push(`${photo.gps_lat.toFixed(2)}, ${photo.gps_lon.toFixed(2)}`);
+  return parts.join(" \u2022 ");
 }
 
 /** Fetch a playlist from the server. Returns { photos, playlist_id }. */
@@ -315,9 +332,11 @@ export function Slideshow() {
       const newStandby = s.activeLayer === "A" ? layerBRef.current : layerARef.current;
       newActive.style.zIndex = "2";
       newActive.className = "slideshow-layer";
+      newActive.setAttribute("aria-hidden", "false");
       newStandby.style.zIndex = "1";
       newStandby.style.opacity = "0";
       newStandby.className = "slideshow-layer";
+      newStandby.setAttribute("aria-hidden", "true");
 
       // Preload next 2
       preloadAhead(s.ordered, s.index, 2);
@@ -459,7 +478,7 @@ export function Slideshow() {
   const isEmpty = photoList.value.length === 0;
 
   return (
-    <div class="slideshow-container">
+    <div class="slideshow-container" role="region" aria-label="Photo slideshow" aria-live="polite">
       {isEmpty && (
         <div class="boot-screen">
           <div class="boot-status">STANDBY</div>
@@ -469,13 +488,20 @@ export function Slideshow() {
       <div
         ref={layerARef}
         class="slideshow-layer"
+        aria-hidden="true"
         style="position:absolute;inset:0;z-index:1;opacity:0;"
       />
       <div
         ref={layerBRef}
         class="slideshow-layer"
+        aria-hidden="true"
         style="position:absolute;inset:0;z-index:1;opacity:0;"
       />
+      {currentPhotoData.value && (
+        <div class="fc-info-overlay" key={`info-${currentPhotoIndex.value}`}>
+          <span class="fc-info-text">{formatPhotoInfo(currentPhotoData.value)}</span>
+        </div>
+      )}
       {onThisDayText.value && (
         <div class="fc-otd-overlay" ref={otdOverlayRef}>
           <span class="fc-otd-label">{onThisDayText.value}</span>
