@@ -1,10 +1,12 @@
 /** @fileoverview Phone layout shell — wraps page content with ShNav bottom bar. */
-import { ShNav } from "superhot-ui/preact";
+import { ShNav, ShMantra, ShIncidentHUD, ShToast } from "superhot-ui/preact";
 import { route, navigate } from "./Router.jsx";
 import { uploadProgress } from "../pages/Upload.jsx";
 import { SearchModal, openSearch } from "./SearchModal.jsx";
 import { openLightbox } from "./Lightbox.jsx";
-import { ConnectionBanner } from "./ConnectionBanner.jsx";
+import { ConnectionBanner, tvConnected } from "./ConnectionBanner.jsx";
+import { toast, clearToast } from "../lib/toast.js";
+import { incident, clearIncident } from "../lib/incident.js";
 
 // --- Nav icons (inline SVG, 20x20) ---
 function UploadIcon() {
@@ -76,10 +78,10 @@ function SearchIcon() {
 }
 
 const navItems = [
-  { path: "/", label: "Upload", icon: UploadIcon },
-  { path: "/albums", label: "Albums", icon: AlbumsIcon },
-  { path: "/map", label: "Map", icon: MapIcon },
-  { path: "/settings", label: "Settings", icon: SettingsIcon },
+  { path: "/", label: "UPLOAD", icon: UploadIcon },
+  { path: "/albums", label: "ALBUMS", icon: AlbumsIcon },
+  { path: "/map", label: "MAP", icon: MapIcon },
+  { path: "/settings", label: "SETTINGS", icon: SettingsIcon },
 ];
 
 /** Open lightbox when a search result is selected. */
@@ -92,46 +94,64 @@ function handleSearchSelect(photo) {
  * Adds 72px bottom padding so content doesn't hide behind the fixed nav bar.
  */
 export function PhoneLayout({ children }) {
+  const offline = !tvConnected.value;
+
   return (
-    <div style="min-height: 100dvh;">
-      <ConnectionBanner />
-      {/* Header bar with search */}
-      <div
-        class="fc-header"
-        style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top, 0px));"
-      >
-        <span
-          style="font-family: var(--font-mono, monospace); font-size: 0.8rem; letter-spacing: 0.12em; color: var(--sh-phosphor, #39ff14);"
+    <ShMantra text="OFFLINE" active={offline}>
+      <div style="min-height: 100dvh;">
+        <ShIncidentHUD
+          active={incident.value !== null}
+          severity={incident.value?.severity || "warning"}
+          message={incident.value?.message || ""}
+          timestamp={incident.value?.startedAt}
+          onAcknowledge={clearIncident}
+        />
+        <ConnectionBanner />
+        {/* Header bar with search */}
+        <div
+          class="fc-header"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top, 0px));"
         >
-          FRAMECAST
-        </span>
-        <button
-          type="button"
-          onClick={openSearch}
-          aria-label="Search photos"
-          style="background: none; border: 1px solid var(--border-subtle, rgba(255,255,255,0.15)); color: var(--sh-phosphor, #39ff14); cursor: pointer; padding: 6px 10px; min-width: 44px; min-height: 44px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono, monospace); font-size: 0.75rem; border-radius: 3px;"
-        >
-          <SearchIcon />
-          SEARCH
-        </button>
-      </div>
-      <div>
-        {children}
-      </div>
-      {uploadProgress.value && (
-        <div class="fc-upload-toast">
-          UPLOADING {uploadProgress.value.current}/{uploadProgress.value.total}
-          <div
-            class="fc-upload-toast-bar"
-            style={{ width: `${(uploadProgress.value.current / uploadProgress.value.total) * 100}%` }}
-          />
+          <span
+            style="font-family: var(--font-mono, monospace); font-size: 0.8rem; letter-spacing: 0.12em; color: var(--sh-phosphor, #39ff14);"
+          >
+            FRAMECAST
+          </span>
+          <button
+            type="button"
+            onClick={openSearch}
+            aria-label="Search photos"
+            style="background: none; border: 1px solid var(--border-subtle, rgba(255,255,255,0.15)); color: var(--sh-phosphor, #39ff14); cursor: pointer; padding: 6px 10px; min-width: 44px; min-height: 44px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono, monospace); font-size: 0.75rem; border-radius: 3px;"
+          >
+            <SearchIcon />
+            SEARCH
+          </button>
         </div>
-      )}
-      <SearchModal onSelect={handleSearchSelect} />
-      <ShNav
-        items={navItems}
-        currentPath={route.value}
-      />
-    </div>
+        <div>
+          {children}
+        </div>
+        {uploadProgress.value && (
+          <div class="fc-upload-toast">
+            UPLOADING {uploadProgress.value.current}/{uploadProgress.value.total}
+            <div
+              class="fc-upload-toast-bar"
+              style={{ width: `${(uploadProgress.value.current / uploadProgress.value.total) * 100}%` }}
+            />
+          </div>
+        )}
+        {toast.value && (
+          <ShToast
+            type={toast.value.type}
+            message={toast.value.message}
+            onDismiss={clearToast}
+          />
+        )}
+        <SearchModal onSelect={handleSearchSelect} />
+        <ShNav
+          items={navItems}
+          currentPath={route.value}
+        />
+      </div>
+    </ShMantra>
   );
 }

@@ -15,25 +15,21 @@ import subprocess
 import threading
 import time
 import uuid
-from contextlib import closing
 from pathlib import Path
 
 from flask import (
     Flask,
     abort,
-    flash,
     jsonify,
-    redirect,
     render_template,
     request,
     send_from_directory,
-    url_for,
 )
 from werkzeug.utils import secure_filename
 
 import sse
 from api import api
-from modules import config, db, media, services, wifi
+from modules import config, db, media, wifi
 from modules.auth import auth_api, require_pin, validate_guest_token
 from modules.boot_config import apply_boot_config, apply_boot_ssh
 
@@ -401,32 +397,7 @@ def _auto_resize_image(image_path):
 
 @app.route("/")
 def index():
-    files = media.get_media_files()
-    disk = media.get_disk_usage()
-    photo_count = sum(1 for f in files if not f["is_video"])
-    video_count = sum(1 for f in files if f["is_video"])
-    # Check if any photos have GPS locations for the Map nav link (lightweight DB query)
-    with closing(db.get_db()) as conn:
-        has_locations = conn.execute(
-            "SELECT 1 FROM photos WHERE gps_lat IS NOT NULL AND quarantined = 0 LIMIT 1"
-        ).fetchone() is not None
-    return render_template(
-        "index.html",
-        files=files,
-        disk=disk,
-        photo_count=photo_count,
-        video_count=video_count,
-        max_upload_mb=MAX_UPLOAD_MB,
-        has_locations=has_locations,
-    )
-
-
-def _is_xhr():
-    """Check if the request is from an XHR/fetch client (SPA frontend)."""
-    return (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or "application/json" in (request.headers.get("Accept") or "")
-    )
+    return render_template("spa.html", version=_read_version())
 
 
 def _require_pin_or_guest(func):
@@ -455,10 +426,7 @@ def _require_pin_or_guest(func):
 def upload():
     # Limit concurrent uploads to prevent OOM on Pi 3B (1GB RAM)
     if not _upload_semaphore.acquire(blocking=False):
-        if _is_xhr():
-            return jsonify({"error": "Another upload is in progress"}), 429
-        flash("Another upload is in progress. Please wait and try again.", "warning")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Another upload is in progress"}), 429
     try:
         return _do_upload()
     finally:
@@ -466,21 +434,13 @@ def upload():
 
 
 def _do_upload():
-    xhr = _is_xhr()
-
     if "files" not in request.files:
-        if xhr:
-            return jsonify({"error": "No files selected"}), 400
-        flash("No files selected", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "No files selected"}), 400
 
     # Check disk space before accepting uploads (reserve 50MB for system use)
     disk = media.get_disk_usage()
     if disk["percent"] >= 95 or disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-        if xhr:
-            return jsonify({"error": "Not enough disk space"}), 507
-        flash("Not enough disk space. Delete files or use a larger SD card.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Not enough disk space"}), 507
 
     # Read uploader identity from cookie (set by "Who's uploading?" modal)
     uploaded_by = request.cookies.get("framecast_user", "default").strip() or "default"
@@ -506,8 +466,6 @@ def _do_upload():
         # during multi-file uploads
         current_disk = media.get_disk_usage()
         if current_disk["percent"] >= 95 or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-            if not xhr:
-                flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
             break
 
         dest = Path(MEDIA_DIR) / filename
@@ -634,42 +592,27 @@ def _do_upload():
         uploaded_names.append(filename)
         sse.notify("photo:added", {"filename": filename, "photo_id": photo_id})
 
-    if xhr:
-        return jsonify({
-            "uploaded": uploaded_names,
-            "uploaded_count": uploaded,
-            "skipped": skipped,
-        }), 200 if uploaded > 0 else 400
-
-    if uploaded > 0:
-        flash(f"Uploaded {uploaded} file(s) successfully", "success")
-    if skipped > 0:
-        flash(f"Skipped {skipped} file(s) (unsupported format)", "warning")
-
-    return redirect(url_for("index"))
+    return jsonify({
+        "uploaded": uploaded_names,
+        "uploaded_count": uploaded,
+        "skipped": skipped,
+    }), 200 if uploaded > 0 else 400
 
 
 @app.route("/delete", methods=["POST"])
 @require_pin
 @log_post_request
 def delete():
-    xhr = _is_xhr()
     filename = request.form.get("filename", "")
     if not filename:
-        if xhr:
-            return jsonify({"error": "No file specified"}), 400
-        flash("No file specified", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "No file specified"}), 400
 
     filepath = Path(MEDIA_DIR) / filename
     # Prevent path traversal
     try:
         filepath.resolve().relative_to(Path(MEDIA_DIR).resolve())
     except ValueError:
-        if xhr:
-            return jsonify({"error": "Invalid file path"}), 400
-        flash("Invalid file path", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Invalid file path"}), 400
 
     if filepath.exists() and filepath.is_file():
         # Mark as quarantined in DB first, then delete file async
@@ -691,31 +634,22 @@ def delete():
             log.error("Failed to delete file %s: %s — un-quarantining in DB", filepath.name, exc)
             if photo_row:
                 db.update_photo_quarantine(photo_row["id"], False, None)
-            if xhr:
-                return jsonify({"error": "File deletion failed"}), 500
-            flash("File deletion failed", "error")
-            return redirect(url_for("index"))
+            return jsonify({"error": "File deletion failed"}), 500
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
-        if xhr:
-            return jsonify({"status": "ok", "filename": filename})
-        flash("File deleted", "success")
-    else:
-        if xhr:
-            return jsonify({"error": "File not found"}), 404
-        flash("File not found", "error")
+        return jsonify({"status": "ok", "filename": filename})
 
-    return redirect(url_for("index"))
+    return jsonify({"error": "File not found"}), 404
 
 
 @app.route("/delete-all", methods=["POST"])
 @require_pin
 @log_post_request
 def delete_all():
-    confirm = request.form.get("confirm", "")
+    data = request.get_json(silent=True) or {}
+    confirm = data.get("confirm", request.form.get("confirm", ""))
     if confirm != "DELETE":
-        flash("Type DELETE to confirm", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Type DELETE to confirm"}), 400
 
     media_path = Path(MEDIA_DIR)
     image_ext, video_ext = media.get_allowed_extensions()
@@ -727,8 +661,7 @@ def delete_all():
         log.info("Bulk-quarantined all photos in DB before delete-all")
     except Exception as db_exc:
         log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
-        flash("Delete all failed: database error. Try rebooting.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Delete all failed: database error"}), 500
 
     count = 0
     for f in media_path.iterdir():
@@ -755,10 +688,7 @@ def delete_all():
         except OSError as exc:
             log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
-        return jsonify({"status": "ok", "deleted": count})
-    flash(f"Deleted {count} file(s)", "success")
-    return redirect(url_for("index"))
+    return jsonify({"status": "ok", "deleted": count})
 
 
 @app.route("/media/<path:filename>")
@@ -784,109 +714,6 @@ def serve_thumbnail(filename):
     abort(404)
 
 
-@app.route("/map")
-def map_page():
-    """Map page showing photo locations."""
-    return render_template("map.html")
-
-
-@app.route("/settings")
-def settings_page():
-    """Settings page to configure the display."""
-    env = config.load_env()
-    return render_template("settings.html", env=env)
-
-
-@app.route("/settings", methods=["POST"])
-@require_pin
-@log_post_request
-def settings_save():
-    """Save settings from the settings form."""
-    updates = {}
-    # Security: MEDIA_DIR and WEB_PORT excluded from web editing.
-    # MEDIA_DIR change enables arbitrary file read/write.
-    # WEB_PORT change could lock users out.
-    allowed_keys = {
-        "PHOTO_DURATION",
-        "SHUFFLE",
-        "LOOP",
-        "MAX_UPLOAD_MB",
-        "AUTO_RESIZE_MAX",
-        "HDMI_SCHEDULE_ENABLED",
-        "HDMI_OFF_TIME",
-        "HDMI_ON_TIME",
-        "AUTO_REFRESH",
-        "REFRESH_INTERVAL",
-        "IMAGE_EXTENSIONS",
-        "VIDEO_EXTENSIONS",
-    }
-
-    for key in allowed_keys:
-        value = request.form.get(key)
-        if value is not None:
-            updates[key] = value.strip()
-
-    # Validate numeric fields
-    for key in ("PHOTO_DURATION", "REFRESH_INTERVAL", "MAX_UPLOAD_MB"):
-        if key in updates:
-            try:
-                val = int(updates[key])
-                if val < 1:
-                    raise ValueError
-            except ValueError:
-                flash(f"Invalid value for {key}: must be a positive number", "error")
-                return redirect(url_for("settings_page"))
-
-    # Validate time fields
-    for key in ("HDMI_OFF_TIME", "HDMI_ON_TIME"):
-        if key in updates:
-            parts = updates[key].split(":")
-            if len(parts) != 2:
-                flash(f"Invalid time format for {key}: use HH:MM", "error")
-                return redirect(url_for("settings_page"))
-            try:
-                h, m = int(parts[0]), int(parts[1])
-                if not (0 <= h <= 23 and 0 <= m <= 59):
-                    raise ValueError
-            except ValueError:
-                flash(f"Invalid time for {key}: use HH:MM (0-23:0-59)", "error")
-                return redirect(url_for("settings_page"))
-
-    # Validate file extensions against a forbidden list to prevent
-    # dangerous file types from being accepted as media.
-    forbidden_ext = {
-        ".html", ".htm", ".js", ".svg", ".php",
-        ".py", ".sh", ".exe", ".bat", ".cmd",
-    }
-    for ext_key in ("IMAGE_EXTENSIONS", "VIDEO_EXTENSIONS"):
-        if ext_key in updates:
-            exts = [
-                e.strip().lower() if e.strip().startswith(".") else f".{e.strip().lower()}"
-                for e in updates[ext_key].split(",")
-                if e.strip()
-            ]
-            bad = [e for e in exts if e in forbidden_ext]
-            if bad:
-                flash(
-                    f"Forbidden extension(s) in {ext_key}: {', '.join(bad)}",
-                    "error",
-                )
-                return redirect(url_for("settings_page"))
-
-    config.save(updates)
-    log.info("Settings updated: %s", list(updates.keys()))
-
-    # Auto-restart slideshow if checkbox was checked
-    if request.form.get("auto_restart") == "1":
-        success, _ = services.restart_slideshow()
-        if success:
-            flash("Settings saved and slideshow restarted.", "success")
-        else:
-            flash("Settings saved but failed to restart slideshow.", "warning")
-    else:
-        flash("Settings saved. Restart services for changes to take effect.", "success")
-
-    return redirect(url_for("settings_page"))
 
 
 # --- Periodic thumbnail cleanup ---
@@ -915,45 +742,8 @@ def _periodic_thumbnail_cleanup():
         _thumbnail_cleanup_lock.release()
 
 
-@app.route("/api/restart-slideshow", methods=["POST"])
-@require_pin
-@log_post_request
-def restart_slideshow():
-    success, message = services.restart_slideshow()
-    if success:
-        return jsonify({"status": "ok", "message": message})
-    return jsonify({"error": message}), 500
-
-
-@app.route("/api/reboot", methods=["POST"])
-@require_pin
-@log_post_request
-def api_reboot():
-    try:
-        log.info("Reboot requested via web UI")
-        subprocess.Popen(["sudo", "reboot"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return jsonify({"status": "ok", "message": "Device is rebooting..."})
-    except Exception:
-        log.error("Failed to reboot", exc_info=True)
-        return jsonify({"error": "Failed to reboot"}), 500
-
-
-@app.route("/api/shutdown", methods=["POST"])
-@require_pin
-@log_post_request
-def api_shutdown():
-    try:
-        log.info("Shutdown requested via web UI")
-        subprocess.Popen(["sudo", "shutdown", "-h", "now"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return jsonify({"status": "ok", "message": "Device is shutting down..."})
-    except Exception:
-        log.error("Failed to shut down", exc_info=True)
-        return jsonify({"error": "Failed to shut down"}), 500
-
-
 # --- SPA routes ---
 # Serve the SPA shell for all client-side routes.
-# Existing template routes above remain as fallback.
 
 
 @app.route("/display")
@@ -969,6 +759,16 @@ def setup():
 
 @app.route("/update")
 def update():
+    return render_template("spa.html", version=_read_version())
+
+
+@app.route("/map")
+@app.route("/settings")
+@app.route("/albums")
+@app.route("/stats")
+@app.route("/users")
+def spa_phone_routes():
+    """Serve SPA shell for all phone client-side routes."""
     return render_template("spa.html", version=_read_version())
 
 

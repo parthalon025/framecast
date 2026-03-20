@@ -1,8 +1,9 @@
 /** @fileoverview Albums page — album management with smart albums, create/delete, photo grid. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal, ShFrozen, ShToast } from "superhot-ui/preact";
+import { ShModal, ShFrozen, ShToast, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
 import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
@@ -30,6 +31,9 @@ const albumFilter = signal("all");
 /** Toast state */
 const albumToast = signal(null);
 
+/** Fetch error state */
+const fetchError = signal(null);
+
 /** Data freshness timestamps for ShFrozen */
 const albumsLastUpdated = signal(null);
 const albumPhotosLastUpdated = signal(null);
@@ -47,7 +51,7 @@ function fetchAlbums() {
     })
     .catch((err) => {
       console.warn("Albums: fetchAlbums failed", err);
-      albumToast.value = { type: "error", message: "ALBUMS FETCH FAILED" };
+      fetchError.value = err.message || "ALBUMS FETCH FAILED";
     });
 }
 
@@ -151,6 +155,21 @@ function handleToggleFavorite(photo) {
     });
 }
 
+function handleRemoveFromAlbum(photo) {
+  const album = selectedAlbum.value;
+  if (!album) return;
+  fetch(`/api/albums/${album.id}/photos/${photo.id}`, { method: "DELETE" })
+    .then((resp) => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      fetchAlbumPhotos(album.id);
+      showToast("REMOVED", "info");
+    })
+    .catch((err) => {
+      console.warn("Albums: remove from album failed", err);
+      showToast("FAULT: " + err.message, "error");
+    });
+}
+
 function handlePhotoSelect(photo) {
   const photoList = albumPhotos.value;
   const idx = photoList.findIndex((p) => p.id === photo.id);
@@ -236,21 +255,32 @@ export function Albums() {
             <div class="sh-ansi-dim">STANDBY</div>
           </div>
         ) : albumPhotos.value.length === 0 ? (
-          <div class="sh-frame" data-label="PHOTOS">
-            <div style="padding: 32px; text-align: center;">
-              <div class="sh-ansi-dim">NO DATA</div>
-            </div>
-          </div>
+          <ShEmptyState message="NO PHOTOS" hint="ADD PHOTOS TO THIS ALBUM" />
         ) : (
           <ShFrozen timestamp={albumPhotosLastUpdated}>
             <div class="sh-grid sh-grid-3">
               {albumPhotos.value.map((photo) => (
-                <PhotoCard
-                  key={photo.id}
-                  photo={photo}
-                  onSelect={handlePhotoSelect}
-                  onToggleFavorite={handleToggleFavorite}
-                />
+                <div key={photo.id} style="position: relative;">
+                  <PhotoCard
+                    photo={photo}
+                    onSelect={handlePhotoSelect}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                  {!currentAlbum.smart && (
+                    <button
+                      class="fc-action-btn"
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        handleRemoveFromAlbum(photo);
+                      }}
+                      type="button"
+                      aria-label={`Remove ${photo.name || photo.filename} from album`}
+                      style="position: absolute; bottom: 28px; right: 4px; z-index: 10; background: rgba(0,0,0,0.7); border: 1px solid var(--sh-threat, #ff4444); color: var(--sh-threat, #ff4444); padding: 4px 8px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.65rem; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center;"
+                    >
+                      [X]
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </ShFrozen>
@@ -305,11 +335,17 @@ export function Albums() {
   // --- Album grid view ---
   return (
     <div class="sh-animate-page-enter fc-page">
+      <ShPageBanner namespace="FRAMECAST" page="ALBUMS" />
+      {/* Fetch error */}
+      {fetchError.value && (
+        <ShErrorState
+          title="FAULT"
+          message={fetchError.value}
+          onRetry={() => { fetchError.value = null; fetchAlbums(); }}
+        />
+      )}
       {/* Header + create button */}
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-        <span style="font-family: var(--font-mono, monospace); font-size: 1rem; font-weight: 700;">
-          ALBUMS
-        </span>
         <button
           class="fc-action-btn"
           onClick={() => { createOpen.value = true; }}
@@ -337,11 +373,7 @@ export function Albums() {
       {/* Album cards grid */}
       <ShFrozen timestamp={albumsLastUpdated}>
       {orderedAlbums.length === 0 ? (
-        <div class="sh-frame" data-label="ALBUMS">
-          <div style="padding: 32px; text-align: center;">
-            <div class="sh-ansi-dim">NO DATA</div>
-          </div>
-        </div>
+        <ShEmptyState message="NO ALBUMS" hint="CREATE ONE TO ORGANIZE" />
       ) : (
         <div class="sh-grid sh-grid-3">
           {orderedAlbums.map((album) => (
@@ -423,7 +455,7 @@ export function Albums() {
                   value={createName.value}
                   onInput={(evt) => { createName.value = evt.target.value; }}
                   placeholder="Album name"
-                  style="width: 100%; font-size: 0.9rem; padding: 8px;"
+                  style="width: 100%; font-size: max(16px, 0.9rem); padding: 8px;"
                   autofocus
                 />
               </div>
@@ -435,7 +467,7 @@ export function Albums() {
                   value={createDesc.value}
                   onInput={(evt) => { createDesc.value = evt.target.value; }}
                   placeholder="Optional"
-                  style="width: 100%; font-size: 0.9rem; padding: 8px;"
+                  style="width: 100%; font-size: max(16px, 0.9rem); padding: 8px;"
                 />
               </div>
             </div>

@@ -451,6 +451,36 @@ class TestUsers:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GET / — SPA shell
+# ---------------------------------------------------------------------------
+
+
+class TestRootServesSPA:
+    """Tests that GET / serves the SPA shell instead of legacy index.html."""
+
+    def test_root_serves_spa_shell(self, client):
+        """GET / should serve the SPA shell (spa.html), not the legacy index.html."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'id="app"' in html
+        assert "superhot.css" in html
+
+    def test_spa_catch_all_routes(self, client):
+        """Client-side routes should all serve the SPA shell."""
+        for route in ["/map", "/settings", "/albums", "/stats", "/users"]:
+            resp = client.get(route)
+            assert resp.status_code == 200, f"{route} returned {resp.status_code}"
+            html = resp.data.decode()
+            assert 'id="app"' in html, f"{route} missing SPA shell"
+
+
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+
+
 class TestSecurityHeaders:
     """Verify security headers are set on all responses."""
 
@@ -526,3 +556,78 @@ class TestFlaskDynamicBehavior:
         )
         assert resp.status_code == 200
         assert "text/event-stream" in resp.content_type
+
+
+# ---------------------------------------------------------------------------
+# System control endpoints (migrated from web_upload.py)
+# ---------------------------------------------------------------------------
+
+
+class TestSystemControl:
+    """Tests for system control endpoints in the API blueprint."""
+
+    def test_restart_slideshow_in_api_blueprint(self, client):
+        """POST /api/restart-slideshow should be handled by the API blueprint."""
+        resp = client.post("/api/restart-slideshow")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+
+    def test_reboot_in_api_blueprint(self, client):
+        """POST /api/reboot should be handled by the API blueprint."""
+        with mock.patch("threading.Timer") as mock_timer:
+            resp = client.post("/api/reboot")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+        mock_timer.assert_called_once()
+
+    def test_shutdown_in_api_blueprint(self, client):
+        """POST /api/shutdown should be handled by the API blueprint."""
+        with mock.patch("threading.Timer") as mock_timer:
+            resp = client.post("/api/shutdown")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"
+        mock_timer.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/photos/<id>/quarantine — localhost-only
+# ---------------------------------------------------------------------------
+
+
+class TestQuarantinePhoto:
+    """Tests for the POST /api/photos/<id>/quarantine endpoint."""
+
+    def _insert_photo(self):
+        """Insert a test photo and return its ID."""
+        import modules.db as db_mod
+        return db_mod.insert_photo(
+            filename="test_quarantine.jpg",
+            filepath="test_quarantine.jpg",
+        )
+
+    def test_quarantine_photo_from_localhost(self, client):
+        """POST /api/photos/<id>/quarantine from localhost should succeed."""
+        photo_id = self._insert_photo()
+        resp = client.post(
+            f"/api/photos/{photo_id}/quarantine",
+            json={"reason": "corrupt image"},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "ok"
+        assert data["photo_id"] == photo_id
+
+    def test_quarantine_photo_not_found(self, client):
+        """POST /api/photos/<id>/quarantine with nonexistent ID returns 404."""
+        resp = client.post(
+            "/api/photos/999999/quarantine",
+            json={"reason": "corrupt image"},
+        )
+        assert resp.status_code == 404
+
+    def test_quarantine_photo_default_reason(self, client):
+        """POST without reason body uses default reason."""
+        photo_id = self._insert_photo()
+        resp = client.post(f"/api/photos/{photo_id}/quarantine")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"

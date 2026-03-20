@@ -5,6 +5,7 @@
  * capped at 500 tiles to protect the Pi's SD card.
  */
 import { useState, useEffect, useRef } from "preact/hooks";
+import { ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import L from "leaflet";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { cachedTileFetch, pruneTileCache } from "../lib/tile-cache.js";
@@ -129,12 +130,27 @@ export function Map() {
     };
   }, [locations]);
 
+  function retryFetch() {
+    setError(null);
+    setLocations(null);
+    fetchWithTimeout("/api/locations")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setLocations(data))
+      .catch((err) => setError(err.message));
+  }
+
   if (error) {
     return (
-      <div class="sh-frame" data-label="MAP" style="padding: 20px;">
-        <span class="sh-label" style="color: var(--status-critical, #ff4444);">
-          LOAD FAILED: {error}
-        </span>
+      <div class="fc-page">
+        <ShPageBanner namespace="FRAMECAST" page="MAP" />
+        <ShErrorState
+          title="FAULT"
+          message={error}
+          onRetry={retryFetch}
+        />
       </div>
     );
   }
@@ -149,14 +165,16 @@ export function Map() {
 
   if (locations.length === 0) {
     return (
-      <div class="sh-frame" data-label="MAP" style="padding: 20px;">
-        <span class="sh-label">NO LOCATIONS FOUND</span>
+      <div class="fc-page">
+        <ShPageBanner namespace="FRAMECAST" page="MAP" />
+        <ShEmptyState message="NO LOCATIONS" hint="UPLOAD PHOTOS WITH GPS" />
       </div>
     );
   }
 
   return (
     <div style="display: flex; flex-direction: column; height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));">
+      <ShPageBanner namespace="FRAMECAST" page="MAP" />
       <div
         ref={mapRef}
         style="flex: 1; min-height: 0; background: #000;"

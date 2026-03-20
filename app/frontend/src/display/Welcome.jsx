@@ -1,5 +1,6 @@
 /** @fileoverview Welcome screen — shown when WiFi is connected but no photos exist. */
 import { useState, useEffect } from "preact/hooks";
+import { ShPageBanner } from "superhot-ui/preact";
 import { QRCode } from "../components/QRCode.jsx";
 
 function computeQRSize() {
@@ -22,9 +23,7 @@ export function Welcome() {
 
   return (
     <div class="boot-screen" style={{ alignItems: "center", textAlign: "center" }}>
-      <h1 style={{ fontSize: "var(--type-display)", color: "var(--sh-phosphor)", marginBottom: "var(--space-6)" }}>
-        FRAMECAST
-      </h1>
+      <ShPageBanner namespace="FRAMECAST" page="WELCOME" />
 
       <div data-sh-mantra="AWAITING INPUT" style={{ marginBottom: "var(--space-8)" }}>
         <p class="sh-label" style={{ marginBottom: "var(--space-4)" }}>
