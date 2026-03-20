@@ -12,13 +12,12 @@ WorkingDirectory=/opt/framecast/app
 ExecStart=/usr/bin/gunicorn -c /opt/framecast/app/gunicorn.conf.py web_upload:app
 Restart=always
 RestartSec=5
-WatchdogSec=120
 MemoryMax=512M
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
-ReadWritePaths=/opt/framecast /var/lib/framecast
+ReadWritePaths=/opt/framecast /var/lib/framecast /home/pi/media /home/pi/framecast
 StandardOutput=journal
 StandardError=journal
 
