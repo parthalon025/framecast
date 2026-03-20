@@ -121,9 +121,9 @@ def cleanup_orphan_thumbnails():
         return 0
 
     _, video_ext = get_allowed_extensions()
-    # Build a set of stems for all current video files
+    # Build a set of stems for all current video files (including subdirectories)
     video_stems = set()
-    for f in media_dir.iterdir():
+    for f in media_dir.rglob("*"):
         if f.is_file() and f.suffix.lower() in video_ext:
             video_stems.add(f.stem)
 
@@ -134,8 +134,8 @@ def cleanup_orphan_thumbnails():
                 try:
                     thumb.unlink()
                     removed += 1
-                except OSError:
-                    pass
+                except OSError as exc:
+                    log.warning("Failed to remove orphan thumbnail %s: %s", thumb, exc)
     return removed
 
 
@@ -220,7 +220,8 @@ def _load_locations_cache():
     try:
         with open(cache_path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("Locations cache corrupt or unreadable, rebuilding: %s", exc)
         return {}
 
 

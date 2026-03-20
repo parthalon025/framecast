@@ -6,5 +6,8 @@ Wants=framecast.service framecast-kiosk.service
 [Service]
 Type=oneshot
 ExecStart=/opt/framecast/scripts/health-check.sh
+NoNewPrivileges=true
+ProtectHome=read-only
+ProtectKernelTunables=true
 StandardOutput=journal
 StandardError=journal

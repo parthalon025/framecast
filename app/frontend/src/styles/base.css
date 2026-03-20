@@ -5,7 +5,7 @@
 
 .sh-dropzone {
   border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
-  border-radius: 12px;
+  border-radius: 0;
   padding: 24px 16px;
   text-align: center;
   transition: border-color 0.2s, background 0.2s;
@@ -26,18 +26,61 @@
 
 .sh-dropzone[data-sh-dropzone="hover"] {
   border-color: var(--sh-phosphor);
-  background: oklch(85% 0.18 145 / 0.05);
+  background: color-mix(in oklch, var(--sh-phosphor) 5%, transparent);
   box-shadow: 0 0 16px var(--sh-phosphor-glow);
 }
 
 .sh-dropzone[data-sh-dropzone="receiving"] {
   border-color: var(--sh-phosphor);
   border-style: solid;
-  background: oklch(85% 0.18 145 / 0.08);
+  background: color-mix(in oklch, var(--sh-phosphor) 8%, transparent);
   pointer-events: none;
 }
 
 .sh-dropzone[data-sh-dropzone="error"] {
   border-color: var(--status-critical, #ff4444);
   background: oklch(50% 0.2 30 / 0.05);
+}
+
+/* Focus indicators for custom interactive elements */
+.fc-day-btn:focus-visible,
+.fc-ctx-item:focus-visible,
+.fc-btn-primary:focus-visible,
+.fc-action-btn:focus-visible {
+    outline: 2px solid var(--sh-phosphor);
+    outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+    .fc-day-btn--active {
+        border: 2px solid ButtonText;
+        background: Highlight;
+        color: HighlightText;
+    }
+    .fc-offline-banner {
+        border: 2px solid Mark;
+    }
+    .fc-otd-label {
+        text-shadow: none;
+        border: 1px solid CanvasText;
+    }
+    .fc-card--favorite {
+        border-color: Highlight;
+    }
+    .fc-btn-primary {
+        border: 2px solid ButtonText;
+    }
+}
+
+/* Prevent iOS auto-zoom on input focus (requires >= 16px) */
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+select,
+textarea,
+.sh-input,
+.sh-select {
+    font-size: max(16px, 1rem);
 }

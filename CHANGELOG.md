@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-03-20
+
+### Fixed
+- Slideshow now includes all photos, not just 500 most recent
+- Slideshow retries indefinitely with visible CONNECTION LOST indicator on SSE failure
+- DisplayRouter uses `createSSE` helper with exponential backoff (was raw `EventSource`)
+- `photo:favorited` SSE event now actually emitted on favorite toggle
+- `delete-all` returns JSON for XHR/fetch clients; still redirects for form submissions
+- Orphan thumbnail cleanup now scans subdirectories and logs individual failures
+- All bare `except` blocks now log before returning fallback (Lesson #1418)
+- All file `unlink()` calls protected with `OSError` handling
+- Fetch errors surface via toasts; `fetchWithTimeout` used consistently
+- Update page SSE error handler fixed (stale closure)
+- Quarantined files blocked from `/media/` route (404)
+- `schedule_days` validated as comma-separated integers 0–6
+- Stats buffer capped at 500 entries to prevent OOM on persistent DB errors
+- Leaflet CSS bundled locally — works on offline Pi
+- piOS STANDBY voice normalized across all in-progress labels
+- Facility state set to `normal` at app init
+
+### Added
+- Public DB API (`get_playlist_candidates`, `unquarantine_photo`, `compute_sha256`, `prune_quarantined`, `bulk_quarantine_all`, `create_user_returning_row`, `delete_user_reassign`) — routes no longer reach into `_write_lock` directly
+- `DELETE /api/users/<id>` endpoint — reassigns photos to default user before deleting
+- Quarantined photos older than 30 days pruned on startup
+- Index on `checksum_sha256` for faster duplicate detection
+- Test suites for `auth.py`, `rate_limiter.py`, and `config.py` (160 tests total, was 129)
+- PWA meta tags on SPA template
+- `:focus-visible` rules for all custom interactive elements
+- `forced-colors` overrides for high contrast mode
+
+### Changed
+- GPS extraction in `index()` replaced with lightweight DB query (was heavy EXIF scan)
+- All systemd units ensured present in pi-gen image
+- Service hardening: `ReadWritePaths` fixed, `WatchdogSec` removed from kiosk, sandbox restored
+
+### Performance
+- Mobile: SSE paused when page is backgrounded (battery drain reduction)
+- Mobile: touch targets enlarged to 44px minimum
+- Mobile: all inputs set to 16px minimum font-size (prevents iOS auto-zoom)
+- Mobile: `PhoneLayout` uses `dvh` units; Map nav overlap fixed; offline banner respects safe area
+- Mobile: Lightbox safe area, delete confirmation, and video muted attribute fixed
+
+---
+
 ## [2.0.0] - 2026-03-19
 
 ### Added

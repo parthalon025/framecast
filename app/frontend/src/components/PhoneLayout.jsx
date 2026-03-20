@@ -75,7 +75,7 @@ const navItems = [
  */
 export function PhoneLayout({ children }) {
   return (
-    <div style="min-height: 100vh;">
+    <div style="min-height: 100dvh;">
       <div>
         {children}
       </div>

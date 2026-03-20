@@ -1,9 +1,10 @@
 /** @fileoverview Photo Map — Leaflet map of GPS-tagged photo locations. */
 import { useState, useEffect, useRef } from "preact/hooks";
 import L from "leaflet";
+import { fetchWithTimeout } from "../lib/fetch.js";
 
-// Leaflet CSS imported via link tag injected on mount (esbuild bundles JS only)
-const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+// Leaflet CSS bundled locally at /static/css/leaflet.css (copied by postbuild)
+const LEAFLET_CSS = "/static/css/leaflet.css";
 
 // Green phosphor marker SVG (inline data URI — no external assets)
 const MARKER_SVG = `data:image/svg+xml,${encodeURIComponent(
@@ -38,7 +39,7 @@ export function Map() {
 
   // Fetch locations
   useEffect(() => {
-    fetch("/api/locations")
+    fetchWithTimeout("/api/locations")
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -108,7 +109,7 @@ export function Map() {
   if (!locations) {
     return (
       <div class="sh-frame" data-label="MAP" style="padding: 20px;">
-        <span class="sh-label">LOADING...</span>
+        <span class="sh-label">STANDBY</span>
       </div>
     );
   }
@@ -122,7 +123,7 @@ export function Map() {
   }
 
   return (
-    <div style="display: flex; flex-direction: column; height: calc(100dvh - 72px);">
+    <div style="display: flex; flex-direction: column; height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));">
       <div
         ref={mapRef}
         style="flex: 1; min-height: 0; background: #000;"

@@ -279,6 +279,10 @@ def update_settings():
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid pin_length: must be 4 or 6"}), 400
 
+    if "schedule_days" in data:
+        if not re.match(r'^[0-6](,[0-6])*$', str(data["schedule_days"])):
+            return jsonify({"error": f"Invalid schedule_days: {data['schedule_days']}"}), 400
+
     # --- Handle action keys (not persistent settings) ---
 
     # display_on is a toggle action, not a persistent setting
@@ -371,6 +375,7 @@ def toggle_photo_favorite(photo_id):
     new_val = db.toggle_favorite(photo_id)
     status_label = "FAVORITE" if new_val else "UNFAVORITED"
     log.info("Photo %d: %s", photo_id, status_label)
+    sse.notify("photo:favorited", {"id": photo_id, "is_favorite": new_val})
     return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
 
 

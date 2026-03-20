@@ -47,6 +47,7 @@ export function Update() {
   const bootRef = useRef(null);
   const sseRef = useRef(null);
   const progressTimer = useRef(null);
+  const activeStepRef = useRef(-1);
 
   // Load current version on mount
   useEffect(() => {
@@ -63,6 +64,10 @@ export function Update() {
   useEffect(() => {
     const evtSource = new EventSource("/api/events");
     sseRef.current = evtSource;
+
+    evtSource.onerror = () => {
+      console.warn("Update: SSE connection lost");
+    };
 
     evtSource.addEventListener("update:rebooting", (evt) => {
       setActiveStep(3); // REBOOT
@@ -136,6 +141,7 @@ export function Update() {
     const tag = `v${updateInfo.latest}`;
     setInstalling(true);
     setErrorStep(-1);
+    activeStepRef.current = 0;
     setActiveStep(0); // DOWNLOAD
     setProgress(0);
 
@@ -170,11 +176,13 @@ export function Update() {
       }
 
       // Step 1: INSTALL
+      activeStepRef.current = 1;
       setActiveStep(1);
       setProgress(90);
 
       // Step 2: VERIFY
       setTimeout(() => {
+        activeStepRef.current = 2;
         setActiveStep(2);
         setProgress(95);
       }, 1000);
@@ -184,11 +192,11 @@ export function Update() {
     } catch (err) {
       clearInterval(progressTimer.current);
       progressTimer.current = null;
-      setErrorStep(activeStep >= 0 ? activeStep : 0);
+      setErrorStep(activeStepRef.current >= 0 ? activeStepRef.current : 0);
       setInstalling(false);
       setToast({ type: "error", message: err.message });
     }
-  }, [updateInfo, activeStep]);
+  }, [updateInfo]);
 
   // Show boot animation during reboot
   if (rebooting) {
@@ -262,7 +270,7 @@ export function Update() {
                 border-color: ${checking ? "var(--border-subtle)" : "var(--sh-phosphor)"};
               `}
             >
-              {checking ? "CHECKING..." : "CHECK FOR UPDATES"}
+              {checking ? "STANDBY" : "CHECK FOR UPDATES"}
             </button>
           )}
 

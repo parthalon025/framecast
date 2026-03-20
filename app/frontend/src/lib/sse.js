@@ -54,10 +54,28 @@ export function createSSE(url, { listeners = {}, onOpen } = {}) {
 
   function close() {
     closed = true;
+    document.removeEventListener("visibilitychange", handleVisibility);
     if (reconnectTimer) clearTimeout(reconnectTimer);
     if (source) source.close();
     source = null;
   }
+
+  // Pause SSE when page is backgrounded to reduce battery drain
+  function handleVisibility() {
+    if (closed) return;
+    if (document.hidden) {
+      // Tear down connection while backgrounded
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      if (source) source.close();
+      source = null;
+    } else {
+      // Reconnect immediately when foregrounded
+      backoff = BACKOFF_INITIAL;
+      connect();
+    }
+  }
+  document.addEventListener("visibilitychange", handleVisibility);
 
   connect();
   return { close };

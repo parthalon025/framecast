@@ -206,8 +206,8 @@ export function Users() {
       <ShModal
         open={!!target}
         title="CONFIRM: DELETE USER"
-        body={target ? `Remove "${target.name}"? Photos will be reassigned to DEFAULT.` : ""}
-        confirmLabel={isDeleting ? "DELETING..." : "DELETE"}
+        body={target ? `Remove "${target.name}"? PHOTOS REASSIGNED TO DEFAULT.` : ""}
+        confirmLabel={isDeleting ? "STANDBY" : "DELETE"}
         cancelLabel="CANCEL"
         onConfirm={confirmDelete}
         onCancel={() => { deleteTarget.value = null; }}
@@ -224,6 +224,11 @@ export const currentUser = signal(_readUserCookie());
 
 /** Whether the user selection modal is open. */
 export const showUserModal = signal(false);
+
+/** Module-level signals for UserSelectModal (prevent stale subscriber bugs). */
+const userModalUsers = signal([]);
+const userModalNewInput = signal("");
+const userModalCreating = signal(false);
 
 /** Read the framecast_user cookie. */
 function _readUserCookie() {
@@ -256,15 +261,18 @@ export function ensureUserIdentified() {
  * @param {Function} [props.onSelected] — called with username after selection
  */
 export function UserSelectModal({ onSelected }) {
-  const users = signal([]);
-  const newInput = signal("");
-  const isCreating = signal(false);
+  // Reset module-level signals on mount
+  useEffect(() => {
+    userModalUsers.value = [];
+    userModalNewInput.value = "";
+    userModalCreating.value = false;
+  }, []);
 
   useEffect(() => {
     if (showUserModal.value) {
       fetch("/api/users")
         .then((resp) => resp.json())
-        .then((data) => { users.value = data; })
+        .then((data) => { userModalUsers.value = data; })
         .catch((err) => console.warn("UserSelectModal: fetch failed", err));
     }
   }, [showUserModal.value]);
@@ -276,9 +284,9 @@ export function UserSelectModal({ onSelected }) {
   }
 
   function createAndSelect() {
-    const name = newInput.value.trim();
+    const name = userModalNewInput.value.trim();
     if (!name) return;
-    isCreating.value = true;
+    userModalCreating.value = true;
 
     fetch("/api/users", {
       method: "POST",
@@ -296,8 +304,8 @@ export function UserSelectModal({ onSelected }) {
         selectUser(name);
       })
       .finally(() => {
-        isCreating.value = false;
-        newInput.value = "";
+        userModalCreating.value = false;
+        userModalNewInput.value = "";
       });
   }
 
@@ -308,11 +316,11 @@ export function UserSelectModal({ onSelected }) {
       <div class="sh-modal" role="dialog" aria-modal="true" aria-label="User selection">
         <div class="sh-modal-title">WHO IS UPLOADING?</div>
         <div class="sh-modal-body" style="max-height: 300px; overflow-y: auto;">
-          {users.value.length === 0 ? (
+          {userModalUsers.value.length === 0 ? (
             <div class="sh-ansi-dim" style="padding: 8px 0;">STANDBY</div>
           ) : (
             <div style="display: grid; gap: 6px;">
-              {users.value.map((user) => (
+              {userModalUsers.value.map((user) => (
                 <button
                   key={user.id}
                   class="sh-btn"
@@ -338,17 +346,17 @@ export function UserSelectModal({ onSelected }) {
                 class="sh-input"
                 type="text"
                 placeholder="NAME"
-                value={newInput.value}
-                onInput={(evt) => { newInput.value = evt.target.value; }}
+                value={userModalNewInput.value}
+                onInput={(evt) => { userModalNewInput.value = evt.target.value; }}
                 onKeyDown={(evt) => { if (evt.key === "Enter") createAndSelect(); }}
                 style="flex: 1;"
               />
               <button
                 class="sh-btn"
                 onClick={createAndSelect}
-                disabled={isCreating.value || !newInput.value.trim()}
+                disabled={userModalCreating.value || !userModalNewInput.value.trim()}
               >
-                {isCreating.value ? "STANDBY" : "GO"}
+                {userModalCreating.value ? "STANDBY" : "GO"}
               </button>
             </div>
           </div>

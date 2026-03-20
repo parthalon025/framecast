@@ -80,8 +80,8 @@ export function PhotoGrid({ photos = [], onDelete, onToggleFavorite, onSelect })
       <ShModal
         open={!!target}
         title="CONFIRM: DELETE FILE"
-        body={target ? `Remove "${target.name || target.filename}" (${target.size_human || ""})? This cannot be undone.` : ""}
-        confirmLabel={isDeleting ? "DELETING..." : "DELETE"}
+        body={target ? `Remove "${target.name || target.filename}" (${target.size_human || ""})? IRREVERSIBLE.` : ""}
+        confirmLabel={isDeleting ? "STANDBY" : "DELETE"}
         cancelLabel="CANCEL"
         onConfirm={confirmDelete}
         onCancel={closeDeleteModal}
