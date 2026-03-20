@@ -643,6 +643,8 @@ def delete_all():
         except OSError as exc:
             log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"status": "ok", "deleted": count})
     flash(f"Deleted {count} file(s)", "success")
     return redirect(url_for("index"))
 

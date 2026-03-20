@@ -375,6 +375,7 @@ def toggle_photo_favorite(photo_id):
     new_val = db.toggle_favorite(photo_id)
     status_label = "FAVORITE" if new_val else "UNFAVORITED"
     log.info("Photo %d: %s", photo_id, status_label)
+    sse.notify("photo:favorited", {"id": photo_id, "is_favorite": new_val})
     return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
 
 
