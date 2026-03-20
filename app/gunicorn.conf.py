@@ -41,3 +41,22 @@ errorlog = "-"
 
 # Log level
 loglevel = os.environ.get("LOG_LEVEL", "info")
+
+# ---------------------------------------------------------------------------
+# Optional self-signed HTTPS
+# ---------------------------------------------------------------------------
+# When HTTPS_ENABLED=yes and certs exist under MEDIA_DIR/certs/, gunicorn
+# serves TLS directly. Generate certs with scripts/generate-cert.sh.
+_cert_dir = os.path.join(
+    os.environ.get("MEDIA_DIR", "/home/pi/framecast-data"), "certs"
+)
+_cert = os.path.join(_cert_dir, "server.crt")
+_key = os.path.join(_cert_dir, "server.key")
+
+if (
+    os.path.exists(_cert)
+    and os.path.exists(_key)
+    and os.environ.get("HTTPS_ENABLED", "no").lower() == "yes"
+):
+    certfile = _cert
+    keyfile = _key

@@ -15,8 +15,21 @@ const deleting = signal(false);
  * @param {Function} [props.onDelete] - Called with filename after successful delete
  * @param {Function} [props.onToggleFavorite] - Called to toggle favorite on a photo
  * @param {Function} [props.onSelect] - Called when a photo is tapped (opens lightbox)
+ * @param {boolean}  [props.selectionMode] - Whether bulk selection mode is active
+ * @param {Set}      [props.selectedIds] - Set of selected photo IDs
+ * @param {Function} [props.onSelectionToggle] - Toggle selection on a single photo
+ * @param {Function} [props.onEnterSelection] - Enter selection mode via long-press
  */
-export function PhotoGrid({ photos = [], onDelete, onToggleFavorite, onSelect }) {
+export function PhotoGrid({
+  photos = [],
+  onDelete,
+  onToggleFavorite,
+  onSelect,
+  selectionMode,
+  selectedIds,
+  onSelectionToggle,
+  onEnterSelection,
+}) {
   function openDeleteModal(photo) {
     deleteTarget.value = photo;
   }
@@ -73,6 +86,10 @@ export function PhotoGrid({ photos = [], onDelete, onToggleFavorite, onSelect })
             onDelete={openDeleteModal}
             onToggleFavorite={onToggleFavorite}
             onSelect={onSelect}
+            selectable={!!selectionMode}
+            selected={selectedIds ? selectedIds.has(photo.id) : false}
+            onSelectionToggle={onSelectionToggle}
+            onEnterSelection={onEnterSelection}
           />
         ))}
       </div>

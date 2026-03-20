@@ -174,3 +174,138 @@
   padding: 8px;
   transition: transform 0.1s;
 }
+
+/* -----------------------------------------------------------------------
+ * Bulk selection — checkbox overlay + floating action bar
+ * ----------------------------------------------------------------------- */
+
+/* Selection checkbox circle overlay on PhotoCard */
+.fc-select-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  /* Touch target: actual hit area is 44px via padding */
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Expand touch target to 44px without changing visual size */
+.fc-select-check::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+}
+
+.fc-select-check--selected {
+  border-color: var(--sh-phosphor, #39ff14);
+  background: var(--sh-phosphor, #39ff14);
+}
+
+/* Checkmark inside selected circle */
+.fc-select-check__mark {
+  display: none;
+  width: 14px;
+  height: 14px;
+  color: var(--sh-void, #000);
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.fc-select-check--selected .fc-select-check__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hide the native checkbox — we draw our own circle */
+.fc-select-check input[type="checkbox"] {
+  display: none;
+}
+
+/* Floating bulk action bar */
+.fc-bulk-bar {
+  position: fixed;
+  bottom: 68px; /* Above 56px bottom nav + 12px gap */
+  left: 8px;
+  right: 8px;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--sh-phosphor, #39ff14);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.6);
+}
+
+.fc-bulk-bar__count {
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.fc-bulk-bar__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.fc-bulk-bar__btn {
+  background: none;
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  color: var(--sh-phosphor, #39ff14);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 6px 10px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fc-bulk-bar__btn:active {
+  background: var(--sh-phosphor, #39ff14);
+  color: var(--sh-void, #000);
+}
+
+.fc-bulk-bar__btn--danger {
+  border-color: var(--sh-threat, #ff4444);
+  color: var(--sh-threat, #ff4444);
+}
+
+.fc-bulk-bar__btn--danger:active {
+  background: var(--sh-threat, #ff4444);
+  color: var(--sh-void, #000);
+}
+
+.fc-bulk-bar__btn--exit {
+  border-color: var(--text-muted, #888);
+  color: var(--text-muted, #888);
+  min-width: 36px;
+  padding: 6px 8px;
+}

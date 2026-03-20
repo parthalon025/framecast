@@ -23,3 +23,35 @@ html {
   --status-healthy-glow: var(--sh-phosphor-glow);
   --status-success-glow: var(--sh-phosphor-glow);
 }
+
+/**
+ * Light mode — phone-only override for sunlight readability.
+ * TV display always stays dark (data-theme is never set on /display).
+ */
+[data-theme="light"] {
+  --surface-void: #f5f5f0;
+  --sh-phosphor: #1a7a3a;
+  --sh-phosphor-glow: transparent;
+  --sh-bright: #222;
+  --sh-dim: #666;
+  --sh-void: #fff;
+  --sh-threat: #cc2222;
+  --text-muted: #777;
+  --text-tertiary: #999;
+  --border-subtle: rgba(0, 0, 0, 0.12);
+  --font-mono: monospace;
+
+  /* Status tokens follow phosphor */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}
+
+[data-theme="light"] .sh-terminal-bg {
+  background: #f5f5f0;
+  color: #222;
+}
