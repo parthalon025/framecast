@@ -123,7 +123,7 @@ export function Map() {
   }
 
   return (
-    <div style="display: flex; flex-direction: column; height: calc(100dvh - 72px);">
+    <div style="display: flex; flex-direction: column; height: calc(100dvh - 72px - env(safe-area-inset-bottom, 0px));">
       <div
         ref={mapRef}
         style="flex: 1; min-height: 0; background: #000;"
