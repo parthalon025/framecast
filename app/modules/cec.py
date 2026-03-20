@@ -10,7 +10,6 @@ Reference: docs/plans/2026-03-19-v2-polish-research.md § 2a
 import logging
 import re
 import subprocess
-from contextlib import suppress
 
 log = logging.getLogger(__name__)
 _TIMEOUT = 5

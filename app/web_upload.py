@@ -122,7 +122,7 @@ def _ensure_access_pin():
 _heal_env_file()
 
 # Rotate PIN on boot if configured
-from modules.auth import rotate_pin_on_boot
+from modules.auth import rotate_pin_on_boot  # noqa: E402 — must run after _heal_env_file()
 rotate_pin_on_boot()
 
 

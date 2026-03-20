@@ -17,7 +17,7 @@ import time
 from contextlib import closing
 from pathlib import Path
 
-from . import config, media
+from . import media
 
 log = logging.getLogger(__name__)
 
@@ -828,7 +828,6 @@ def _extract_exif_date(filepath):
     global _pillow_warned
     try:
         from PIL import Image as PILImage
-        from PIL import ExifTags
     except ImportError:
         if not _pillow_warned:
             log.warning("Pillow not installed — EXIF/dimension extraction disabled")
