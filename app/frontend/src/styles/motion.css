@@ -42,4 +42,13 @@
   .fc-offline-banner {
     transition: none;
   }
+
+  /* Map overlay — instant show/hide, no fade or dot pulse */
+  .fc-map-overlay {
+    transition: none;
+  }
+
+  .fc-map-dot {
+    animation: none;
+  }
 }

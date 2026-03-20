@@ -156,3 +156,67 @@
   text-shadow: 0 0 8px var(--sh-phosphor-glow);
   box-shadow: 0 0 12px var(--sh-phosphor-glow);
 }
+
+/* --- Map overlay --- */
+
+.fc-map-overlay {
+  position: fixed;
+  z-index: 15;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--sh-phosphor);
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
+  opacity: 0;
+  transition: opacity 400ms ease-in;
+  pointer-events: none;
+  aspect-ratio: 4 / 3;
+  background: #0d1117;
+}
+
+.fc-map-overlay.fc-map-visible {
+  opacity: 1;
+}
+
+/* Position variants — data attribute driven */
+.fc-map-overlay[data-position="top-left"]     { top: 24px; left: 24px; }
+.fc-map-overlay[data-position="top-right"]    { top: 24px; right: 24px; }
+.fc-map-overlay[data-position="bottom-left"]  { bottom: 24px; left: 24px; }
+.fc-map-overlay[data-position="bottom-right"] { bottom: 24px; right: 24px; }
+
+/* Tile grid container (positioned by JS to center on GPS point) */
+.fc-map-tiles {
+  position: absolute;
+  width: 512px;
+  height: 512px;
+  image-rendering: auto;
+}
+
+.fc-map-tiles img {
+  position: absolute;
+  display: block;
+  width: 256px;
+  height: 256px;
+}
+
+/* Green phosphor location dot */
+.fc-map-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sh-phosphor);
+  box-shadow: 0 0 6px var(--sh-phosphor-glow), 0 0 12px var(--sh-phosphor-glow);
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+@keyframes fcMapDotPulse {
+  0%, 100% { box-shadow: 0 0 6px var(--sh-phosphor-glow), 0 0 12px var(--sh-phosphor-glow); }
+  50%      { box-shadow: 0 0 10px var(--sh-phosphor-glow), 0 0 20px var(--sh-phosphor-glow); }
+}
+
+.fc-map-dot.fc-map-dot-pulse {
+  animation: fcMapDotPulse 3s ease-in-out infinite;
+}

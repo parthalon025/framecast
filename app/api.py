@@ -84,6 +84,7 @@ VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
 # Allowed enum values for constrained settings
 _VALID_TRANSITION_TYPES = {"fade", "slide", "zoom", "dissolve", "none"}
 _VALID_PHOTO_ORDERS = {"shuffle", "newest", "oldest", "alphabetical"}
+_VALID_MAP_OVERLAY_POSITIONS = {"off", "top-left", "top-right", "bottom-left", "bottom-right"}
 _HH_MM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -123,6 +124,15 @@ def _current_settings():
         "auto_update_enabled": config.get("AUTO_UPDATE_ENABLED", "no").lower() == "yes",
         "pin_length": _safe_int(config.get("PIN_LENGTH", "4"), 4),
         "web_port": _safe_int(config.get("WEB_PORT", "8080"), 8080),
+        "map_overlay_position": config.get("MAP_OVERLAY_POSITION", "off"),
+        "map_overlay_opacity": float(config.get("MAP_OVERLAY_OPACITY", "0.75")),
+        "map_overlay_size": _safe_int(config.get("MAP_OVERLAY_SIZE", "180"), 180),
+        "map_overlay_zoom": _safe_int(config.get("MAP_OVERLAY_ZOOM", "11"), 11),
+        "map_overlay_offset": _safe_int(config.get("MAP_OVERLAY_OFFSET", "24"), 24),
+        "map_overlay_radius": _safe_int(config.get("MAP_OVERLAY_RADIUS", "6"), 6),
+        "map_overlay_dot_size": _safe_int(config.get("MAP_OVERLAY_DOT_SIZE", "8"), 8),
+        "map_overlay_dot_pulse": config.get("MAP_OVERLAY_DOT_PULSE", "yes").lower() == "yes",
+        "map_overlay_border": config.get("MAP_OVERLAY_BORDER", "yes").lower() == "yes",
     }
 
 
@@ -149,6 +159,15 @@ _SETTINGS_ENV_MAP = {
     "auto_resize_max": ("AUTO_RESIZE_MAX", str),
     "auto_update_enabled": ("AUTO_UPDATE_ENABLED", lambda v: "yes" if v else "no"),
     "pin_length": ("PIN_LENGTH", str),
+    "map_overlay_position": ("MAP_OVERLAY_POSITION", str),
+    "map_overlay_opacity": ("MAP_OVERLAY_OPACITY", str),
+    "map_overlay_size": ("MAP_OVERLAY_SIZE", str),
+    "map_overlay_zoom": ("MAP_OVERLAY_ZOOM", str),
+    "map_overlay_offset": ("MAP_OVERLAY_OFFSET", str),
+    "map_overlay_radius": ("MAP_OVERLAY_RADIUS", str),
+    "map_overlay_dot_size": ("MAP_OVERLAY_DOT_SIZE", str),
+    "map_overlay_dot_pulse": ("MAP_OVERLAY_DOT_PULSE", lambda v: "yes" if v else "no"),
+    "map_overlay_border": ("MAP_OVERLAY_BORDER", lambda v: "yes" if v else "no"),
 }
 
 
@@ -278,6 +297,35 @@ def update_settings():
                 raise ValueError
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid pin_length: must be 4 or 6"}), 400
+
+    # Map overlay settings validation
+    if "map_overlay_position" in data and data["map_overlay_position"] not in _VALID_MAP_OVERLAY_POSITIONS:
+        return jsonify({
+            "error": f"Invalid map_overlay_position: must be one of {sorted(_VALID_MAP_OVERLAY_POSITIONS)}",
+        }), 400
+
+    if "map_overlay_opacity" in data:
+        try:
+            val = float(data["map_overlay_opacity"])
+            if val < 0.3 or val > 1.0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid map_overlay_opacity: must be 0.3-1.0"}), 400
+
+    for key, lo, hi in [
+        ("map_overlay_size", 80, 300),
+        ("map_overlay_zoom", 8, 14),
+        ("map_overlay_offset", 8, 64),
+        ("map_overlay_radius", 0, 20),
+        ("map_overlay_dot_size", 4, 16),
+    ]:
+        if key in data:
+            try:
+                val = int(data[key])
+                if val < lo or val > hi:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify({"error": f"Invalid {key}: must be {lo}-{hi}"}), 400
 
     # --- Handle action keys (not persistent settings) ---
 

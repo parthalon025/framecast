@@ -62,4 +62,13 @@
     right: 48px;
     padding: 16px;
   }
+
+  .fc-map-overlay[data-position="top-left"],
+  .fc-map-overlay[data-position="top-right"]    { top: 48px; }
+  .fc-map-overlay[data-position="bottom-left"],
+  .fc-map-overlay[data-position="bottom-right"] { bottom: 48px; }
+  .fc-map-overlay[data-position="top-left"],
+  .fc-map-overlay[data-position="bottom-left"]  { left: 48px; }
+  .fc-map-overlay[data-position="top-right"],
+  .fc-map-overlay[data-position="bottom-right"] { right: 48px; }
 }

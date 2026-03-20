@@ -20,6 +20,7 @@ import { createSSE } from "../lib/sse.js";
 const photoList = signal([]);
 const settingsData = signal(null);
 const onThisDayText = signal("");
+const mapOverlayData = signal(null); // { lat, lon } or null
 
 // --- Constants ---
 const TRANSITION_TYPES = ["fc-fade", "fc-slide", "fc-kenburns", "fc-dissolve"];
@@ -33,6 +34,48 @@ const KB_ANCHORS = [
   "0% 50%", "50% 50%", "100% 50%",
   "0% 100%", "50% 100%", "100% 100%",
 ];
+
+// --- Map overlay tile math ---
+const MAP_ZOOM_DEFAULT = 11;
+const TILE_SIZE = 256;
+const TILE_SERVERS = ["a", "b", "c", "d"];
+
+/** Convert lat/lon to tile coordinates and fractional offset. */
+function tileCoords(lat, lon, zoom) {
+  const n = Math.pow(2, zoom);
+  const latRad = lat * Math.PI / 180;
+  const x = (lon + 180) / 360 * n;
+  const y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n;
+  const xTile = Math.floor(x);
+  const yTile = Math.floor(y);
+  return { xTile, yTile, xFrac: x - xTile, yFrac: y - yTile };
+}
+
+/**
+ * Build a 2x2 tile grid with smart quadrant selection.
+ * The GPS point is always in the inner region, guaranteeing full
+ * tile coverage for any viewport up to 256x256.
+ */
+function getMapTiles(lat, lon, zoom) {
+  const { xTile, yTile, xFrac, yFrac } = tileCoords(lat, lon, zoom);
+  const xStart = xFrac >= 0.5 ? xTile : xTile - 1;
+  const yStart = yFrac >= 0.5 ? yTile : yTile - 1;
+  const markerX = (xTile - xStart) * TILE_SIZE + Math.round(xFrac * TILE_SIZE);
+  const markerY = (yTile - yStart) * TILE_SIZE + Math.round(yFrac * TILE_SIZE);
+
+  const tiles = [];
+  for (let dy = 0; dy < 2; dy++) {
+    for (let dx = 0; dx < 2; dx++) {
+      const s = TILE_SERVERS[(dy * 2 + dx) % 4];
+      tiles.push({
+        url: `https://${s}.basemaps.cartocdn.com/dark_all/${zoom}/${xStart + dx}/${yStart + dy}.png`,
+        left: dx * TILE_SIZE,
+        top: dy * TILE_SIZE,
+      });
+    }
+  }
+  return { tiles, markerX, markerY };
+}
 
 // --- Helpers ---
 
@@ -143,6 +186,7 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
 
   // Clear "On This Day" overlay
   onThisDayText.value = "";
+  mapOverlayData.value = null;
 
   if (photo.is_video) {
     const vid = document.createElement("video");
@@ -201,6 +245,11 @@ function setLayerContent(layer, photo, onAdvance, cfg) {
     layer.appendChild(img);
   }
 
+  // Update map overlay data
+  if (photo.gps_lat != null && photo.gps_lon != null) {
+    mapOverlayData.value = { lat: photo.gps_lat, lon: photo.gps_lon };
+  }
+
   // Show "On This Day" overlay if applicable
   if (photo.on_this_day && photo.years_ago) {
     const yearsAgo = photo.years_ago;
@@ -213,6 +262,112 @@ async function fetchPlaylist() {
   const res = await fetch("/api/slideshow/playlist");
   if (!res.ok) throw new Error(`Playlist fetch failed: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Translucent mini-map overlay showing the current photo's GPS location.
+ * Uses CartoDB dark_matter tiles in a 2x2 smart-quadrant grid.
+ * All visual parameters are driven by settings (opacity, size, zoom, etc.).
+ */
+function MapOverlay({ lat, lon, cfg }) {
+  const containerRef = useRef(null);
+  const tilesLoadedRef = useRef(0);
+  const fadeTimerRef = useRef(null);
+
+  const position = cfg.map_overlay_position || "bottom-left";
+  const overlayOpacity = cfg.map_overlay_opacity != null ? cfg.map_overlay_opacity : 0.75;
+  const overlaySize = cfg.map_overlay_size || 180;
+  const overlayZoom = cfg.map_overlay_zoom || MAP_ZOOM_DEFAULT;
+  const overlayOffset = cfg.map_overlay_offset != null ? cfg.map_overlay_offset : 24;
+  const overlayRadius = cfg.map_overlay_radius != null ? cfg.map_overlay_radius : 6;
+  const dotSize = cfg.map_overlay_dot_size || 8;
+  const dotPulse = cfg.map_overlay_dot_pulse !== false;
+  const showBorder = cfg.map_overlay_border !== false;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || lat == null || lon == null) return;
+
+    // Clear previous content
+    while (container.firstChild) container.removeChild(container.firstChild);
+    container.classList.remove("fc-map-visible");
+    tilesLoadedRef.current = 0;
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+
+    const { tiles, markerX, markerY } = getMapTiles(lat, lon, overlayZoom);
+    const cw = overlaySize;
+    const ch = overlaySize * 3 / 4; // 4:3 aspect ratio
+
+    // Tile grid translated so GPS point is at container center
+    const grid = document.createElement("div");
+    grid.className = "fc-map-tiles";
+    grid.style.left = `${Math.round(cw / 2 - markerX)}px`;
+    grid.style.top = `${Math.round(ch / 2 - markerY)}px`;
+
+    for (const tile of tiles) {
+      const img = document.createElement("img");
+      img.src = tile.url;
+      img.style.left = `${tile.left}px`;
+      img.style.top = `${tile.top}px`;
+      img.alt = "";
+      img.draggable = false;
+      img.onload = () => {
+        tilesLoadedRef.current++;
+        if (tilesLoadedRef.current >= 4) {
+          fadeTimerRef.current = setTimeout(() => {
+            if (container) {
+              container.classList.add("fc-map-visible");
+              container.style.opacity = overlayOpacity;
+            }
+          }, 300);
+        }
+      };
+      img.onerror = () => {
+        container.classList.remove("fc-map-visible");
+      };
+      grid.appendChild(img);
+    }
+
+    // Green phosphor dot at center
+    const dot = document.createElement("div");
+    dot.className = "fc-map-dot" + (dotPulse ? " fc-map-dot-pulse" : "");
+    dot.style.width = `${dotSize}px`;
+    dot.style.height = `${dotSize}px`;
+
+    container.appendChild(grid);
+    container.appendChild(dot);
+
+    return () => {
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    };
+  }, [lat, lon, overlayZoom, overlaySize, dotSize, dotPulse]);
+
+  // Compute inline position styles (offset is user-configurable)
+  const posStyle = {};
+  if (position.startsWith("top")) posStyle.top = `${overlayOffset}px`;
+  else posStyle.bottom = `${overlayOffset}px`;
+  if (position.endsWith("left")) posStyle.left = `${overlayOffset}px`;
+  else posStyle.right = `${overlayOffset}px`;
+
+  return (
+    <div
+      ref={containerRef}
+      class="fc-map-overlay"
+      data-position={position}
+      style={{
+        width: `${overlaySize}px`,
+        borderRadius: `${overlayRadius}px`,
+        borderColor: showBorder ? undefined : "transparent",
+        boxShadow: showBorder ? undefined : "none",
+        ...posStyle,
+      }}
+      role="img"
+      aria-label="Photo location"
+    />
+  );
 }
 
 export function Slideshow() {
@@ -253,6 +408,8 @@ export function Slideshow() {
     const ms = transType === "none" ? 0 : getTransitionMs(cfg);
 
     s.transitioning = true;
+    // Clear map overlay during transition
+    mapOverlayData.value = null;
     s.index = (s.index + 1) % s.ordered.length;
 
     // If we've exhausted the playlist, fetch a new one in the background
@@ -431,6 +588,11 @@ export function Slideshow() {
     };
   }, [advance, resetTimer]);
 
+  // Map overlay
+  const mapCfg = settingsData.value;
+  const mapPosition = mapCfg?.map_overlay_position;
+  const showMap = mapOverlayData.value && mapPosition && mapPosition !== "off";
+
   // Empty state
   const isEmpty = photoList.value.length === 0;
 
@@ -452,6 +614,13 @@ export function Slideshow() {
         class="slideshow-layer"
         style="position:absolute;inset:0;z-index:1;opacity:0;"
       />
+      {showMap && (
+        <MapOverlay
+          lat={mapOverlayData.value.lat}
+          lon={mapOverlayData.value.lon}
+          cfg={mapCfg}
+        />
+      )}
       {onThisDayText.value && (
         <div class="fc-otd-overlay" ref={otdOverlayRef}>
           <span class="fc-otd-label">{onThisDayText.value}</span>

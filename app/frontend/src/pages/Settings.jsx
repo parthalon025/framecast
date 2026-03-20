@@ -26,6 +26,13 @@ const KENBURNS_OPTIONS = [
   { value: "moderate", label: "MODERATE" },
   { value: "dramatic", label: "DRAMATIC" },
 ];
+const MAP_OVERLAY_OPTIONS = [
+  { value: "off", label: "OFF" },
+  { value: "top-left", label: "TOP LEFT" },
+  { value: "top-right", label: "TOP RIGHT" },
+  { value: "bottom-left", label: "BOTTOM LEFT" },
+  { value: "bottom-right", label: "BOTTOM RIGHT" },
+];
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
 export function Settings() {
@@ -283,6 +290,126 @@ export function Settings() {
                 ))}
               </select>
             </SettingRow>
+
+            <SettingRow label="MAP OVERLAY">
+              <select
+                class="sh-select"
+                value={settings.map_overlay_position || "off"}
+                onChange={(evt) => update("map_overlay_position", evt.target.value)}
+              >
+                {MAP_OVERLAY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </SettingRow>
+
+            {(settings.map_overlay_position || "off") !== "off" && (
+              <>
+                <SettingRow label="OVERLAY OPACITY">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="0.3"
+                    max="1"
+                    step="0.05"
+                    value={settings.map_overlay_opacity != null ? settings.map_overlay_opacity : 0.75}
+                    onInput={(evt) => update("map_overlay_opacity", parseFloat(evt.target.value))}
+                    aria-label="Map overlay opacity"
+                  />
+                  <span class="sh-value fc-range-value">
+                    {(settings.map_overlay_opacity != null ? settings.map_overlay_opacity : 0.75).toFixed(2)}
+                  </span>
+                </SettingRow>
+
+                <SettingRow label="OVERLAY SIZE" suffix="px">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="80"
+                    max="300"
+                    step="10"
+                    value={settings.map_overlay_size || 180}
+                    onInput={(evt) => update("map_overlay_size", parseInt(evt.target.value, 10))}
+                    aria-label="Map overlay size in pixels"
+                  />
+                  <span class="sh-value fc-range-value">{settings.map_overlay_size || 180}px</span>
+                </SettingRow>
+
+                <SettingRow label="MAP ZOOM">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="8"
+                    max="14"
+                    step="1"
+                    value={settings.map_overlay_zoom || 11}
+                    onInput={(evt) => update("map_overlay_zoom", parseInt(evt.target.value, 10))}
+                    aria-label="Map tile zoom level"
+                  />
+                  <span class="sh-value fc-range-value">{settings.map_overlay_zoom || 11}</span>
+                </SettingRow>
+
+                <SettingRow label="CORNER OFFSET" suffix="px">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="8"
+                    max="64"
+                    step="4"
+                    value={settings.map_overlay_offset != null ? settings.map_overlay_offset : 24}
+                    onInput={(evt) => update("map_overlay_offset", parseInt(evt.target.value, 10))}
+                    aria-label="Map overlay corner offset in pixels"
+                  />
+                  <span class="sh-value fc-range-value">
+                    {settings.map_overlay_offset != null ? settings.map_overlay_offset : 24}px
+                  </span>
+                </SettingRow>
+
+                <SettingRow label="BORDER RADIUS" suffix="px">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value={settings.map_overlay_radius != null ? settings.map_overlay_radius : 6}
+                    onInput={(evt) => update("map_overlay_radius", parseInt(evt.target.value, 10))}
+                    aria-label="Map overlay border radius"
+                  />
+                  <span class="sh-value fc-range-value">
+                    {settings.map_overlay_radius != null ? settings.map_overlay_radius : 6}px
+                  </span>
+                </SettingRow>
+
+                <SettingRow label="DOT SIZE" suffix="px">
+                  <input
+                    class="sh-input"
+                    type="range"
+                    min="4"
+                    max="16"
+                    step="1"
+                    value={settings.map_overlay_dot_size || 8}
+                    onInput={(evt) => update("map_overlay_dot_size", parseInt(evt.target.value, 10))}
+                    aria-label="Location dot size"
+                  />
+                  <span class="sh-value fc-range-value">{settings.map_overlay_dot_size || 8}px</span>
+                </SettingRow>
+
+                <SettingRow label="DOT PULSE">
+                  <Toggle
+                    on={settings.map_overlay_dot_pulse !== false}
+                    onToggle={(val) => update("map_overlay_dot_pulse", val)}
+                  />
+                </SettingRow>
+
+                <SettingRow label="PHOSPHOR BORDER">
+                  <Toggle
+                    on={settings.map_overlay_border !== false}
+                    onToggle={(val) => update("map_overlay_border", val)}
+                  />
+                </SettingRow>
+              </>
+            )}
           </div>
         </ShCollapsible>
       </section>
