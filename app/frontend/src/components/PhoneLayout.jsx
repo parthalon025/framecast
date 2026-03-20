@@ -2,6 +2,7 @@
 import { ShNav } from "superhot-ui/preact";
 import { route, navigate } from "./Router.jsx";
 import { uploadProgress } from "../pages/Upload.jsx";
+import { SearchModal, openSearch } from "./SearchModal.jsx";
 
 // --- Nav icons (inline SVG, 20x20) ---
 function UploadIcon() {
@@ -77,9 +78,18 @@ const navItems = [
 export function PhoneLayout({ children }) {
   return (
     <div style="min-height: 100dvh;">
-      <div>
+      <div style="position: relative;">
+        <button
+          type="button"
+          onClick={openSearch}
+          aria-label="Search photos"
+          style="position: absolute; top: 12px; right: 12px; z-index: 50; background: none; border: 1px solid var(--sh-phosphor, #39ff14); color: var(--sh-phosphor, #39ff14); font-family: var(--font-mono, monospace); font-size: 0.75rem; padding: 6px 10px; cursor: pointer; letter-spacing: 0.1em; min-width: 44px; min-height: 44px; display: flex; align-items: center; gap: 4px;"
+        >
+          SEARCH
+        </button>
         {children}
       </div>
+      <SearchModal />
       {uploadProgress.value && (
         <div class="fc-upload-toast">
           UPLOADING {uploadProgress.value.current}/{uploadProgress.value.total}

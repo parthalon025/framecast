@@ -7,9 +7,11 @@ Includes per-IP rate limiting (60 requests/minute) on state-changing API endpoin
 """
 
 import logging
+import os
 import re
 import subprocess
 import threading
+from contextlib import closing
 from pathlib import Path
 
 from flask import Blueprint, Response, abort, jsonify, request, send_file
@@ -176,6 +178,16 @@ def list_photos():
         log.warning("DB query failed for /api/photos, falling back to filesystem", exc_info=True)
         files = media.get_media_files()
         return jsonify(files)
+
+
+@api.route("/search")
+def search_photos_endpoint():
+    """Search photos by filename, tags, or album names."""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"photos": [], "query": ""})
+    photos = db.search_photos(q)
+    return jsonify({"photos": _enrich_photos(photos), "query": q})
 
 
 @api.route("/status")
@@ -387,6 +399,20 @@ def toggle_photo_favorite(photo_id):
     log.info("Photo %d: %s", photo_id, status_label)
     sse.notify("photo:favorited", {"id": photo_id, "is_favorite": new_val})
     return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
+
+
+@api.route("/photos/<int:photo_id>/duplicates")
+def photo_duplicates(photo_id):
+    """Find near-duplicate photos by perceptual hash."""
+    photo = db.get_photo_by_id(photo_id)
+    if not photo:
+        abort(404)
+    if not photo["dhash"]:
+        return jsonify({"duplicates": [], "message": "No perceptual hash available"})
+    dupes = db.find_near_duplicates(photo["dhash"])
+    # Exclude self
+    dupes = [d for d in dupes if d["id"] != photo_id]
+    return jsonify({"duplicates": _enrich_photos(dupes)})
 
 
 # ---------------------------------------------------------------------------
@@ -663,6 +689,110 @@ def download_backup():
     except Exception as exc:
         log.error("Backup failed: %s", exc)
         return jsonify({"error": "Backup failed"}), 500
+
+
+@api.route("/restore", methods=["POST"])
+@require_pin
+def restore_backup():
+    """Restore database from an uploaded backup file.
+
+    Expects multipart form upload with field name 'backup'.
+    Validates the uploaded file is a valid SQLite DB with required tables.
+    """
+    if "backup" not in request.files:
+        return jsonify({"error": "No backup file provided"}), 400
+
+    uploaded = request.files["backup"]
+    if not uploaded.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    # Save to temp file for validation
+    import tempfile
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(tmp_fd)
+
+    try:
+        uploaded.save(tmp_path)
+
+        # Validate and restore
+        db.restore_db(tmp_path)
+
+        return jsonify({
+            "status": "ok",
+            "message": "Database restored. Restart recommended.",
+        })
+    except ValueError as exc:
+        log.warning("Restore validation failed: %s", exc)
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        log.error("Restore failed: %s", exc)
+        return jsonify({"error": "Restore failed"}), 500
+    finally:
+        # Clean up temp file
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Export endpoint
+# ---------------------------------------------------------------------------
+
+
+@api.route("/export")
+@require_pin
+def export_photos():
+    """Stream a zip archive of all non-quarantined photos.
+
+    Writes to a temp file first to avoid OOM on Pi 3 with limited RAM.
+    Uses ZIP_STORED (no compression) for lower CPU usage.
+    """
+    import tempfile
+    import time
+    import zipfile
+
+    from flask import after_this_request
+
+    media_dir = Path(media.get_media_dir())
+
+    with closing(db.get_db()) as conn:
+        photos = conn.execute(
+            "SELECT filename, filepath FROM photos WHERE quarantined = 0"
+        ).fetchall()
+
+    if not photos:
+        return jsonify({"error": "No photos to export"}), 404
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+    os.close(tmp_fd)
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        return response
+
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_STORED) as zf:
+            for photo in photos:
+                filepath = media_dir / photo["filepath"]
+                if filepath.exists() and filepath.is_file():
+                    zf.write(str(filepath), arcname=photo["filename"])
+
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        return send_file(
+            tmp_path,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"framecast-export-{timestamp}.zip",
+        )
+    except Exception as exc:
+        log.error("Export failed: %s", exc)
+        return jsonify({"error": "Export failed"}), 500
 
 
 # ---------------------------------------------------------------------------

@@ -513,6 +513,47 @@ export function Settings() {
                 SYSTEM UPDATE
               </button>
             </SettingRow>
+
+            <SettingRow label="EXPORT PHOTOS">
+              <a
+                class="sh-input sh-clickable"
+                href="/api/export"
+                style="text-align: center; min-width: 120px; text-decoration: none; display: inline-block;"
+              >
+                DOWNLOAD ZIP
+              </a>
+            </SettingRow>
+
+            <SettingRow label="RESTORE BACKUP">
+              <input
+                type="file"
+                accept=".db,.backup,.sqlite"
+                class="sh-input"
+                style="max-width: 200px;"
+                onChange={async (evt) => {
+                  const file = evt.target.files[0];
+                  if (!file) return;
+                  if (!confirm("RESTORE will replace all current data. Continue?")) {
+                    evt.target.value = "";
+                    return;
+                  }
+                  const form = new FormData();
+                  form.append("backup", file);
+                  try {
+                    const res = await fetch("/api/restore", { method: "POST", body: form });
+                    const data = await res.json();
+                    if (res.ok) {
+                      alert("RESTORED — restart recommended");
+                    } else {
+                      alert(data.error || "Restore failed");
+                    }
+                  } catch (err) {
+                    alert("Network error: " + err.message);
+                  }
+                  evt.target.value = "";
+                }}
+              />
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>

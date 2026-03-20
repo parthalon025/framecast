@@ -426,3 +426,43 @@ def remove_from_location_cache(filename):
     if filename in cache:
         del cache[filename]
         _save_locations_cache(cache)
+
+
+def compute_dhash(filepath, hash_size=8):
+    """Compute a 64-bit difference hash (dhash) for duplicate detection.
+
+    Returns hex string of the hash, or None if computation fails.
+    Requires Pillow (optional dependency on Pi).
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        log.warning("Pillow not installed — dhash computation disabled")
+        return None
+
+    try:
+        with Image.open(str(filepath)) as img:
+            # Resize to (hash_size + 1) x hash_size, grayscale
+            resized = img.convert("L").resize(
+                (hash_size + 1, hash_size), Image.LANCZOS
+            )
+            pixels = list(resized.getdata())
+            # Compare adjacent pixels: left < right = 1 bit
+            bits = 0
+            for row in range(hash_size):
+                for col in range(hash_size):
+                    idx = row * (hash_size + 1) + col
+                    if pixels[idx] < pixels[idx + 1]:
+                        bits |= 1 << (row * hash_size + col)
+            return f"{bits:016x}"
+    except Exception as exc:
+        log.warning("dhash computation failed for %s: %s", filepath, exc)
+        return None
+
+
+def hamming_distance(hash1, hash2):
+    """Compute Hamming distance between two hex hash strings."""
+    if not hash1 or not hash2 or len(hash1) != len(hash2):
+        return 64  # max distance
+    val = int(hash1, 16) ^ int(hash2, 16)
+    return bin(val).count("1")

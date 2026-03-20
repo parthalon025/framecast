@@ -38,7 +38,7 @@ _flush_timer = None
 _db_initialized = False
 
 # --- Schema version ---
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 # --- SQL schema ---
 
@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS photos (
     view_count INTEGER DEFAULT 0,
     last_shown_at TEXT,
     quarantined BOOLEAN DEFAULT 0,
-    quarantine_reason TEXT
+    quarantine_reason TEXT,
+    dhash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS albums (
@@ -125,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_photos_last_shown ON photos(last_shown_at);
 CREATE INDEX IF NOT EXISTS idx_display_stats_photo ON display_stats(photo_id);
 CREATE INDEX IF NOT EXISTS idx_display_stats_shown ON display_stats(shown_at);
 CREATE INDEX IF NOT EXISTS idx_photos_checksum ON photos(checksum_sha256);
+CREATE INDEX IF NOT EXISTS idx_photos_dhash ON photos(dhash);
 """
 
 # --- Smart albums (computed queries) ---
@@ -186,6 +188,14 @@ def init_db():
             conn.executescript(_SCHEMA_SQL)
             conn.executescript(_INDEX_SQL)
 
+            # FTS5 virtual table for full-text search
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS photos_fts USING fts5(
+                    filename, tags, album_names,
+                    content='', content_rowid='id'
+                )
+            """)
+
             # Check schema version
             row = conn.execute(
                 "SELECT MAX(version) AS v FROM schema_version"
@@ -193,8 +203,13 @@ def init_db():
             current = row["v"] if row and row["v"] is not None else 0
 
             if current < CURRENT_SCHEMA_VERSION:
-                # Run migration from files if DB is empty
-                migrate_from_files(conn)
+                # Run schema migrations for each version step
+                if current < 1:
+                    # v0 -> v1: import existing media files into DB
+                    migrate_from_files(conn)
+                if current < 2:
+                    # v1 -> v2: add perceptual hash column for duplicate detection
+                    _migrate_v2_dhash(conn)
                 conn.execute(
                     "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
                     (CURRENT_SCHEMA_VERSION,),
@@ -214,6 +229,9 @@ def init_db():
         atexit.register(_shutdown_db)
         _start_flush_timer()
         _db_initialized = True
+
+    # Build FTS index from existing data
+    rebuild_fts()
 
     log.info("DATABASE: INITIALIZED at %s", db_path)
 
@@ -290,8 +308,12 @@ def insert_photo(
                    WHERE name = ?""",
                 (uploaded_by,),
             )
+            # Index in FTS (non-quarantined photos only)
+            photo_id = cur.lastrowid
+            if not quarantined:
+                _fts_index_photo(conn, photo_id)
             conn.commit()
-            return cur.lastrowid
+            return photo_id
 
 
 def get_photo_by_checksum(checksum):
@@ -384,6 +406,11 @@ def update_photo_quarantine(photo_id, quarantined, reason=None):
                 "UPDATE photos SET quarantined = ?, quarantine_reason = ? WHERE id = ?",
                 (1 if quarantined else 0, reason, photo_id),
             )
+            # Update FTS: remove when quarantining, add when restoring
+            if quarantined:
+                _fts_remove_photo(conn, photo_id)
+            else:
+                _fts_index_photo(conn, photo_id)
             conn.commit()
 
 
@@ -420,18 +447,44 @@ def toggle_hidden(photo_id):
             return bool(row["is_hidden"]) if row else None
 
 
-def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon):
+def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=None):
     """Clear quarantine and update metadata after successful upload processing."""
     with _write_lock:
         with closing(get_db()) as conn:
             conn.execute(
                 """UPDATE photos SET quarantined = 0, quarantine_reason = NULL,
                    file_size = ?, width = ?, height = ?,
-                   checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
+                   checksum_sha256 = ?, gps_lat = ?, gps_lon = ?,
+                   dhash = ?
                    WHERE id = ?""",
-                (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
+                (file_size, width, height, checksum, gps_lat, gps_lon, dhash, photo_id),
             )
+            # Photo is now visible — add to FTS index
+            _fts_index_photo(conn, photo_id)
             conn.commit()
+
+
+def find_near_duplicates(dhash, threshold=10):
+    """Find photos with dhash within Hamming distance threshold.
+
+    Returns list of photo dicts that are potential duplicates.
+    Uses in-Python comparison (fast enough for <10k photos).
+    """
+    if not dhash:
+        return []
+    from .media import hamming_distance
+    with closing(get_db()) as conn:
+        rows = conn.execute(
+            "SELECT * FROM photos WHERE dhash IS NOT NULL AND quarantined = 0"
+        ).fetchall()
+        results = []
+        for row in rows:
+            dist = hamming_distance(dhash, row["dhash"])
+            if dist <= threshold:
+                d = dict(row)
+                d["distance"] = dist
+                results.append(d)
+        return results
 
 
 def bulk_quarantine_all(reason="bulk delete"):
@@ -880,6 +933,95 @@ def get_smart_album_photos(smart_key):
         return [dict(r) for r in rows]
 
 
+# --- Full-text search (FTS5) ---
+
+
+def rebuild_fts():
+    """Rebuild the FTS5 index from current photo data."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            try:
+                conn.execute("DELETE FROM photos_fts")
+                conn.execute("""
+                    INSERT INTO photos_fts(rowid, filename, tags, album_names)
+                    SELECT p.id,
+                           p.filename,
+                           COALESCE((SELECT GROUP_CONCAT(t.name, ' ')
+                                     FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
+                                     WHERE pt.photo_id = p.id), ''),
+                           COALESCE((SELECT GROUP_CONCAT(a.name, ' ')
+                                     FROM album_photos ap JOIN albums a ON a.id = ap.album_id
+                                     WHERE ap.photo_id = p.id), '')
+                    FROM photos p
+                    WHERE p.quarantined = 0
+                """)
+                conn.commit()
+                log.info("FTS: INDEX REBUILT")
+            except Exception:
+                log.error("FTS: rebuild failed", exc_info=True)
+
+
+def _fts_index_photo(conn, photo_id):
+    """Add or update a single photo in the FTS index (caller holds _write_lock)."""
+    try:
+        conn.execute(
+            "INSERT INTO photos_fts(photos_fts, rowid, filename, tags, album_names) "
+            "VALUES('delete', ?, '', '', '')",
+            (photo_id,),
+        )
+    except Exception:
+        pass  # Row may not exist in FTS yet
+    try:
+        conn.execute("""
+            INSERT INTO photos_fts(rowid, filename, tags, album_names)
+            SELECT p.id,
+                   p.filename,
+                   COALESCE((SELECT GROUP_CONCAT(t.name, ' ')
+                             FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
+                             WHERE pt.photo_id = p.id), ''),
+                   COALESCE((SELECT GROUP_CONCAT(a.name, ' ')
+                             FROM album_photos ap JOIN albums a ON a.id = ap.album_id
+                             WHERE ap.photo_id = p.id), '')
+            FROM photos p
+            WHERE p.id = ? AND p.quarantined = 0
+        """, (photo_id,))
+    except Exception:
+        log.warning("FTS: index update failed for photo %d", photo_id, exc_info=True)
+
+
+def _fts_remove_photo(conn, photo_id):
+    """Remove a photo from the FTS index (caller holds _write_lock)."""
+    try:
+        conn.execute(
+            "INSERT INTO photos_fts(photos_fts, rowid, filename, tags, album_names) "
+            "VALUES('delete', ?, '', '', '')",
+            (photo_id,),
+        )
+    except Exception:
+        log.warning("FTS: remove failed for photo %d", photo_id, exc_info=True)
+
+
+def search_photos(query, limit=50):
+    """Search photos using FTS5. Returns list of photo dicts."""
+    if not query or not query.strip():
+        return []
+    safe_q = query.strip().replace('"', '""')
+    fts_query = f'"{safe_q}"*'
+    try:
+        with closing(get_db()) as conn:
+            rows = conn.execute("""
+                SELECT p.* FROM photos p
+                JOIN photos_fts fts ON fts.rowid = p.id
+                WHERE photos_fts MATCH ? AND p.quarantined = 0
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_query, limit)).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        log.warning("FTS: search failed for query %r", query, exc_info=True)
+        return []
+
+
 # --- Backup ---
 
 
@@ -920,6 +1062,50 @@ def backup_db():
     return str(backup_path)
 
 
+def restore_db(uploaded_path):
+    """Restore database from an uploaded backup file.
+
+    Validates the file is a valid SQLite database with expected tables
+    before replacing the current database.
+
+    Returns True on success, raises ValueError on validation failure.
+    """
+    # Validate it's a real SQLite database
+    try:
+        test_conn = sqlite3.connect(str(uploaded_path))
+        test_conn.row_factory = sqlite3.Row
+        # Check for required tables
+        tables = {row["name"] for row in test_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        required = {"photos", "albums", "tags", "users"}
+        missing = required - tables
+        if missing:
+            test_conn.close()
+            raise ValueError(
+                f"Missing required tables: {', '.join(sorted(missing))}"
+            )
+        # Quick sanity: can we read from photos?
+        test_conn.execute("SELECT COUNT(*) FROM photos").fetchone()
+        test_conn.close()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"Invalid SQLite database: {exc}") from exc
+
+    # Backup current DB first (safety net)
+    current_path = _db_path()
+    safety_backup = str(current_path) + ".pre-restore"
+    if current_path.exists():
+        shutil.copy2(str(current_path), safety_backup)
+        log.info("Pre-restore safety backup: %s", safety_backup)
+
+    # Replace current DB with restored one
+    with _write_lock:
+        shutil.copy2(str(uploaded_path), str(current_path))
+        log.info("Database restored from uploaded backup")
+
+    return True
+
+
 # --- WAL checkpoint (periodic) ---
 
 
@@ -928,6 +1114,28 @@ def wal_checkpoint():
     with closing(get_db()) as conn:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     log.info("DATABASE: WAL CHECKPOINT COMPLETE")
+
+
+# --- Schema migrations ---
+
+
+def _migrate_v2_dhash(conn):
+    """v1 -> v2: Add dhash column for perceptual duplicate detection.
+
+    Uses ALTER TABLE for existing databases. The column already exists
+    in _SCHEMA_SQL for new databases, so this is safe to run either way
+    (SQLite silently errors on duplicate ADD COLUMN, which we catch).
+    """
+    try:
+        conn.execute("ALTER TABLE photos ADD COLUMN dhash TEXT")
+        log.info("MIGRATION v2: Added dhash column to photos table")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" in str(exc).lower():
+            log.debug("MIGRATION v2: dhash column already exists")
+        else:
+            raise
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_dhash ON photos(dhash)")
+    log.info("MIGRATION v2: dhash index created")
 
 
 # --- Migration from files ---

@@ -595,8 +595,18 @@ def _do_upload():
         except Exception as exc:
             log.warning("Failed to compute checksum for %s: %s", filename, exc)
 
+        # Compute perceptual hash for duplicate detection
+        dhash = None
+        if not is_vid:
+            dhash = media.compute_dhash(str(dest))
+            if dhash:
+                near_dupes = db.find_near_duplicates(dhash)
+                if near_dupes:
+                    dupe_names = [d["filename"] for d in near_dupes[:3]]
+                    log.info("Near-duplicate detected for %s: %s", filename, dupe_names)
+
         # Unquarantine and update metadata in DB
-        db.unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon)
+        db.unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=dhash)
 
         uploaded += 1
         uploaded_names.append(filename)
