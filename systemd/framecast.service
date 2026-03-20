@@ -1,9 +1,10 @@
 [Unit]
 Description=FrameCast Web App
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=60
-StartLimitBurst=5
+After=network-online.target time-sync.target local-fs.target
+Wants=network-online.target time-sync.target
+StartLimitIntervalSec=600
+StartLimitBurst=10
+StartLimitAction=reboot
 
 [Service]
 Type=simple

@@ -3,7 +3,7 @@ Description=FrameCast Display Schedule Check
 
 [Timer]
 OnCalendar=*:*:00
-Persistent=true
+AccuracySec=30
 
 [Install]
 WantedBy=timers.target

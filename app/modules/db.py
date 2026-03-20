@@ -34,6 +34,9 @@ _MAX_STATS_BUFFER = 500  # Cap to prevent OOM on persistent DB errors
 _stats_last_flush = time.monotonic()
 _flush_timer = None
 
+# --- Double-init guard ---
+_db_initialized = False
+
 # --- Schema version ---
 CURRENT_SCHEMA_VERSION = 1
 
@@ -202,17 +205,15 @@ def init_db():
             else:
                 conn.commit()
 
-    # Auto-prune old display stats on startup
-    _prune_old_stats()
-
     # Auto-prune quarantined photos older than 30 days
     prune_quarantined()
 
-    # Register atexit handler for stats buffer flush
-    atexit.register(_flush_stats)
-
-    # Start periodic flush timer
-    _start_flush_timer()
+    global _db_initialized
+    if not _db_initialized:
+        _prune_old_stats()
+        atexit.register(_shutdown_db)
+        _start_flush_timer()
+        _db_initialized = True
 
     log.info("DATABASE: INITIALIZED at %s", db_path)
 
@@ -726,6 +727,17 @@ def _flush_stats():
     log.info("STATS: FLUSHED %d display entries", len(batch))
 
 
+def _shutdown_db():
+    """Flush stats and checkpoint WAL on clean shutdown."""
+    _flush_stats()
+    try:
+        with closing(get_db()) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        log.info("DATABASE: clean shutdown — WAL checkpointed")
+    except Exception as exc:
+        log.error("DATABASE: WAL checkpoint on shutdown failed: %s", exc)
+
+
 def _periodic_flush():
     """Called by timer thread to flush stats periodically."""
     try:
@@ -979,6 +991,168 @@ def _get_image_dimensions(filepath):
         return None, None
 
 
+def _migrate_impl(conn):
+    """Core migration logic — scan MEDIA_DIR and import files into the database.
+
+    Called by migrate_from_files with a valid connection.
+    """
+    media_dir = Path(media.get_media_dir())
+    if not media_dir.exists():
+        log.info("MIGRATION: MEDIA_DIR does not exist, skipping")
+        return
+
+    # Ensure default user exists
+    existing = conn.execute(
+        "SELECT id FROM users WHERE name = 'default'"
+    ).fetchone()
+    if not existing:
+        conn.execute(
+            "INSERT INTO users (name, is_admin) VALUES ('default', 1)"
+        )
+
+    # Load existing GPS cache
+    gps_cache = {}
+    cache_path = media_dir / ".locations.json"
+    if cache_path.exists():
+        try:
+            import json
+            with open(cache_path, "r", encoding="utf-8") as f:
+                gps_cache = json.load(f)
+        except Exception as exc:
+            log.warning("MIGRATION: Failed to load GPS cache: %s", exc)
+
+    # Gather media files
+    image_ext, video_ext = media.get_allowed_extensions()
+    all_ext = image_ext | video_ext
+    skip_dirs = {media_dir / "thumbnails", media_dir / "quarantine"}
+
+    media_files = []
+    for f in media_dir.rglob("*"):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in all_ext:
+            continue
+        if any(skip_dir in f.parents for skip_dir in skip_dirs):
+            continue
+        if f.name.endswith(".tmp"):
+            continue
+        media_files.append(f)
+
+    total = len(media_files)
+    if total == 0:
+        log.info("MIGRATION: No media files found")
+        conn.commit()
+        return
+
+    log.info("MIGRATION: Found %d media files to index", total)
+
+    imported = 0
+    for idx, filepath in enumerate(media_files, 1):
+        filename = filepath.name
+        # Check if already in DB
+        existing = conn.execute(
+            "SELECT id FROM photos WHERE filename = ?", (filename,)
+        ).fetchone()
+        if existing:
+            continue
+
+        # Compute checksum
+        checksum = _compute_sha256(filepath)
+
+        # Check for duplicate checksum
+        dup = conn.execute(
+            "SELECT id FROM photos WHERE checksum_sha256 = ?", (checksum,)
+        ).fetchone()
+        if dup:
+            log.info("MIGRATION: Skipping duplicate %s (matches id=%d)", filename, dup["id"])
+            continue
+
+        is_vid = filepath.suffix.lower() in video_ext
+        file_size = filepath.stat().st_size
+
+        # Extract metadata for images
+        width, height = (None, None)
+        exif_date = None
+        gps_lat, gps_lon = None, None
+
+        if not is_vid:
+            width, height = _get_image_dimensions(filepath)
+            exif_date = _extract_exif_date(filepath)
+
+            # GPS from cache or extraction
+            gps_entry = gps_cache.get(filename, {})
+            if gps_entry.get("lat") is not None:
+                gps_lat = gps_entry["lat"]
+                gps_lon = gps_entry["lon"]
+            else:
+                coords = media.extract_gps(filepath)
+                if coords:
+                    gps_lat, gps_lon = coords
+
+        # Determine thumbnail path for videos
+        thumb_path = None
+        if is_vid:
+            thumb_file = media_dir / "thumbnails" / (filepath.stem + ".jpg")
+            if thumb_file.exists():
+                thumb_path = str(thumb_file)
+
+        # Determine MIME type
+        mime_map = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+            ".tiff": "image/tiff",
+            ".mp4": "video/mp4",
+            ".mkv": "video/x-matroska",
+            ".avi": "video/x-msvideo",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+            ".m4v": "video/x-m4v",
+        }
+        mime_type = mime_map.get(filepath.suffix.lower())
+
+        conn.execute(
+            """INSERT INTO photos
+               (filename, filepath, mime_type, file_size, width, height,
+                is_video, checksum_sha256, thumbnail_path,
+                gps_lat, gps_lon, exif_date, uploaded_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'default')""",
+            (
+                filename,
+                str(filepath),
+                mime_type,
+                file_size,
+                width,
+                height,
+                1 if is_vid else 0,
+                checksum,
+                thumb_path,
+                gps_lat,
+                gps_lon,
+                exif_date,
+            ),
+        )
+        imported += 1
+
+        if idx % 50 == 0 or idx == total:
+            log.info("MIGRATION: %d/%d photos indexed", idx, total)
+
+    conn.commit()
+
+    # Delete old GPS JSON cache after successful migration
+    if cache_path.exists() and imported > 0:
+        try:
+            cache_path.unlink()
+            log.info("MIGRATION: Deleted old GPS cache (.locations.json)")
+        except OSError as exc:
+            log.warning("MIGRATION: Failed to delete GPS cache: %s", exc)
+
+    log.info("MIGRATION: COMPLETE — %d new photos indexed", imported)
+
+
 def migrate_from_files(conn=None):
     """Scan MEDIA_DIR for media files and import them into the database.
 
@@ -989,167 +1163,8 @@ def migrate_from_files(conn=None):
         conn: An existing DB connection (used during init_db). If None,
               opens a new connection.
     """
-    media_dir = Path(media.get_media_dir())
-    if not media_dir.exists():
-        log.info("MIGRATION: MEDIA_DIR does not exist, skipping")
+    if conn is None:
+        with closing(get_db()) as conn:
+            _migrate_impl(conn)
         return
-
-    own_conn = conn is None
-    if own_conn:
-        conn = get_db()
-
-    try:
-        # Ensure default user exists
-        existing = conn.execute(
-            "SELECT id FROM users WHERE name = 'default'"
-        ).fetchone()
-        if not existing:
-            conn.execute(
-                "INSERT INTO users (name, is_admin) VALUES ('default', 1)"
-            )
-
-        # Load existing GPS cache
-        gps_cache = {}
-        cache_path = media_dir / ".locations.json"
-        if cache_path.exists():
-            try:
-                import json
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    gps_cache = json.load(f)
-            except Exception as exc:
-                log.warning("MIGRATION: Failed to load GPS cache: %s", exc)
-
-        # Gather media files
-        image_ext, video_ext = media.get_allowed_extensions()
-        all_ext = image_ext | video_ext
-        skip_dirs = {media_dir / "thumbnails", media_dir / "quarantine"}
-
-        media_files = []
-        for f in media_dir.rglob("*"):
-            if not f.is_file():
-                continue
-            if f.suffix.lower() not in all_ext:
-                continue
-            if any(skip_dir in f.parents for skip_dir in skip_dirs):
-                continue
-            if f.name.endswith(".tmp"):
-                continue
-            media_files.append(f)
-
-        total = len(media_files)
-        if total == 0:
-            log.info("MIGRATION: No media files found")
-            conn.commit()
-            return
-
-        log.info("MIGRATION: Found %d media files to index", total)
-
-        imported = 0
-        for idx, filepath in enumerate(media_files, 1):
-            filename = filepath.name
-            # Check if already in DB
-            existing = conn.execute(
-                "SELECT id FROM photos WHERE filename = ?", (filename,)
-            ).fetchone()
-            if existing:
-                continue
-
-            # Compute checksum
-            checksum = _compute_sha256(filepath)
-
-            # Check for duplicate checksum
-            dup = conn.execute(
-                "SELECT id FROM photos WHERE checksum_sha256 = ?", (checksum,)
-            ).fetchone()
-            if dup:
-                log.info("MIGRATION: Skipping duplicate %s (matches id=%d)", filename, dup["id"])
-                continue
-
-            is_vid = filepath.suffix.lower() in video_ext
-            file_size = filepath.stat().st_size
-
-            # Extract metadata for images
-            width, height = (None, None)
-            exif_date = None
-            gps_lat, gps_lon = None, None
-
-            if not is_vid:
-                width, height = _get_image_dimensions(filepath)
-                exif_date = _extract_exif_date(filepath)
-
-                # GPS from cache or extraction
-                gps_entry = gps_cache.get(filename, {})
-                if gps_entry.get("lat") is not None:
-                    gps_lat = gps_entry["lat"]
-                    gps_lon = gps_entry["lon"]
-                else:
-                    coords = media.extract_gps(filepath)
-                    if coords:
-                        gps_lat, gps_lon = coords
-
-            # Determine thumbnail path for videos
-            thumb_path = None
-            if is_vid:
-                thumb_file = media_dir / "thumbnails" / (filepath.stem + ".jpg")
-                if thumb_file.exists():
-                    thumb_path = str(thumb_file)
-
-            # Determine MIME type
-            mime_map = {
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-                ".gif": "image/gif",
-                ".webp": "image/webp",
-                ".bmp": "image/bmp",
-                ".tiff": "image/tiff",
-                ".mp4": "video/mp4",
-                ".mkv": "video/x-matroska",
-                ".avi": "video/x-msvideo",
-                ".mov": "video/quicktime",
-                ".webm": "video/webm",
-                ".m4v": "video/x-m4v",
-            }
-            mime_type = mime_map.get(filepath.suffix.lower())
-
-            conn.execute(
-                """INSERT INTO photos
-                   (filename, filepath, mime_type, file_size, width, height,
-                    is_video, checksum_sha256, thumbnail_path,
-                    gps_lat, gps_lon, exif_date, uploaded_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'default')""",
-                (
-                    filename,
-                    str(filepath),
-                    mime_type,
-                    file_size,
-                    width,
-                    height,
-                    1 if is_vid else 0,
-                    checksum,
-                    thumb_path,
-                    gps_lat,
-                    gps_lon,
-                    exif_date,
-                ),
-            )
-            imported += 1
-
-            if idx % 50 == 0 or idx == total:
-                log.info("MIGRATION: %d/%d photos indexed", idx, total)
-
-        conn.commit()
-
-        # Delete old GPS JSON cache after successful migration
-        if cache_path.exists() and imported > 0:
-            try:
-                cache_path.unlink()
-                log.info("MIGRATION: Deleted old GPS cache (.locations.json)")
-            except OSError as exc:
-                log.warning("MIGRATION: Failed to delete GPS cache: %s", exc)
-
-        log.info("MIGRATION: COMPLETE — %d new photos indexed", imported)
-
-    finally:
-        if own_conn:
-            conn.close()
+    _migrate_impl(conn)

@@ -82,7 +82,7 @@ def save(updates: dict):
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, str(ENV_FILE))
-        except BaseException:
+        except Exception:
             # Clean up temp file on any failure
             try:
                 os.unlink(tmp_path)
