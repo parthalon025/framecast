@@ -7,6 +7,12 @@ import { fetchWithTimeout } from "../lib/fetch.js";
 /** Lightbox state: { photos, index } or null when closed. */
 export const lightboxState = signal(null);
 
+/** Module-level signals for Lightbox internals (prevent stale subscriber bugs). */
+const lightboxInfoOpen = signal(false);
+const lightboxTagInput = signal("");
+const lightboxTagSuggestions = signal([]);
+const lightboxAllTags = signal([]);
+
 /**
  * Open the lightbox at a given photo within a list.
  * @param {Array} photos - Full photo list for navigation
@@ -35,10 +41,14 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
   const overlayRef = useRef(null);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
-  const infoOpen = signal(false);
-  const tagInput = signal("");
-  const tagSuggestions = signal([]);
-  const allTags = signal([]);
+
+  // Reset module-level signals on mount/close
+  useEffect(() => {
+    lightboxInfoOpen.value = false;
+    lightboxTagInput.value = "";
+    lightboxTagSuggestions.value = [];
+    lightboxAllTags.value = [];
+  }, []);
 
   // Fetch all tags + current photo tags in parallel
   useEffect(() => {
@@ -51,13 +61,13 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
       fetchWithTimeout(`/api/photos/${photo.id}/tags`).then((resp) => resp.ok ? resp.json() : []),
     ])
       .then(([all, current]) => {
-        allTags.value = all;
-        tagSuggestions.value = current;
+        lightboxAllTags.value = all;
+        lightboxTagSuggestions.value = current;
       })
       .catch((err) => {
         console.warn("Lightbox: tag fetch failed", err);
-        allTags.value = [];
-        tagSuggestions.value = [];
+        lightboxAllTags.value = [];
+        lightboxTagSuggestions.value = [];
       });
   }, [state ? state.index : -1]);
 
@@ -126,21 +136,21 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
   }
 
   function toggleInfo() {
-    infoOpen.value = !infoOpen.value;
+    lightboxInfoOpen.value = !lightboxInfoOpen.value;
   }
 
   // Tag input handling
   function handleTagKeyDown(evt) {
     if (evt.key === "Enter") {
-      const name = tagInput.value.trim();
+      const name = lightboxTagInput.value.trim();
       if (name && onAddTag) {
         onAddTag(photo, name);
-        tagInput.value = "";
+        lightboxTagInput.value = "";
         // Refresh tags
         setTimeout(() => {
           fetchWithTimeout(`/api/photos/${photo.id}/tags`)
             .then((resp) => resp.ok ? resp.json() : [])
-            .then((data) => { tagSuggestions.value = data; })
+            .then((data) => { lightboxTagSuggestions.value = data; })
             .catch((err) => console.warn("Lightbox: tag refresh failed", err));
         }, 300);
       }
@@ -154,17 +164,17 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
       setTimeout(() => {
         fetchWithTimeout(`/api/photos/${photo.id}/tags`)
           .then((resp) => resp.ok ? resp.json() : [])
-          .then((data) => { tagSuggestions.value = data; })
+          .then((data) => { lightboxTagSuggestions.value = data; })
           .catch((err) => console.warn("Lightbox: tag refresh failed", err));
       }, 300);
     }
   }
 
   // Filter autocomplete suggestions
-  const currentInput = tagInput.value.toLowerCase();
-  const currentTagIds = new Set((tagSuggestions.value || []).map((tg) => tg.id));
+  const currentInput = lightboxTagInput.value.toLowerCase();
+  const currentTagIds = new Set((lightboxTagSuggestions.value || []).map((tg) => tg.id));
   const autoSuggestions = currentInput.length > 0
-    ? (allTags.value || []).filter(
+    ? (lightboxAllTags.value || []).filter(
         (tg) => tg.name.toLowerCase().includes(currentInput) && !currentTagIds.has(tg.id)
       ).slice(0, 5)
     : [];
@@ -286,7 +296,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
       </div>
 
       {/* Info panel (toggled) */}
-      {infoOpen.value && (
+      {lightboxInfoOpen.value && (
         <div
           class="fc-lightbox-info sh-card"
           onClick={(evt) => evt.stopPropagation()}
@@ -327,7 +337,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
           <div style="border-top: 1px solid var(--border-subtle); padding-top: 8px;">
             <div class="sh-ansi-dim" style="margin-bottom: 6px;">TAGS</div>
             <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-              {(tagSuggestions.value || []).map((tag) => (
+              {(lightboxTagSuggestions.value || []).map((tag) => (
                 <span
                   key={tag.id}
                   class="sh-filter-chip sh-filter-chip--active"
@@ -338,7 +348,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                   {tag.name} x
                 </span>
               ))}
-              {(!tagSuggestions.value || tagSuggestions.value.length === 0) && (
+              {(!lightboxTagSuggestions.value || lightboxTagSuggestions.value.length === 0) && (
                 <span class="sh-ansi-dim" style="font-size: 0.75rem;">NO TAGS</span>
               )}
             </div>
@@ -349,8 +359,8 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                 class="sh-input"
                 type="text"
                 placeholder="ADD TAG..."
-                value={tagInput.value}
-                onInput={(evt) => { tagInput.value = evt.target.value; }}
+                value={lightboxTagInput.value}
+                onInput={(evt) => { lightboxTagInput.value = evt.target.value; }}
                 onKeyDown={handleTagKeyDown}
                 style="width: 100%; font-size: 0.8rem; padding: 6px 8px;"
               />
@@ -366,11 +376,11 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                       type="button"
                       onClick={() => {
                         if (onAddTag) onAddTag(photo, sug.name);
-                        tagInput.value = "";
+                        lightboxTagInput.value = "";
                         setTimeout(() => {
                           fetchWithTimeout(`/api/photos/${photo.id}/tags`)
                             .then((resp) => resp.ok ? resp.json() : [])
-                            .then((data) => { tagSuggestions.value = data; })
+                            .then((data) => { lightboxTagSuggestions.value = data; })
                             .catch((err) => console.warn("Lightbox: tag refresh failed", err));
                         }, 300);
                       }}

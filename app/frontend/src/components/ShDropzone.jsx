@@ -1,7 +1,12 @@
 /** @fileoverview Drag-and-drop upload component with XHR progress tracking. */
 import { signal } from "@preact/signals";
-import { useRef, useCallback } from "preact/hooks";
+import { useRef, useCallback, useEffect } from "preact/hooks";
 import { glitchText } from "superhot-ui";
+
+/** Module-level signals for ShDropzone (prevent stale subscriber bugs). */
+const dropzoneState = signal("idle");
+const dropzoneProgress = signal(0);
+const dropzoneErrorMsg = signal("");
 
 /**
  * ShDropzone — file upload via drag-and-drop or click-to-browse.
@@ -20,12 +25,16 @@ import { glitchText } from "superhot-ui";
  * @param {boolean}  [props.disabled]      - Block uploads (e.g. disk full)
  */
 export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled = false }) {
-  const state = signal("idle");
-  const progress = signal(0);
-  const errorMsg = signal("");
   const zoneRef = useRef(null);
   const inputRef = useRef(null);
   const activeUploads = useRef(0);
+
+  // Reset module-level signals on mount
+  useEffect(() => {
+    dropzoneState.value = "idle";
+    dropzoneProgress.value = 0;
+    dropzoneErrorMsg.value = "";
+  }, []);
 
   /** Build ASCII progress bar: [▓▓▓░░░] */
   function asciiBar(pct) {
@@ -40,18 +49,18 @@ export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled 
     // Client-side size validation
     const maxBytes = maxSizeMB * 1024 * 1024;
     if (file.size > maxBytes) {
-      state.value = "error";
-      errorMsg.value = `FILE EXCEEDS ${maxSizeMB}MB LIMIT`;
+      dropzoneState.value = "error";
+      dropzoneErrorMsg.value = `FILE EXCEEDS ${maxSizeMB}MB LIMIT`;
       setTimeout(() => {
-        state.value = "idle";
-        errorMsg.value = "";
+        dropzoneState.value = "idle";
+        dropzoneErrorMsg.value = "";
       }, 3000);
       return;
     }
 
     activeUploads.current++;
-    state.value = "receiving";
-    progress.value = 0;
+    dropzoneState.value = "receiving";
+    dropzoneProgress.value = 0;
 
     const form = new FormData();
     form.append("files", file);
@@ -60,15 +69,15 @@ export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled 
 
     xhr.upload.addEventListener("progress", (evt) => {
       if (evt.lengthComputable) {
-        progress.value = Math.round((evt.loaded / evt.total) * 100);
+        dropzoneProgress.value = Math.round((evt.loaded / evt.total) * 100);
       }
     });
 
     xhr.addEventListener("load", () => {
       activeUploads.current--;
       if (xhr.status >= 200 && xhr.status < 300) {
-        state.value = "complete";
-        progress.value = 100;
+        dropzoneState.value = "complete";
+        dropzoneProgress.value = 100;
 
         // Glitch burst on the label
         const label = zoneRef.current?.querySelector("[data-dropzone-label]");
@@ -89,27 +98,27 @@ export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled 
 
         setTimeout(() => {
           if (activeUploads.current === 0) {
-            state.value = "idle";
-            progress.value = 0;
+            dropzoneState.value = "idle";
+            dropzoneProgress.value = 0;
           }
         }, 2000);
       } else {
-        state.value = "error";
-        errorMsg.value = `TRANSFER FAILED (${xhr.status})`;
+        dropzoneState.value = "error";
+        dropzoneErrorMsg.value = `TRANSFER FAILED (${xhr.status})`;
         setTimeout(() => {
-          state.value = "idle";
-          errorMsg.value = "";
+          dropzoneState.value = "idle";
+          dropzoneErrorMsg.value = "";
         }, 3000);
       }
     });
 
     xhr.addEventListener("error", () => {
       activeUploads.current--;
-      state.value = "error";
-      errorMsg.value = "NETWORK ERROR";
+      dropzoneState.value = "error";
+      dropzoneErrorMsg.value = "NETWORK ERROR";
       setTimeout(() => {
-        state.value = "idle";
-        errorMsg.value = "";
+        dropzoneState.value = "idle";
+        dropzoneErrorMsg.value = "";
       }, 3000);
     });
 
@@ -133,12 +142,12 @@ export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled 
 
   const onDragOver = useCallback((evt) => {
     evt.preventDefault();
-    if (!disabled) state.value = "hover";
+    if (!disabled) dropzoneState.value = "hover";
   }, [disabled]);
 
   const onDragLeave = useCallback((evt) => {
     evt.preventDefault();
-    if (activeUploads.current === 0) state.value = "idle";
+    if (activeUploads.current === 0) dropzoneState.value = "idle";
   }, []);
 
   const onDrop = useCallback((evt) => {
@@ -156,9 +165,9 @@ export function ShDropzone({ onUpload, onBatchUpload, maxSizeMB = 200, disabled 
     evt.target.value = "";
   }, [disabled, maxSizeMB]);
 
-  const currentState = state.value;
-  const currentProgress = progress.value;
-  const currentError = errorMsg.value;
+  const currentState = dropzoneState.value;
+  const currentProgress = dropzoneProgress.value;
+  const currentError = dropzoneErrorMsg.value;
 
   return (
     <div
