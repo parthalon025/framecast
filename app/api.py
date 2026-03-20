@@ -393,11 +393,13 @@ def list_albums():
     # Append smart albums
     for key, album_def in db.SMART_ALBUMS.items():
         photos = db.get_smart_album_photos(key)
+        first = photos[0] if photos else None
         result.append({
             "id": f"smart:{key}",
             "name": album_def["name"],
             "description": None,
-            "cover_photo_id": photos[0]["id"] if photos else None,
+            "cover_photo_id": first["id"] if first else None,
+            "cover_filename": first["filename"] if first else None,
             "photo_count": len(photos),
             "smart": True,
         })

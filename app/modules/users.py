@@ -8,6 +8,7 @@ import logging
 from contextlib import closing
 
 from . import db
+from . import media
 from .media import format_size
 
 log = logging.getLogger(__name__)
@@ -119,6 +120,7 @@ def get_full_stats():
         "total_videos": total_videos,
         "storage_bytes": storage_bytes,
         "storage_used": format_size(storage_bytes),
+        "storage_breakdown": media.get_storage_breakdown(),
         "by_user": by_user,
         "most_shown": most_shown,
         "least_shown": least_shown,

@@ -120,23 +120,15 @@ export function PhotoCard({
         </label>
       )}
 
-      {/* Favorite toggle */}
+      {/* Favorite toggle — heart overlay */}
       <button
         class={`fc-fav-btn${isFav ? " fc-fav-btn--active" : ""}`}
         onClick={handleFavClick}
         aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={!!isFav}
         type="button"
-        style={`
-          position: absolute; top: 4px; right: 4px; z-index: 2;
-          background: rgba(0,0,0,0.6); border: none; cursor: pointer;
-          color: ${isFav ? "var(--sh-phosphor)" : "var(--sh-dim, rgba(255,255,255,0.3))"};
-          font-size: 1.2rem; padding: 8px; min-width: 44px; min-height: 44px;
-          line-height: 1; border-radius: 2px;
-          display: flex; align-items: center; justify-content: center;
-        `}
       >
-        {isFav ? "\u2605" : "\u2606"}
+        {isFav ? "\u2665" : "\u2661"}
       </button>
 
       <img

@@ -1,6 +1,7 @@
 /** @fileoverview Phone layout shell — wraps page content with ShNav bottom bar. */
 import { ShNav } from "superhot-ui/preact";
 import { route, navigate } from "./Router.jsx";
+import { uploadProgress } from "../pages/Upload.jsx";
 
 // --- Nav icons (inline SVG, 20x20) ---
 function UploadIcon() {
@@ -79,6 +80,15 @@ export function PhoneLayout({ children }) {
       <div>
         {children}
       </div>
+      {uploadProgress.value && (
+        <div class="fc-upload-toast">
+          UPLOADING {uploadProgress.value.current}/{uploadProgress.value.total}
+          <div
+            class="fc-upload-toast-bar"
+            style={{ width: `${(uploadProgress.value.current / uploadProgress.value.total) * 100}%` }}
+          />
+        </div>
+      )}
       <ShNav
         items={navItems}
         currentPath={route.value}

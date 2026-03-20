@@ -33,6 +33,52 @@
   color: var(--sh-threat, #ff4444);
 }
 
+/* Favorite heart overlay */
+.fc-fav-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Show on card hover or focus */
+.sh-card:hover .fc-fav-btn,
+.fc-fav-btn:focus {
+  opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .fc-fav-btn {
+    opacity: 0.7;
+  }
+}
+
+/* Phosphor green when favorited */
+.fc-fav-btn--active {
+  color: var(--sh-phosphor, #40ff40);
+}
+
+/* Lightbox overlay — capture horizontal swipe, allow vertical scroll */
+.fc-lightbox-overlay {
+  touch-action: pan-y;
+}
+
 /* Lightbox action buttons */
 .fc-action-btn {
   font-family: var(--font-mono, monospace);
@@ -46,4 +92,42 @@
 .fc-action-btn--danger {
   color: var(--sh-threat, #ff4444);
   border-color: var(--sh-threat, #ff4444);
+}
+
+/* Upload progress toast — persists across tab switches */
+.fc-upload-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  padding: 8px 16px;
+  border-radius: 4px;
+  z-index: 100;
+  min-width: 180px;
+  text-align: center;
+}
+
+.fc-upload-toast-bar {
+  height: 2px;
+  background: var(--sh-phosphor);
+  margin-top: 6px;
+  border-radius: 1px;
+  transition: width 0.3s ease-out;
+}
+
+/* Pull-to-refresh indicator */
+.fc-pull-indicator {
+  text-align: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--sh-phosphor);
+  padding: 8px;
+  transition: transform 0.1s;
 }
