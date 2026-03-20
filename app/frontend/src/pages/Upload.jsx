@@ -29,6 +29,7 @@ const filter = signal("all");
 const userFilter = signal("all");
 const availableUsers = signal([]);
 const photosLastUpdated = signal(null);
+const fetchError = signal(null);
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -64,6 +65,7 @@ function fetchPhotos() {
     })
     .catch((err) => {
       console.warn("Upload: fetchPhotos fault", err);
+      fetchError.value = "PHOTO FETCH FAILED";
     });
 }
 
@@ -490,7 +492,19 @@ export function Upload() {
         onRemoveTag={handleRemoveTag}
       />
 
-      {/* Toast */}
+      {/* Toast — fetch error */}
+      {fetchError.value && (
+        <div class="fc-toast-container">
+          <ShToast
+            type="error"
+            message={fetchError.value}
+            duration={4000}
+            onDismiss={() => { fetchError.value = null; }}
+          />
+        </div>
+      )}
+
+      {/* Toast — batch upload */}
       {toast && (
         <div class="fc-toast-container">
           <ShToast

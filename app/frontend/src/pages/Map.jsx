@@ -1,6 +1,7 @@
 /** @fileoverview Photo Map — Leaflet map of GPS-tagged photo locations. */
 import { useState, useEffect, useRef } from "preact/hooks";
 import L from "leaflet";
+import { fetchWithTimeout } from "../lib/fetch.js";
 
 // Leaflet CSS bundled locally at /static/css/leaflet.css (copied by postbuild)
 const LEAFLET_CSS = "/static/css/leaflet.css";
@@ -38,7 +39,7 @@ export function Map() {
 
   // Fetch locations
   useEffect(() => {
-    fetch("/api/locations")
+    fetchWithTimeout("/api/locations")
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

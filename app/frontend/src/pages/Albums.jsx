@@ -1,7 +1,7 @@
 /** @fileoverview Albums page — album management with smart albums, create/delete, photo grid. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal, ShFrozen } from "superhot-ui/preact";
+import { ShModal, ShFrozen, ShToast } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
@@ -27,6 +27,9 @@ const deleting = signal(false);
 /** Filter: 'all' | 'smart' | 'user' */
 const albumFilter = signal("all");
 
+/** Toast state */
+const albumToast = signal(null);
+
 /** Data freshness timestamps for ShFrozen */
 const albumsLastUpdated = signal(null);
 const albumPhotosLastUpdated = signal(null);
@@ -44,6 +47,7 @@ function fetchAlbums() {
     })
     .catch((err) => {
       console.warn("Albums: fetchAlbums failed", err);
+      albumToast.value = { type: "error", message: "ALBUMS FETCH FAILED" };
     });
 }
 
@@ -73,6 +77,7 @@ function fetchAlbumPhotos(albumId) {
     .catch((err) => {
       console.warn("Albums: fetchAlbumPhotos failed", err);
       albumPhotos.value = [];
+      albumToast.value = { type: "error", message: "PHOTO FETCH FAILED" };
     })
     .finally(() => {
       albumPhotosLoading.value = false;
@@ -105,7 +110,10 @@ function handleCreateAlbum() {
         });
       }
     })
-    .catch((err) => console.warn("Create album error:", err))
+    .catch((err) => {
+      console.warn("Create album error:", err);
+      albumToast.value = { type: "error", message: "CREATE ALBUM FAILED" };
+    })
     .finally(() => { creating.value = false; });
 }
 
@@ -124,7 +132,10 @@ function handleDeleteAlbum() {
       }
       fetchAlbums();
     })
-    .catch((err) => console.warn("Delete album error:", err))
+    .catch((err) => {
+      console.warn("Delete album error:", err);
+      albumToast.value = { type: "error", message: "DELETE ALBUM FAILED" };
+    })
     .finally(() => { deleting.value = false; });
 }
 
@@ -134,7 +145,10 @@ function handleToggleFavorite(photo) {
     .then(() => {
       if (selectedAlbum.value) fetchAlbumPhotos(selectedAlbum.value.id);
     })
-    .catch((err) => console.warn("Favorite toggle error:", err));
+    .catch((err) => {
+      console.warn("Favorite toggle error:", err);
+      albumToast.value = { type: "error", message: "FAVORITE TOGGLE FAILED" };
+    });
 }
 
 function handlePhotoSelect(photo) {
@@ -148,12 +162,18 @@ function handleAddTag(photo, tagName) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: tagName }),
-  }).catch((err) => console.warn("Add tag error:", err));
+  }).catch((err) => {
+    console.warn("Add tag error:", err);
+    albumToast.value = { type: "error", message: "ADD TAG FAILED" };
+  });
 }
 
 function handleRemoveTag(photo, tag) {
   fetch(`/api/photos/${photo.id}/tags/${tag.id}`, { method: "DELETE" })
-    .catch((err) => console.warn("Remove tag error:", err));
+    .catch((err) => {
+      console.warn("Remove tag error:", err);
+      albumToast.value = { type: "error", message: "REMOVE TAG FAILED" };
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +286,18 @@ export function Albums() {
           onAddTag={handleAddTag}
           onRemoveTag={handleRemoveTag}
         />
+
+        {/* Toast */}
+        {albumToast.value && (
+          <div class="fc-toast-container">
+            <ShToast
+              type={albumToast.value.type}
+              message={albumToast.value.message}
+              duration={4000}
+              onDismiss={() => { albumToast.value = null; }}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -425,6 +457,18 @@ export function Albums() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {albumToast.value && (
+        <div class="fc-toast-container">
+          <ShToast
+            type={albumToast.value.type}
+            message={albumToast.value.message}
+            duration={4000}
+            onDismiss={() => { albumToast.value = null; }}
+          />
         </div>
       )}
     </div>

@@ -6,6 +6,7 @@ import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { ShFrozen } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
+import { fetchWithTimeout } from "../lib/fetch.js";
 
 /** Reactive state */
 const stats = signal(null);
@@ -17,7 +18,7 @@ const lastUpdated = signal(null);
 function fetchStats() {
   loading.value = true;
   error.value = null;
-  return fetch("/api/stats")
+  return fetchWithTimeout("/api/stats")
     .then((resp) => {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return resp.json();
