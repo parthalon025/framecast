@@ -10,6 +10,8 @@ from unittest import mock
 
 import pytest
 
+from modules.media import format_size
+
 
 # ---------------------------------------------------------------------------
 # User CRUD tests (users module)
@@ -259,29 +261,24 @@ class TestFullStats:
 
 
 class TestFormatBytes:
-    """Tests for _format_bytes helper."""
+    """Tests for format_size helper (modules.media.format_size)."""
 
     def test_zero(self):
-        import modules.users as users_mod
-        assert users_mod._format_bytes(0) == "0 B"
+        assert format_size(0) == "0 B"
 
     def test_bytes(self):
-        import modules.users as users_mod
-        assert users_mod._format_bytes(512) == "512 B"
+        assert format_size(512) == "512 B"
 
     def test_kilobytes(self):
-        import modules.users as users_mod
-        result = users_mod._format_bytes(1536)
+        result = format_size(1536)
         assert "KB" in result
 
     def test_megabytes(self):
-        import modules.users as users_mod
-        result = users_mod._format_bytes(5 * 1024 * 1024)
+        result = format_size(5 * 1024 * 1024)
         assert "MB" in result
 
     def test_gigabytes(self):
-        import modules.users as users_mod
-        result = users_mod._format_bytes(2 * 1024 * 1024 * 1024)
+        result = format_size(2 * 1024 * 1024 * 1024)
         assert "GB" in result
 
 

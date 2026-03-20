@@ -76,7 +76,7 @@ def get_full_stats():
         # Totals: photos, videos, storage in one scan
         totals = conn.execute(
             "SELECT COUNT(*) AS total, "
-            "SUM(CASE WHEN is_video = 1 THEN 1 ELSE 0 END) AS videos, "
+            "COALESCE(SUM(CASE WHEN is_video = 1 THEN 1 ELSE 0 END), 0) AS videos, "
             "COALESCE(SUM(file_size), 0) AS storage "
             "FROM photos WHERE quarantined = 0"
         ).fetchone()
