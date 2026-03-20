@@ -29,6 +29,7 @@ _stats_buffer = []
 _stats_buffer_lock = threading.Lock()
 _STATS_FLUSH_THRESHOLD = 30
 _STATS_FLUSH_INTERVAL = 300  # 5 minutes
+_MAX_STATS_BUFFER = 500  # Cap to prevent OOM on persistent DB errors
 _stats_last_flush = time.monotonic()
 _flush_timer = None
 
@@ -601,10 +602,14 @@ def _flush_stats():
                         (photo_id,),
                     )
                 conn.commit()
-    except Exception as exc:
-        log.error("STATS: flush failed, re-queuing %d entries: %s", len(batch), exc)
+    except Exception:
+        log.error("STATS: flush failed, re-queuing %d entries", len(batch), exc_info=True)
         with _stats_buffer_lock:
-            _stats_buffer.extend(batch)
+            if len(_stats_buffer) < _MAX_STATS_BUFFER:
+                _stats_buffer.extend(batch)
+            else:
+                log.error("STATS: buffer full (%d), dropping %d entries to prevent OOM",
+                           len(_stats_buffer), len(batch))
         return
 
     _stats_last_flush = time.monotonic()
