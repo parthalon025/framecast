@@ -591,9 +591,12 @@ def delete():
             db.update_photo_quarantine(photo_row["id"], True, "deleted by user")
 
         # Remove associated thumbnail if it exists
-        thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
-        if thumb_path.exists():
-            thumb_path.unlink()
+        try:
+            thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
+            if thumb_path.exists():
+                thumb_path.unlink()
+        except OSError as exc:
+            log.warning("Failed to remove thumbnail for %s: %s", filepath.name, exc)
         filepath.unlink()
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
@@ -631,14 +634,20 @@ def delete_all():
     count = 0
     for f in media_path.iterdir():
         if f.is_file() and f.suffix.lower() in all_ext:
-            f.unlink()
-            count += 1
+            try:
+                f.unlink()
+                count += 1
+            except OSError as exc:
+                log.warning("Failed to delete %s during delete-all: %s", f.name, exc)
     # Clean up all thumbnails
     thumb_dir = Path(THUMBNAIL_DIR)
     if thumb_dir.exists():
         for t in thumb_dir.iterdir():
             if t.is_file():
-                t.unlink()
+                try:
+                    t.unlink()
+                except OSError as exc:
+                    log.warning("Failed to delete thumbnail %s during delete-all: %s", t.name, exc)
     # Clear GPS locations cache
     cache_path = Path(MEDIA_DIR) / ".locations.json"
     if cache_path.exists():
