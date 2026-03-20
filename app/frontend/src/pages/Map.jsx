@@ -2,8 +2,8 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import L from "leaflet";
 
-// Leaflet CSS imported via link tag injected on mount (esbuild bundles JS only)
-const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+// Leaflet CSS bundled locally at /static/css/leaflet.css (copied by postbuild)
+const LEAFLET_CSS = "/static/css/leaflet.css";
 
 // Green phosphor marker SVG (inline data URI — no external assets)
 const MARKER_SVG = `data:image/svg+xml,${encodeURIComponent(

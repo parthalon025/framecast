@@ -6,7 +6,7 @@
   "scripts": {
     "prebuild": "mkdir -p ../static/css ../static/js && cat src/styles/tokens.css src/styles/base.css src/styles/slideshow.css src/styles/display.css src/styles/photos.css src/styles/settings.css src/styles/responsive.css src/styles/motion.css > ../static/css/app.css",
     "build": "node esbuild.config.js",
-    "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css",
+    "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css && cp node_modules/leaflet/dist/leaflet.css ../static/css/leaflet.css",
     "dev": "node esbuild.config.js --watch",
     "postinstall": "node node_modules/superhot-ui/scripts/setup.js"
   },
