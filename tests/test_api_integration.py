@@ -127,13 +127,13 @@ class TestStatus:
         assert "percent" in disk
         assert "total" in disk
 
-    def test_status_includes_wifi_connected(self, client):
-        """GET /api/status should include wifi_connected field."""
+    def test_status_includes_hostname(self, client):
+        """GET /api/status should include hostname field."""
         resp = client.get("/api/status")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert "wifi_connected" in data
-        assert isinstance(data["wifi_connected"], bool)
+        assert "hostname" in data
+        assert isinstance(data["hostname"], str)
 
 
 # ---------------------------------------------------------------------------

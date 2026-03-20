@@ -72,13 +72,12 @@ describe("DisplayRouter routing logic", () => {
     expect(displayState.value).toBe("boot");
   });
 
-  it("transitions to setup when wifi_connected is false", async () => {
+  it("transitions to slideshow when photos exist regardless of wifi field", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         json: () =>
           Promise.resolve({
-            wifi_connected: false,
             photo_count: 5,
             video_count: 0,
           }),
@@ -86,7 +85,7 @@ describe("DisplayRouter routing logic", () => {
     );
 
     await renderAndBoot();
-    expect(displayState.value).toBe("setup");
+    expect(displayState.value).toBe("slideshow");
   });
 
   it("transitions to slideshow when wifi connected and photos exist", async () => {
@@ -140,14 +139,14 @@ describe("DisplayRouter routing logic", () => {
     expect(displayState.value).toBe("welcome");
   });
 
-  it("transitions to setup on fetch error", async () => {
+  it("transitions to welcome on fetch error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new Error("network down")),
     );
 
     await renderAndBoot();
-    expect(displayState.value).toBe("setup");
+    expect(displayState.value).toBe("welcome");
   });
 
   it("stores access_pin from status response", async () => {
