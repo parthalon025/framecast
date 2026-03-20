@@ -108,7 +108,7 @@ export function Map() {
   if (!locations) {
     return (
       <div class="sh-frame" data-label="MAP" style="padding: 20px;">
-        <span class="sh-label">LOADING...</span>
+        <span class="sh-label">STANDBY</span>
       </div>
     );
   }

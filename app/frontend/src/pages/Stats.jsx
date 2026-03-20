@@ -4,12 +4,14 @@ import { useEffect } from "preact/hooks";
 import { ShStatsGrid } from "superhot-ui/preact";
 import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
+import { ShFrozen } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 
 /** Reactive state */
 const stats = signal(null);
 const loading = signal(true);
 const error = signal(null);
+const lastUpdated = signal(null);
 
 /** Fetch stats from API. */
 function fetchStats() {
@@ -22,6 +24,7 @@ function fetchStats() {
     })
     .then((data) => {
       stats.value = data;
+      lastUpdated.value = Date.now();
       loading.value = false;
     })
     .catch((err) => {
@@ -113,7 +116,7 @@ export function Stats() {
   }));
 
   return (
-    <div class="sh-animate-page-enter fc-page">
+    <ShFrozen timestamp={lastUpdated} class="sh-animate-page-enter fc-page">
       {/* Summary cards */}
       <div class="sh-frame" data-label="OVERVIEW">
         <div style="padding: 12px;">
@@ -195,6 +198,6 @@ export function Stats() {
           </div>
         </div>
       )}
-    </div>
+    </ShFrozen>
   );
 }

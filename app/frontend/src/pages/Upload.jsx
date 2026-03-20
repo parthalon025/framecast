@@ -6,7 +6,7 @@
  */
 import { signal } from "@preact/signals";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { ShToast } from "superhot-ui/preact";
+import { ShToast, ShFrozen } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
@@ -28,6 +28,7 @@ const loading = signal(true);
 const filter = signal("all");
 const userFilter = signal("all");
 const availableUsers = signal([]);
+const photosLastUpdated = signal(null);
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -56,6 +57,7 @@ function fetchPhotos() {
         photo.size_human = photo.size_human || "";
       }
       photos.value = data;
+      photosLastUpdated.value = Date.now();
       // Extract unique uploaders for filter dropdown
       const uploaders = [...new Set(data.map((p) => p.uploaded_by).filter(Boolean))];
       availableUsers.value = uploaders.sort();
@@ -468,12 +470,14 @@ export function Upload() {
       </div>
 
       {/* Photo grid */}
-      <PhotoGrid
-        photos={filteredPhotos}
-        onDelete={handleDelete}
-        onToggleFavorite={handleToggleFavorite}
-        onSelect={handlePhotoSelect}
-      />
+      <ShFrozen timestamp={photosLastUpdated}>
+        <PhotoGrid
+          photos={filteredPhotos}
+          onDelete={handleDelete}
+          onToggleFavorite={handleToggleFavorite}
+          onSelect={handlePhotoSelect}
+        />
+      </ShFrozen>
 
       {/* Context menu (long-press) */}
       <ContextMenu />

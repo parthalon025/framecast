@@ -26,14 +26,14 @@
 
 .sh-dropzone[data-sh-dropzone="hover"] {
   border-color: var(--sh-phosphor);
-  background: oklch(85% 0.18 145 / 0.05);
+  background: color-mix(in oklch, var(--sh-phosphor) 5%, transparent);
   box-shadow: 0 0 16px var(--sh-phosphor-glow);
 }
 
 .sh-dropzone[data-sh-dropzone="receiving"] {
   border-color: var(--sh-phosphor);
   border-style: solid;
-  background: oklch(85% 0.18 145 / 0.08);
+  background: color-mix(in oklch, var(--sh-phosphor) 8%, transparent);
   pointer-events: none;
 }
 
