@@ -27,6 +27,23 @@ const KENBURNS_OPTIONS = [
   { value: "dramatic", label: "DRAMATIC" },
 ];
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+const TIMEZONE_OPTIONS = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Kolkata",
+  "Australia/Sydney",
+  "Pacific/Auckland",
+  "UTC",
+];
 
 export function Settings() {
   const [settings, setSettings] = useState(null);
@@ -40,13 +57,21 @@ export function Settings() {
   const [restartOpen, setRestartOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [regeneratingPin, setRegeneratingPin] = useState(false);
+  const [currentTz, setCurrentTz] = useState("UTC");
+  const [frames, setFrames] = useState([]);
+  const [scanningFrames, setScanningFrames] = useState(false);
+  const [sshEnabled, setSshEnabled] = useState(false);
+  const [sshToggling, setSshToggling] = useState(false);
   const storageBarRef = useRef(null);
 
-  /** Load settings + status + wifi info on mount. */
+  /** Load settings + status + wifi info + timezone + frames + ssh on mount. */
   useEffect(() => {
     loadSettings();
     loadStatus();
     loadWifiStatus();
+    loadTimezone();
+    loadFrames();
+    loadSshStatus();
   }, []);
 
   /** Apply threshold color to storage bar when status changes. */
@@ -82,6 +107,51 @@ export function Settings() {
       .then((res) => res.json())
       .then((data) => setWifiStatus(data))
       .catch((err) => console.warn("Settings: wifi status load failed", err));
+  }
+
+  function loadFrames() {
+    setScanningFrames(true);
+    fetchWithTimeout("/api/frames")
+      .then((res) => res.json())
+      .then((data) => setFrames(data.frames || []))
+      .catch((err) => console.warn("Settings: frame discovery failed", err))
+      .finally(() => setScanningFrames(false));
+  }
+
+  function loadTimezone() {
+    fetchWithTimeout("/api/timezone")
+      .then((res) => res.json())
+      .then((data) => setCurrentTz(data.timezone || "UTC"))
+      .catch((err) => console.warn("Settings: timezone load failed", err));
+  }
+
+  function loadSshStatus() {
+    fetchWithTimeout("/api/ssh/status")
+      .then((res) => res.json())
+      .then((data) => setSshEnabled(data.enabled || false))
+      .catch((err) => console.warn("Settings: SSH status load failed", err));
+  }
+
+  async function handleSshToggle() {
+    setSshToggling(true);
+    try {
+      const res = await fetchWithTimeout("/api/ssh/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !sshEnabled }),
+      });
+      if (res.ok) {
+        setSshEnabled(!sshEnabled);
+        setToast({ type: "info", message: sshEnabled ? "SSH DISABLED" : "SSH ENABLED" });
+      } else {
+        const body = await res.json();
+        setToast({ type: "error", message: body.error || "SSH TOGGLE FAULT" });
+      }
+    } catch (err) {
+      setToast({ type: "error", message: err.message || "NETWORK FAULT" });
+    } finally {
+      setSshToggling(false);
+    }
   }
 
   const update = useCallback((key, value) => {
@@ -329,6 +399,17 @@ export function Settings() {
                 labelOff="4"
               />
             </SettingRow>
+
+            <SettingRow label="SSH ACCESS">
+              <button
+                class="sh-input sh-clickable"
+                style="min-width: 100px; text-align: center;"
+                onClick={handleSshToggle}
+                disabled={sshToggling}
+              >
+                {sshToggling ? "STANDBY" : sshEnabled ? "ENABLED" : "DISABLED"}
+              </button>
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>
@@ -430,6 +511,39 @@ export function Settings() {
             <SettingRow label="SSE CLIENTS">
               <span class="sh-value">{sseClients}</span>
             </SettingRow>
+
+            <SettingRow label="OTHER FRAMES">
+              <div style="display: flex; align-items: center; gap: var(--space-2, 8px);">
+                {scanningFrames ? (
+                  <span class="sh-ansi-dim">SCANNING</span>
+                ) : frames.length === 0 ? (
+                  <span class="sh-ansi-dim">NONE FOUND</span>
+                ) : (
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    {frames.map((frame) => (
+                      <a
+                        key={frame.hostname}
+                        href={frame.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="sh-clickable"
+                        style="font-family: var(--font-mono, monospace); font-size: 0.8rem; color: var(--sh-phosphor, #39ff14); text-decoration: none;"
+                      >
+                        {frame.hostname.toUpperCase()}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <button
+                  class="sh-input sh-clickable"
+                  style="text-align: center; min-width: 60px; font-size: 0.75rem; padding: 2px 8px;"
+                  onClick={loadFrames}
+                  disabled={scanningFrames}
+                >
+                  SCAN
+                </button>
+              </div>
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>
@@ -460,6 +574,41 @@ export function Settings() {
 
             <SettingRow label="VERSION">
               <span class="sh-value">{version}</span>
+            </SettingRow>
+
+            <SettingRow label="TIMEZONE">
+              <select
+                class="sh-select"
+                value={currentTz}
+                onChange={(evt) => {
+                  const tz = evt.target.value;
+                  fetchWithTimeout("/api/timezone", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ timezone: tz }),
+                  })
+                    .then((res) => {
+                      if (!res.ok) throw new Error("SET FAULT");
+                      setCurrentTz(tz);
+                      setToast({ type: "info", message: `TIMEZONE: ${tz}` });
+                    })
+                    .catch(() => {
+                      setToast({ type: "error", message: "TIMEZONE SET FAULT" });
+                    });
+                }}
+              >
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz.toUpperCase().replace(/_/g, " ")}
+                  </option>
+                ))}
+                {/* Show current timezone even if not in preset list */}
+                {!TIMEZONE_OPTIONS.includes(currentTz) && (
+                  <option value={currentTz}>
+                    {currentTz.toUpperCase().replace(/_/g, " ")}
+                  </option>
+                )}
+              </select>
             </SettingRow>
 
             <SettingRow label="AUTO-UPDATE">

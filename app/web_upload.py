@@ -35,7 +35,7 @@ import sse
 from api import api
 from modules import config, db, media, services, wifi
 from modules.auth import auth_api, require_pin
-from modules.boot_config import apply_boot_config
+from modules.boot_config import apply_boot_config, apply_boot_ssh
 
 logging.basicConfig(
     level=logging.INFO,
@@ -210,6 +210,9 @@ _cleanup_tmp_files()
 
 # --- Boot partition WiFi config ---
 apply_boot_config()
+
+# --- Boot partition SSH flag (Issue #4) ---
+apply_boot_ssh()
 
 # --- Recover stale AP after crash/restart (Issue #35) ---
 wifi.check_stale_ap()

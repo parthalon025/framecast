@@ -1,0 +1,13 @@
+[Unit]
+Description=FrameCast unique hostname from MAC address
+After=network-pre.target systemd-hostnamed.service
+Before=avahi-daemon.service framecast.service
+ConditionPathExists=!/var/lib/framecast/.hostname-set
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/framecast-hostname.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

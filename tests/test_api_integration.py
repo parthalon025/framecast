@@ -118,6 +118,7 @@ class TestStatus:
         assert "photo_count" in data
         assert "disk" in data
         assert "version" in data
+        assert "hostname" in data
         assert "settings" in data
 
     def test_status_disk_has_structure(self, client):

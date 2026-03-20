@@ -20,6 +20,11 @@ ufw allow from 172.16.0.0/12 to any port 8080 proto tcp comment 'FrameCast web U
 # Allow mDNS (avahi) for .local hostname discovery
 ufw allow 5353/udp comment 'mDNS (avahi)'
 
+# Allow SSH from private networks only (service disabled by default, Issue #4)
+ufw allow from 192.168.0.0/16 to any port 22 proto tcp comment 'SSH'
+ufw allow from 10.0.0.0/8 to any port 22 proto tcp comment 'SSH'
+ufw allow from 172.16.0.0/12 to any port 22 proto tcp comment 'SSH'
+
 # Enable firewall (non-interactive)
 ufw --force enable
 

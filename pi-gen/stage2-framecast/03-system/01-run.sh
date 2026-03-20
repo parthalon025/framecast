@@ -25,6 +25,13 @@ install -m 644 files/watchdog.conf "${ROOTFS_DIR}/etc/watchdog.conf"
 # Firewall setup script (executed inside chroot by 01-run-chroot.sh)
 install -m 755 files/ufw-setup.sh "${ROOTFS_DIR}/usr/local/bin/ufw-setup.sh"
 
+# First-boot hostname script (generates unique hostname from MAC address)
+install -m 755 files/framecast-hostname.sh "${ROOTFS_DIR}/usr/local/bin/framecast-hostname.sh"
+
+# Avahi mDNS service advertisement (frame discovery)
+mkdir -p "${ROOTFS_DIR}/etc/avahi/services"
+install -m 644 files/framecast.service "${ROOTFS_DIR}/etc/avahi/services/framecast.service"
+
 # Create /var/lib/framecast for rollback tags and update state
 mkdir -p "${ROOTFS_DIR}/var/lib/framecast"
 chown 1000:1000 "${ROOTFS_DIR}/var/lib/framecast"

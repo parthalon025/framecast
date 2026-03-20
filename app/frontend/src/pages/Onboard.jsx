@@ -1,6 +1,6 @@
-/** @fileoverview Onboarding wizard — 4-step first-boot flow.
+/** @fileoverview Onboarding wizard — 5-step first-boot flow.
  *
- * Steps: WIFI -> UPLOAD -> CONFIGURE -> DONE
+ * Steps: WIFI -> TEST -> UPLOAD -> CONFIGURE -> DONE
  * Auto-redirects on first boot when ONBOARDING_COMPLETE is not set.
  * TV display shows QR code + "SCAN TO CONFIGURE" throughout.
  * piOS voice: terse, uppercase, no conversational language.
@@ -38,10 +38,11 @@ function SignalBars({ strength }) {
   );
 }
 
-/** 4-step progress indicator using sh-progress-steps. */
+/** 5-step progress indicator using sh-progress-steps. */
 function WizardSteps({ currentStep, errorStep }) {
   const steps = [
-    { key: "WIFI", label: "WIFI" },
+    { key: "WIFI", label: "CONNECT" },
+    { key: "TEST", label: "TEST" },
     { key: "UPLOAD", label: "UPLOAD" },
     { key: "CONFIGURE", label: "CONFIGURE" },
     { key: "DONE", label: "DONE" },
@@ -110,7 +111,7 @@ function NetworkItem({ network, onSelect }) {
 
 /**
  * Onboard — first-boot onboarding wizard.
- * 4 steps: WIFI -> UPLOAD -> CONFIGURE -> DONE
+ * 5 steps: WIFI -> TEST -> UPLOAD -> CONFIGURE -> DONE
  */
 export function Onboard() {
   const [step, setStep] = useState("WIFI");
@@ -123,6 +124,8 @@ export function Onboard() {
   const [errorStep, setErrorStep] = useState(null);
   const [uploaded, setUploaded] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null); // null | "online" | "offline"
   const redirectTimer = useRef(null);
 
   /** Check if onboarding already complete — redirect if so. */
@@ -192,7 +195,21 @@ export function Onboard() {
       .then((data) => {
         if (data.success) {
           setToast({ type: "info", message: `CONNECTED: ${ssid}` });
-          setStep("UPLOAD");
+          // Auto-detect timezone from browser and push to Pi
+          try {
+            const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detectedTz) {
+              fetch("/api/timezone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ timezone: detectedTz }),
+              }).catch((err) => console.warn("Timezone auto-set failed:", err));
+            }
+          } catch (tzErr) {
+            console.warn("Timezone detection failed:", tzErr);
+          }
+          setStep("TEST");
+          setTestResult(null);
         } else {
           setToast({ type: "error", message: data.message || "CONNECTION FAULT" });
           setErrorStep("WIFI");
@@ -212,6 +229,36 @@ export function Onboard() {
     evt.preventDefault();
     if (!selected) return;
     doConnect(selected.ssid, password);
+  }
+
+  /** Test internet connectivity via backend ping. */
+  function doTestConnection() {
+    setTesting(true);
+    setTestResult(null);
+    setErrorStep(null);
+    fetchWithTimeout("/api/wifi/test")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        const result = data.online ? "online" : "offline";
+        setTestResult(result);
+        if (data.online) {
+          setToast({ type: "info", message: "CONNECTIVITY VERIFIED" });
+        } else {
+          setToast({ type: "error", message: "NO INTERNET — CHECK NETWORK" });
+          setErrorStep("TEST");
+        }
+      })
+      .catch((err) => {
+        setTestResult("offline");
+        setToast({ type: "error", message: `TEST FAULT: ${err.message}` });
+        setErrorStep("TEST");
+      })
+      .finally(() => {
+        setTesting(false);
+      });
   }
 
   /** Handle first photo upload. */
@@ -252,9 +299,12 @@ export function Onboard() {
     <main class="sh-animate-page-enter fc-page" role="main">
       <WizardSteps currentStep={step} errorStep={errorStep} />
 
-      {/* ── STEP 1: WIFI ── */}
+      {/* ── STEP 1: CONNECT ── */}
       {step === "WIFI" && (
         <section class="sh-frame" data-label="WIFI SETUP" aria-label="WiFi setup">
+          <div class="sh-label" style="text-align: center; font-size: 1rem; margin-bottom: var(--space-3, 12px);">
+            STEP 1: CONNECT TO WIFI
+          </div>
           {scanning ? (
             <div style="text-align: center;">
               <div class="sh-ansi-dim" style="margin-bottom: var(--space-3, 12px);">SCANNING</div>
@@ -336,12 +386,72 @@ export function Onboard() {
         </section>
       )}
 
-      {/* ── STEP 2: UPLOAD FIRST PHOTO ── */}
+      {/* ── STEP 2: TEST CONNECTION ── */}
+      {step === "TEST" && (
+        <section class="sh-frame" data-label="TEST CONNECTION" aria-label="Test internet connection">
+          <div style="display: grid; gap: var(--space-4, 16px); text-align: center;">
+            <div class="sh-label" style="font-size: 1rem;">
+              STEP 2: TEST CONNECTION
+            </div>
+            <div class="sh-ansi-dim">
+              VERIFY INTERNET BEFORE CONTINUING
+            </div>
+
+            {/* Test result badge */}
+            {testResult && (
+              <div style="display: flex; justify-content: center;">
+                <span
+                  style={`
+                    display: inline-block;
+                    padding: var(--space-2, 8px) var(--space-4, 16px);
+                    font-weight: 700;
+                    letter-spacing: 0.1em;
+                    border: 1px solid ${testResult === "online" ? "var(--sh-phosphor, #0f0)" : "var(--sh-threat, #f00)"};
+                    color: ${testResult === "online" ? "var(--sh-phosphor, #0f0)" : "var(--sh-threat, #f00)"};
+                  `}
+                  role="status"
+                >
+                  {testResult === "online" ? "ONLINE" : "OFFLINE"}
+                </span>
+              </div>
+            )}
+
+            <button
+              class="sh-input sh-clickable fc-btn-primary"
+              onClick={doTestConnection}
+              disabled={testing}
+              style="width: 100%;"
+            >
+              {testing ? "TESTING..." : "TEST CONNECTION"}
+            </button>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2, 8px);">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
+                onClick={() => { setStep("WIFI"); setTestResult(null); }}
+              >
+                BACK
+              </button>
+              <button
+                class="sh-input sh-clickable fc-btn-primary"
+                onClick={() => setStep("UPLOAD")}
+                disabled={testResult !== "online"}
+                style={`opacity: ${testResult === "online" ? 1 : 0.4};`}
+              >
+                CONTINUE
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── STEP 3: UPLOAD FIRST PHOTO ── */}
       {step === "UPLOAD" && (
         <section class="sh-frame" data-label="UPLOAD FIRST PHOTO" aria-label="Upload first photo">
           <div style="display: grid; gap: var(--space-4, 16px); text-align: center;">
             <div class="sh-label" style="font-size: 1rem;">
-              {uploaded ? "PHOTO RECEIVED" : "UPLOAD FIRST PHOTO"}
+              {uploaded ? "PHOTO RECEIVED" : "STEP 3: UPLOAD FIRST PHOTO"}
             </div>
             <div class="sh-ansi-dim">
               {uploaded
@@ -353,7 +463,7 @@ export function Onboard() {
               <button
                 class="sh-input sh-clickable"
                 style="text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);"
-                onClick={() => setStep("WIFI")}
+                onClick={() => setStep("TEST")}
               >
                 BACK
               </button>
@@ -370,12 +480,12 @@ export function Onboard() {
         </section>
       )}
 
-      {/* ── STEP 3: CONFIGURE ── */}
+      {/* ── STEP 4: CONFIGURE ── */}
       {step === "CONFIGURE" && (
         <section class="sh-frame" data-label="CONFIGURE" aria-label="Configure basic settings">
           <div style="display: grid; gap: var(--space-3, 12px);">
             <div class="sh-label" style="text-align: center; font-size: 1rem;">
-              BASIC CONFIGURATION
+              STEP 4: CONFIGURE
             </div>
 
             <div class="fc-setting-row">
@@ -429,7 +539,7 @@ export function Onboard() {
         </section>
       )}
 
-      {/* ── STEP 4: DONE ── */}
+      {/* ── STEP 5: DONE ── */}
       {step === "DONE" && (
         <section class="sh-frame" data-label="COMPLETE" aria-label="Setup complete">
           <div style="text-align: center; padding: var(--space-6, 32px) 0;">

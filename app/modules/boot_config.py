@@ -1,18 +1,27 @@
-"""Boot partition WiFi config reader for first-boot provisioning.
+"""Boot partition config reader for first-boot provisioning.
 
-On startup, checks for a WiFi config file on the boot partition:
-  /boot/firmware/framecast-wifi.txt   (Pi OS Bookworm+)
-  /boot/framecast-wifi.txt            (Pi OS Bullseye)
+On startup, checks for:
+  1. WiFi config on the boot partition:
+     /boot/firmware/framecast-wifi.txt   (Pi OS Bookworm+)
+     /boot/framecast-wifi.txt            (Pi OS Bullseye)
 
-File format (plain text):
-  SSID=MyNetwork
-  PASSWORD=MyPassword
+     File format (plain text):
+       SSID=MyNetwork
+       PASSWORD=MyPassword
 
-If found and connection succeeds, the file is deleted to prevent
-re-reading on subsequent boots.
+     If found and connection succeeds, the file is deleted to prevent
+     re-reading on subsequent boots.
+
+  2. SSH enable flag on the boot partition (standard Pi convention):
+     /boot/firmware/ssh   (Pi OS Bookworm+)
+     /boot/ssh            (Pi OS Bullseye)
+
+     If the file exists, SSH is enabled via systemctl and the file is
+     deleted. This is the same convention used by Raspberry Pi OS.
 """
 
 import logging
+import subprocess
 from pathlib import Path
 
 from modules import wifi
@@ -22,6 +31,11 @@ log = logging.getLogger(__name__)
 _CONFIG_PATHS = [
     Path("/boot/firmware/framecast-wifi.txt"),
     Path("/boot/framecast-wifi.txt"),
+]
+
+_SSH_FLAG_PATHS = [
+    Path("/boot/firmware/ssh"),
+    Path("/boot/ssh"),
 ]
 
 
@@ -106,3 +120,45 @@ def apply_boot_config():
         message,
     )
     return False
+
+
+def apply_boot_ssh():
+    """Check for boot partition SSH flag and enable SSH if found.
+
+    Standard Raspberry Pi convention: an empty file named "ssh" on the
+    boot partition enables SSH on first boot. The file is deleted after
+    enabling to prevent re-enabling on subsequent boots.
+
+    Returns:
+        True if SSH was enabled via boot flag, False otherwise.
+    """
+    flag_path = None
+    for path in _SSH_FLAG_PATHS:
+        if path.exists():
+            flag_path = path
+            break
+
+    if flag_path is None:
+        return False
+
+    log.info("Boot SSH flag found: %s — enabling SSH", flag_path)
+    try:
+        subprocess.run(
+            ["sudo", "systemctl", "enable", "--now", "ssh"],
+            capture_output=True, timeout=10, check=True,
+        )
+        log.info("SSH enabled via boot partition flag")
+    except subprocess.CalledProcessError as exc:
+        log.error("Failed to enable SSH from boot flag: %s", exc)
+        return False
+    except Exception as exc:
+        log.error("Failed to enable SSH from boot flag: %s", exc)
+        return False
+
+    try:
+        flag_path.unlink()
+        log.info("Boot SSH flag deleted: %s", flag_path)
+    except OSError as exc:
+        log.warning("Failed to delete boot SSH flag %s: %s", flag_path, exc)
+
+    return True
