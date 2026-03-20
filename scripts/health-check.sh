@@ -51,6 +51,9 @@ if [ "$EXPECTED_SIG" != "$ACTUAL_SIG" ]; then
     exit 1
 fi
 
+# Ensure rollback files are always cleaned up, even on script failure
+trap 'rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"' EXIT
+
 # Validate tag exists in git
 cd "$INSTALL_DIR" || {
     echo "CRITICAL: Cannot cd to $INSTALL_DIR"
@@ -59,27 +62,43 @@ cd "$INSTALL_DIR" || {
 
 if ! git tag -l "$PREV_TAG" | grep -q "$PREV_TAG"; then
     echo "INVALID: tag $PREV_TAG does not exist in git — aborting rollback"
-    rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"
     exit 1
 fi
 
 echo "Post-update health check. Rollback target: $PREV_TAG"
 
-# Wait for services to come up
-sleep 10
+# Wait for Flask to be ready (not just systemd "active")
+WEB_PORT=8080
+if [ -f "$ENV_FILE" ]; then
+    WEB_PORT=$(grep "^WEB_PORT=" "$ENV_FILE" 2>/dev/null | cut -d= -f2 || echo "8080")
+    WEB_PORT="${WEB_PORT:-8080}"
+fi
 
-# Check services
-HEALTHY=true
-for svc in framecast framecast-kiosk; do
-    if ! systemctl is-active --quiet "$svc"; then
-        echo "FAIL: $svc is not active"
-        HEALTHY=false
+echo "Waiting for Flask readiness on port ${WEB_PORT}..."
+HEALTHY=false
+for i in $(seq 1 30); do
+    if curl -sf --max-time 2 "http://localhost:${WEB_PORT}/api/status" >/dev/null 2>&1; then
+        HEALTHY=true
+        echo "Flask ready after ${i}s"
+        break
     fi
+    sleep 2
 done
+
+# Also verify kiosk service
+if [ "$HEALTHY" = "true" ]; then
+    if ! systemctl is-active --quiet framecast-kiosk; then
+        echo "WARN: Flask ready but kiosk is not active — giving extra time"
+        sleep 10
+        if ! systemctl is-active --quiet framecast-kiosk; then
+            echo "FAIL: framecast-kiosk is not active"
+            HEALTHY=false
+        fi
+    fi
+fi
 
 if [[ "$HEALTHY" == "true" ]]; then
     echo "Health check PASSED — update confirmed"
-    rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"
     exit 0
 fi
 
@@ -93,5 +112,4 @@ if ! git checkout --force "$PREV_TAG" 2>&1; then
     fi
 fi
 git clean -fd 2>/dev/null || true
-rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"
 sudo reboot
