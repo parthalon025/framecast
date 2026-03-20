@@ -5,6 +5,11 @@
 # rolls back to the previous git tag and reboots.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/lib/health-check-lib.sh" ]; then
+    source "$SCRIPT_DIR/lib/health-check-lib.sh"
+fi
+
 ROLLBACK_FILE="/var/lib/framecast/rollback-tag"
 ROLLBACK_SIG="/var/lib/framecast/rollback-sig"
 INSTALL_DIR="/opt/framecast"
@@ -18,7 +23,7 @@ fi
 PREV_TAG=$(cat "$ROLLBACK_FILE")
 
 # Validate tag format to prevent injection
-if ! [[ "$PREV_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if ! validate_tag_format "$PREV_TAG"; then
     echo "INVALID rollback tag format: $PREV_TAG — aborting"
     rm -f "$ROLLBACK_FILE" "$ROLLBACK_SIG"
     exit 1
