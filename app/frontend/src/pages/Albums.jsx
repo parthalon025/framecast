@@ -1,7 +1,7 @@
 /** @fileoverview Albums page — album management with smart albums, create/delete, photo grid. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal } from "superhot-ui/preact";
+import { ShModal, ShFrozen } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
@@ -27,6 +27,10 @@ const deleting = signal(false);
 /** Filter: 'all' | 'smart' | 'user' */
 const albumFilter = signal("all");
 
+/** Data freshness timestamps for ShFrozen */
+const albumsLastUpdated = signal(null);
+const albumPhotosLastUpdated = signal(null);
+
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
@@ -36,6 +40,7 @@ function fetchAlbums() {
     .then((resp) => resp.json())
     .then((data) => {
       albums.value = data;
+      albumsLastUpdated.value = Date.now();
     })
     .catch((err) => {
       console.warn("Albums: fetchAlbums failed", err);
@@ -63,6 +68,7 @@ function fetchAlbumPhotos(albumId) {
         photo.size_human = photo.size_human || "";
       }
       albumPhotos.value = data;
+      albumPhotosLastUpdated.value = Date.now();
     })
     .catch((err) => {
       console.warn("Albums: fetchAlbumPhotos failed", err);
@@ -216,16 +222,18 @@ export function Albums() {
             </div>
           </div>
         ) : (
-          <div class="sh-grid sh-grid-3">
-            {albumPhotos.value.map((photo) => (
-              <PhotoCard
-                key={photo.id}
-                photo={photo}
-                onSelect={handlePhotoSelect}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            ))}
-          </div>
+          <ShFrozen timestamp={albumPhotosLastUpdated}>
+            <div class="sh-grid sh-grid-3">
+              {albumPhotos.value.map((photo) => (
+                <PhotoCard
+                  key={photo.id}
+                  photo={photo}
+                  onSelect={handlePhotoSelect}
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              ))}
+            </div>
+          </ShFrozen>
         )}
 
         {!currentAlbum.smart && (
@@ -295,6 +303,7 @@ export function Albums() {
       </div>
 
       {/* Album cards grid */}
+      <ShFrozen timestamp={albumsLastUpdated}>
       {orderedAlbums.length === 0 ? (
         <div class="sh-frame" data-label="ALBUMS">
           <div style="padding: 32px; text-align: center;">
@@ -360,6 +369,7 @@ export function Albums() {
           ))}
         </div>
       )}
+      </ShFrozen>
 
       {/* Create album modal */}
       {createOpen.value && (
