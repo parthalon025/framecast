@@ -421,14 +421,6 @@ def index():
     )
 
 
-def _is_xhr():
-    """Check if the request is from an XHR/fetch client (SPA frontend)."""
-    return (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or "application/json" in (request.headers.get("Accept") or "")
-    )
-
-
 def _require_pin_or_guest(func):
     """Like require_pin, but also accepts a valid guest_token query param.
 
@@ -455,10 +447,7 @@ def _require_pin_or_guest(func):
 def upload():
     # Limit concurrent uploads to prevent OOM on Pi 3B (1GB RAM)
     if not _upload_semaphore.acquire(blocking=False):
-        if _is_xhr():
-            return jsonify({"error": "Another upload is in progress"}), 429
-        flash("Another upload is in progress. Please wait and try again.", "warning")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Another upload is in progress"}), 429
     try:
         return _do_upload()
     finally:
@@ -466,21 +455,13 @@ def upload():
 
 
 def _do_upload():
-    xhr = _is_xhr()
-
     if "files" not in request.files:
-        if xhr:
-            return jsonify({"error": "No files selected"}), 400
-        flash("No files selected", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "No files selected"}), 400
 
     # Check disk space before accepting uploads (reserve 50MB for system use)
     disk = media.get_disk_usage()
     if disk["percent"] >= 95 or disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-        if xhr:
-            return jsonify({"error": "Not enough disk space"}), 507
-        flash("Not enough disk space. Delete files or use a larger SD card.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Not enough disk space"}), 507
 
     # Read uploader identity from cookie (set by "Who's uploading?" modal)
     uploaded_by = request.cookies.get("framecast_user", "default").strip() or "default"
@@ -506,8 +487,6 @@ def _do_upload():
         # during multi-file uploads
         current_disk = media.get_disk_usage()
         if current_disk["percent"] >= 95 or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024:
-            if not xhr:
-                flash(f"Disk full after uploading {uploaded} file(s). Remaining files skipped.", "warning")
             break
 
         dest = Path(MEDIA_DIR) / filename
@@ -634,42 +613,27 @@ def _do_upload():
         uploaded_names.append(filename)
         sse.notify("photo:added", {"filename": filename, "photo_id": photo_id})
 
-    if xhr:
-        return jsonify({
-            "uploaded": uploaded_names,
-            "uploaded_count": uploaded,
-            "skipped": skipped,
-        }), 200 if uploaded > 0 else 400
-
-    if uploaded > 0:
-        flash(f"Uploaded {uploaded} file(s) successfully", "success")
-    if skipped > 0:
-        flash(f"Skipped {skipped} file(s) (unsupported format)", "warning")
-
-    return redirect(url_for("index"))
+    return jsonify({
+        "uploaded": uploaded_names,
+        "uploaded_count": uploaded,
+        "skipped": skipped,
+    }), 200 if uploaded > 0 else 400
 
 
 @app.route("/delete", methods=["POST"])
 @require_pin
 @log_post_request
 def delete():
-    xhr = _is_xhr()
     filename = request.form.get("filename", "")
     if not filename:
-        if xhr:
-            return jsonify({"error": "No file specified"}), 400
-        flash("No file specified", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "No file specified"}), 400
 
     filepath = Path(MEDIA_DIR) / filename
     # Prevent path traversal
     try:
         filepath.resolve().relative_to(Path(MEDIA_DIR).resolve())
     except ValueError:
-        if xhr:
-            return jsonify({"error": "Invalid file path"}), 400
-        flash("Invalid file path", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Invalid file path"}), 400
 
     if filepath.exists() and filepath.is_file():
         # Mark as quarantined in DB first, then delete file async
@@ -691,31 +655,22 @@ def delete():
             log.error("Failed to delete file %s: %s — un-quarantining in DB", filepath.name, exc)
             if photo_row:
                 db.update_photo_quarantine(photo_row["id"], False, None)
-            if xhr:
-                return jsonify({"error": "File deletion failed"}), 500
-            flash("File deletion failed", "error")
-            return redirect(url_for("index"))
+            return jsonify({"error": "File deletion failed"}), 500
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
-        if xhr:
-            return jsonify({"status": "ok", "filename": filename})
-        flash("File deleted", "success")
-    else:
-        if xhr:
-            return jsonify({"error": "File not found"}), 404
-        flash("File not found", "error")
+        return jsonify({"status": "ok", "filename": filename})
 
-    return redirect(url_for("index"))
+    return jsonify({"error": "File not found"}), 404
 
 
 @app.route("/delete-all", methods=["POST"])
 @require_pin
 @log_post_request
 def delete_all():
-    confirm = request.form.get("confirm", "")
+    data = request.get_json(silent=True) or {}
+    confirm = data.get("confirm", request.form.get("confirm", ""))
     if confirm != "DELETE":
-        flash("Type DELETE to confirm", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Type DELETE to confirm"}), 400
 
     media_path = Path(MEDIA_DIR)
     image_ext, video_ext = media.get_allowed_extensions()
@@ -727,8 +682,7 @@ def delete_all():
         log.info("Bulk-quarantined all photos in DB before delete-all")
     except Exception as db_exc:
         log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
-        flash("Delete all failed: database error. Try rebooting.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Delete all failed: database error"}), 500
 
     count = 0
     for f in media_path.iterdir():
@@ -755,10 +709,7 @@ def delete_all():
         except OSError as exc:
             log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
-        return jsonify({"status": "ok", "deleted": count})
-    flash(f"Deleted {count} file(s)", "success")
-    return redirect(url_for("index"))
+    return jsonify({"status": "ok", "deleted": count})
 
 
 @app.route("/media/<path:filename>")
