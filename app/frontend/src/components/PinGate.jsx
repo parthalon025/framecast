@@ -98,9 +98,9 @@ export function PinGate() {
   }, [pinValue, verifying]);
 
   const handleInput = useCallback((evt) => {
-    const val = evt.target.value.replace(/\D/g, "").slice(0, 4);
+    const val = evt.target.value.replace(/\D/g, "").slice(0, pinLength);
     setPinValue(val);
-  }, []);
+  }, [pinLength]);
 
   const handleKeyDown = useCallback(
     (evt) => {
@@ -160,14 +160,14 @@ export function PinGate() {
           <button
             class="sh-input"
             onClick={handleVerify}
-            disabled={pinValue.length !== 4 || verifying}
+            disabled={pinValue.length !== pinLength || verifying}
             style={`
               width: 100%; cursor: pointer;
               text-align: center; font-weight: 700;
               text-transform: uppercase; letter-spacing: 0.1em;
-              opacity: ${pinValue.length === 4 && !verifying ? 1 : 0.4};
-              color: ${pinValue.length === 4 ? "var(--sh-phosphor)" : "var(--text-tertiary)"};
-              border-color: ${pinValue.length === 4 ? "var(--sh-phosphor)" : "var(--border-subtle)"};
+              opacity: ${pinValue.length === pinLength && !verifying ? 1 : 0.4};
+              color: ${pinValue.length === pinLength ? "var(--sh-phosphor)" : "var(--text-tertiary)"};
+              border-color: ${pinValue.length === pinLength ? "var(--sh-phosphor)" : "var(--border-subtle)"};
             `}
           >
             {verifying ? "VERIFYING..." : "VERIFY"}
