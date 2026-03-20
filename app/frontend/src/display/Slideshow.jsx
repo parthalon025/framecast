@@ -20,6 +20,7 @@ import { createSSE } from "../lib/sse.js";
 const photoList = signal([]);
 const settingsData = signal(null);
 const onThisDayText = signal("");
+const connectionLost = signal(false);
 
 // --- Constants ---
 const TRANSITION_TYPES = ["fc-fade", "fc-slide", "fc-kenburns", "fc-dissolve"];
@@ -215,6 +216,19 @@ async function fetchPlaylist() {
   return res.json();
 }
 
+/** Track consecutive fetchPlaylist failures for connection-lost indicator. */
+let playlistFailCount = 0;
+
+function onPlaylistSuccess() {
+  playlistFailCount = 0;
+  connectionLost.value = false;
+}
+
+function onPlaylistFailure() {
+  playlistFailCount++;
+  if (playlistFailCount >= 3) connectionLost.value = true;
+}
+
 export function Slideshow() {
   // Refs for the two permanent layer divs
   const layerARef = useRef(null);
@@ -259,13 +273,17 @@ export function Slideshow() {
     if (s.index === 0) {
       fetchPlaylist()
         .then((data) => {
+          onPlaylistSuccess();
           if (data.photos && data.photos.length > 0) {
             s.ordered = data.photos;
             s.playlistId = data.playlist_id;
             // Don't reset index — we're at 0 which is correct for new playlist
           }
         })
-        .catch((err) => console.warn("Slideshow: playlist refresh failed", err));
+        .catch((err) => {
+          onPlaylistFailure();
+          console.warn("Slideshow: playlist refresh failed", err);
+        });
     }
 
     const activeEl = s.activeLayer === "A" ? layerARef.current : layerBRef.current;
@@ -352,6 +370,7 @@ export function Slideshow() {
         const cfg = await settingsRes.json();
         settingsData.value = cfg;
 
+        connectionLost.value = false;
         const ordered = playlistData.photos || [];
         photoList.value = ordered;
 
@@ -375,8 +394,9 @@ export function Slideshow() {
         }
       } catch (err) {
         console.error("Slideshow: init failed (attempt %d)", retryCount + 1, err);
-        if (retryCount < 4 && !cancelled) {
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        if (!cancelled) {
+          if (retryCount >= 2) connectionLost.value = true;
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 60000);
           setTimeout(() => { if (!cancelled) init(retryCount + 1); }, delay);
         }
       }
@@ -389,6 +409,7 @@ export function Slideshow() {
       if (cancelled) return;
       fetchPlaylist()
         .then((data) => {
+          onPlaylistSuccess();
           if (!data.photos) return;
           const s = state.current;
           // Only replace if we're not mid-transition
@@ -401,7 +422,10 @@ export function Slideshow() {
             }
           }
         })
-        .catch((err) => console.error("Slideshow: SSE refetch failed", err));
+        .catch((err) => {
+          onPlaylistFailure();
+          console.error("Slideshow: SSE refetch failed", err);
+        });
     }
 
     const sse = createSSE("/api/events", {
@@ -456,6 +480,9 @@ export function Slideshow() {
         <div class="fc-otd-overlay" ref={otdOverlayRef}>
           <span class="fc-otd-label">{onThisDayText.value}</span>
         </div>
+      )}
+      {connectionLost.value && (
+        <div class="fc-connection-lost">CONNECTION LOST — RETRYING</div>
       )}
     </div>
   );
