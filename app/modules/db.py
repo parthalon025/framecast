@@ -120,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_photos_uploaded_by ON photos(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_photos_last_shown ON photos(last_shown_at);
 CREATE INDEX IF NOT EXISTS idx_display_stats_photo ON display_stats(photo_id);
 CREATE INDEX IF NOT EXISTS idx_display_stats_shown ON display_stats(shown_at);
+CREATE INDEX IF NOT EXISTS idx_photos_checksum ON photos(checksum_sha256);
 """
 
 # --- Smart albums (computed queries) ---
