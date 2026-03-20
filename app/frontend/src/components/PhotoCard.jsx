@@ -115,7 +115,7 @@ export function PhotoCard({
             checked={!!selected}
             onChange={handleCheckboxChange}
             aria-label={`Select ${photo.name || photo.filename}`}
-            style="width: 18px; height: 18px; accent-color: var(--sh-phosphor);"
+            style="width: 24px; height: 24px; accent-color: var(--sh-phosphor);"
           />
         </label>
       )}
@@ -131,8 +131,9 @@ export function PhotoCard({
           position: absolute; top: 4px; right: 4px; z-index: 2;
           background: rgba(0,0,0,0.6); border: none; cursor: pointer;
           color: ${isFav ? "var(--sh-phosphor)" : "var(--sh-dim, rgba(255,255,255,0.3))"};
-          font-size: 1rem; padding: 2px 4px; line-height: 1;
-          border-radius: 2px;
+          font-size: 1.2rem; padding: 8px; min-width: 44px; min-height: 44px;
+          line-height: 1; border-radius: 2px;
+          display: flex; align-items: center; justify-content: center;
         `}
       >
         {isFav ? "\u2605" : "\u2606"}
