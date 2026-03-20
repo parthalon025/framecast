@@ -3,6 +3,7 @@
 Provides station/AP mode control for Raspberry Pi WiFi setup.
 All subprocess calls use timeout=15 to prevent hangs.
 """
+from __future__ import annotations
 
 import logging
 import re
@@ -10,6 +11,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from modules import config
 
@@ -19,14 +21,14 @@ _TIMEOUT = 15
 
 # AP auto-timeout: restart AP if no client connects within this window (seconds)
 _AP_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
-_ap_timer = None
+_ap_timer: threading.Timer | None = None
 _ap_timer_lock = threading.Lock()
 
 # Marker file to persist AP start time across restarts
 _AP_MARKER_FILE = Path(config.get("MEDIA_DIR", "/home/pi/media")).parent / ".ap_started"
 
 
-def _write_ap_marker():
+def _write_ap_marker() -> None:
     """Write current timestamp to AP marker file."""
     try:
         _AP_MARKER_FILE.write_text(str(time.time()))
@@ -34,7 +36,7 @@ def _write_ap_marker():
         log.warning("Failed to write AP marker: %s", exc)
 
 
-def _clear_ap_marker():
+def _clear_ap_marker() -> None:
     """Remove AP marker file."""
     try:
         _AP_MARKER_FILE.unlink(missing_ok=True)
@@ -42,7 +44,7 @@ def _clear_ap_marker():
         pass
 
 
-def check_stale_ap(timeout_minutes=30):
+def check_stale_ap(timeout_minutes: int = 30) -> None:
     """Check if AP has been running longer than timeout. Stop if stale.
 
     Called at startup to handle the case where the service crashed
@@ -74,7 +76,7 @@ def check_stale_ap(timeout_minutes=30):
         _clear_ap_marker()
 
 
-def _redact_password(cmd):
+def _redact_password(cmd: list[str]) -> list[str]:
     """Return a copy of *cmd* with the argument after 'password' replaced by '***'."""
     redacted = list(cmd)
     for i, arg in enumerate(redacted):
@@ -83,7 +85,7 @@ def _redact_password(cmd):
     return redacted
 
 
-def _run(cmd, timeout=_TIMEOUT):
+def _run(cmd: list[str], timeout: int = _TIMEOUT) -> tuple[int, str, str]:
     """Run a subprocess command, returning (returncode, stdout, stderr).
 
     Logs errors and never swallows exceptions silently.
@@ -107,7 +109,7 @@ def _run(cmd, timeout=_TIMEOUT):
         return -1, "", str(exc)
 
 
-def is_connected():
+def is_connected() -> bool:
     """Check if WiFi is connected to a network."""
     rc, stdout, _ = _run(["nmcli", "-t", "-f", "GENERAL.STATE", "dev", "show", "wlan0"])
     if rc != 0:
@@ -116,7 +118,7 @@ def is_connected():
     return "connected" in stdout.lower() and "disconnected" not in stdout.lower()
 
 
-def get_current_ssid():
+def get_current_ssid() -> str | None:
     """Get currently connected SSID, or None."""
     rc, stdout, _ = _run(
         ["nmcli", "-t", "-f", "GENERAL.CONNECTION", "dev", "show", "wlan0"]
@@ -130,7 +132,7 @@ def get_current_ssid():
     return None
 
 
-def scan_networks():
+def scan_networks() -> list[dict[str, Any]]:
     """Scan for available WiFi networks.
 
     Returns:
@@ -144,8 +146,8 @@ def scan_networks():
         log.error("WiFi scan failed: %s", stderr)
         return []
 
-    networks = []
-    seen_ssids = set()
+    networks: list[dict[str, Any]] = []
+    seen_ssids: set[str] = set()
     for line in stdout.splitlines():
         # nmcli -t uses ':' as separator but escapes literal colons in
         # values as '\:'.  Split on unescaped colons only (max 3 fields:
@@ -174,7 +176,7 @@ def scan_networks():
     return networks
 
 
-def connect(ssid, password):
+def connect(ssid: str, password: str) -> tuple[bool, str]:
     """Connect to a WiFi network.
 
     Args:
@@ -200,7 +202,7 @@ def connect(ssid, password):
     return False, f"CONNECTION FAILED: {error_msg[:80]}"
 
 
-def _cancel_ap_timer():
+def _cancel_ap_timer() -> None:
     """Cancel any pending AP auto-timeout timer."""
     global _ap_timer
     with _ap_timer_lock:
@@ -209,7 +211,7 @@ def _cancel_ap_timer():
             _ap_timer = None
 
 
-def _has_ap_clients():
+def _has_ap_clients() -> bool:
     """Check if any clients are connected to the AP."""
     rc, stdout, _ = _run(
         ["nmcli", "-t", "-f", "GENERAL.CLIENTS", "dev", "show", "wlan0"]
@@ -226,7 +228,7 @@ def _has_ap_clients():
     return False
 
 
-def _ap_timeout_handler():
+def _ap_timeout_handler() -> None:
     """Called when AP timeout expires. Restart AP if no clients connected."""
     global _ap_timer
     with _ap_timer_lock:
@@ -248,7 +250,7 @@ def _ap_timeout_handler():
     start_ap()
 
 
-def _start_ap_timer(seconds=None):
+def _start_ap_timer(seconds: float | None = None) -> None:
     """Start (or restart) the AP auto-timeout timer.
 
     Args:
@@ -265,7 +267,7 @@ def _start_ap_timer(seconds=None):
     log.info("AP auto-timeout set: %.0f minutes", seconds / 60)
 
 
-def start_ap(ssid=None):
+def start_ap(ssid: str | None = None) -> tuple[bool, str]:
     """Start WiFi hotspot AP.
 
     SSID defaults to FrameCast-XXXX (last 4 of MAC).
@@ -305,7 +307,7 @@ def start_ap(ssid=None):
     return False, f"AP START FAILED: {(stderr or stdout)[:80]}"
 
 
-def stop_ap():
+def stop_ap() -> tuple[bool, str]:
     """Stop the WiFi hotspot and return to station mode.
 
     Returns:
@@ -322,7 +324,7 @@ def stop_ap():
     return False, f"AP STOP FAILED: {(stderr or stdout)[:80]}"
 
 
-def get_ap_ssid():
+def get_ap_ssid() -> str:
     """Generate AP SSID: FrameCast-XXXX using last 4 of wlan0 MAC."""
     rc, stdout, _ = _run(
         ["nmcli", "-t", "-f", "GENERAL.HWADDR", "dev", "show", "wlan0"]
@@ -337,7 +339,7 @@ def get_ap_ssid():
     return "FrameCast-WIFI"
 
 
-def is_ap_active():
+def is_ap_active() -> bool:
     """Check if AP mode is currently active."""
     rc, stdout, _ = _run(
         ["nmcli", "-t", "-f", "GENERAL.CONNECTION", "dev", "show", "wlan0"]

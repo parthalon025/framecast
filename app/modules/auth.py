@@ -14,6 +14,7 @@ Security features:
 - SameSite=Strict cookies
 - Origin header validation on state-changing requests
 """
+from __future__ import annotations
 
 import functools
 import hashlib
@@ -21,16 +22,16 @@ import hmac
 import logging
 import secrets
 import time
+from typing import Any
 
-
-from flask import Blueprint, jsonify, make_response, request
+from flask import Blueprint, Response, jsonify, make_response, request
 
 from modules import config
 from modules.rate_limiter import RateLimiter
 
 log = logging.getLogger(__name__)
 
-_ephemeral_secret = None
+_ephemeral_secret: str | None = None
 
 COOKIE_NAME = "framecast_pin"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days in seconds
@@ -80,7 +81,7 @@ def _get_pin_limiter() -> RateLimiter:
     return _pin_limiter_6 if _get_pin_length() == 6 else _pin_limiter_4
 
 
-def _make_auth_token(pin):
+def _make_auth_token(pin: str) -> str:
     """Create an HMAC-SHA256 token from the PIN (never store raw PIN in cookie)."""
     global _ephemeral_secret
     secret = config.get("FLASK_SECRET_KEY", "")
@@ -92,7 +93,7 @@ def _make_auth_token(pin):
     return hmac.HMAC(secret.encode(), pin.encode(), hashlib.sha256).hexdigest()
 
 
-def _is_ap_active():
+def _is_ap_active() -> bool:
     """Return True when the WiFi hotspot is active (user is physically present)."""
     try:
         from modules.services import is_service_active
@@ -103,12 +104,12 @@ def _is_ap_active():
         return False
 
 
-def _get_access_pin():
+def _get_access_pin() -> str:
     """Read the current ACCESS_PIN from config (live, not cached at import)."""
     return config.get("ACCESS_PIN", "").strip()
 
 
-def _should_skip_auth():
+def _should_skip_auth() -> bool:
     """Return True if the current request path is exempt from PIN auth."""
     path = request.path
 
@@ -123,7 +124,7 @@ def _should_skip_auth():
     return False
 
 
-def _pin_is_open_access(pin):
+def _pin_is_open_access(pin: str) -> bool:
     """Return True if the PIN indicates open-access mode (empty string only)."""
     return not pin
 
@@ -164,7 +165,7 @@ def _validate_origin() -> bool:
     return False
 
 
-def generate_guest_token(ttl_hours=24):
+def generate_guest_token(ttl_hours: int = 24) -> str:
     """Generate an HMAC-signed guest upload token with TTL.
 
     Token format: ``{expires_timestamp}:{signature_prefix}``.
@@ -181,7 +182,7 @@ def generate_guest_token(ttl_hours=24):
     return f"{expires}:{sig}"
 
 
-def validate_guest_token(token):
+def validate_guest_token(token: str | None) -> bool:
     """Validate a guest upload token. Returns True if valid and not expired."""
     if not token or ":" not in token:
         return False
@@ -208,7 +209,7 @@ def generate_pin(length: int = 4) -> str:
     return str(secrets.randbelow(9000) + 1000)
 
 
-def rotate_pin_on_boot():
+def rotate_pin_on_boot() -> None:
     """Rotate the PIN if PIN_ROTATE_ON_BOOT is enabled.
 
     Called once during app startup. Generates a new PIN and saves it.
@@ -223,7 +224,7 @@ def rotate_pin_on_boot():
     log.warning("PIN rotated on boot (PIN_ROTATE_ON_BOOT=yes) — new PIN shown on TV")
 
 
-def require_pin(func):
+def require_pin(func: Any) -> Any:
     """Decorator: require a valid framecast_pin cookie.
 
     Open access (no PIN configured) bypasses auth entirely.
@@ -234,7 +235,7 @@ def require_pin(func):
     """
 
     @functools.wraps(func)
-    def decorated(*args, **kwargs):
+    def decorated(*args: Any, **kwargs: Any) -> Any:
         if _should_skip_auth():
             return func(*args, **kwargs)
 
@@ -263,7 +264,7 @@ def require_pin(func):
 
 
 @auth_api.route("/verify", methods=["POST"])
-def verify_pin():
+def verify_pin() -> tuple[Response, int] | Response:
     """Validate a PIN and set an auth cookie on success.
 
     Accepts JSON: ``{"pin": "1234"}``.
@@ -289,7 +290,8 @@ def verify_pin():
 
     if _pin_is_open_access(stored):
         # No PIN configured -- succeed immediately, no cookie needed
-        return jsonify({"status": "ok", "message": "AUTHORIZED -- open access"})
+        resp: Response = jsonify({"status": "ok", "message": "AUTHORIZED -- open access"})
+        return resp
 
     if not hmac.compare_digest(submitted, stored):
         log.warning(

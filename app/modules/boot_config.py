@@ -19,6 +19,7 @@ On startup, checks for:
      If the file exists, SSH is enabled via systemctl and the file is
      deleted. This is the same convention used by Raspberry Pi OS.
 """
+from __future__ import annotations
 
 import logging
 import subprocess
@@ -39,7 +40,7 @@ _SSH_FLAG_PATHS = [
 ]
 
 
-def _find_config():
+def _find_config() -> Path | None:
     """Find the first existing boot config file, or None."""
     for path in _CONFIG_PATHS:
         if path.exists():
@@ -47,7 +48,7 @@ def _find_config():
     return None
 
 
-def _parse_config(path):
+def _parse_config(path: Path) -> tuple[str | None, str | None]:
     """Parse SSID and PASSWORD from a boot config file.
 
     Args:
@@ -56,8 +57,8 @@ def _parse_config(path):
     Returns:
         Tuple of (ssid, password) or (None, None) if parsing fails.
     """
-    ssid = None
-    password = None
+    ssid: str | None = None
+    password: str | None = None
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
         for line in text.splitlines():
@@ -80,7 +81,7 @@ def _parse_config(path):
     return ssid, password
 
 
-def apply_boot_config():
+def apply_boot_config() -> bool:
     """Check for boot partition WiFi config and connect if found.
 
     Called at Flask app startup. Connects via wifi.connect() and
@@ -122,7 +123,7 @@ def apply_boot_config():
     return False
 
 
-def apply_boot_ssh():
+def apply_boot_ssh() -> bool:
     """Check for boot partition SSH flag and enable SSH if found.
 
     Standard Raspberry Pi convention: an empty file named "ssh" on the
@@ -132,7 +133,7 @@ def apply_boot_ssh():
     Returns:
         True if SSH was enabled via boot flag, False otherwise.
     """
-    flag_path = None
+    flag_path: Path | None = None
     for path in _SSH_FLAG_PATHS:
         if path.exists():
             flag_path = path

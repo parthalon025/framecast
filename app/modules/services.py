@@ -2,6 +2,7 @@
 
 Manages systemd services: status checks, restarts, and bulk status queries.
 """
+from __future__ import annotations
 
 import logging
 import subprocess
@@ -9,7 +10,7 @@ import subprocess
 log = logging.getLogger(__name__)
 
 # Logical name -> systemd unit name
-SERVICE_MAP = {
+SERVICE_MAP: dict[str, str] = {
     "app": "framecast",
     "kiosk": "framecast-kiosk",
     "wifi": "wifi-manager",
@@ -17,7 +18,7 @@ SERVICE_MAP = {
 }
 
 
-def is_service_active(name):
+def is_service_active(name: str) -> bool:
     """Check if a systemd service is active by logical name.
 
     Args:
@@ -40,7 +41,7 @@ def is_service_active(name):
         return False
 
 
-def restart_service(name):
+def restart_service(name: str) -> tuple[bool, str]:
     """Restart a systemd service by logical name.
 
     Args:
@@ -67,7 +68,7 @@ def restart_service(name):
         return False, f"Timeout restarting {name}"
 
 
-def all_service_status():
+def all_service_status() -> dict[str, bool]:
     """Return status of all known services.
 
     Returns:
@@ -78,11 +79,11 @@ def all_service_status():
 
 # --- Backward-compatible aliases ---
 
-def is_slideshow_running():
+def is_slideshow_running() -> bool:
     """Check if the kiosk/slideshow service is active."""
     return is_service_active("kiosk")
 
 
-def restart_slideshow():
+def restart_slideshow() -> tuple[bool, str]:
     """Restart the kiosk/slideshow service. Returns (success, message)."""
     return restart_service("kiosk")

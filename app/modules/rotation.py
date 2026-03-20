@@ -5,12 +5,14 @@ memory surfacing, and diversity penalty to prevent photo repetition.
 
 All SQLite access via contextlib.closing() + WAL + busy_timeout (Lesson #34, #1335).
 """
+from __future__ import annotations
 
 import bisect
 import logging
 import random
 from contextlib import closing
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 from . import db
@@ -18,7 +20,7 @@ from . import db
 log = logging.getLogger(__name__)
 
 
-def _compute_weight(photo, recent_shown_ids, total_photos=0):
+def _compute_weight(photo: dict[str, Any], recent_shown_ids: set[int], total_photos: int = 0) -> float:
     """Compute display weight for a single photo.
 
     Weight = base * recency_boost * favorite_boost * diversity_penalty
@@ -65,7 +67,7 @@ def _compute_weight(photo, recent_shown_ids, total_photos=0):
     return base * recency_boost * favorite_boost * diversity_penalty
 
 
-def _weighted_select(photos, recent_shown_ids):
+def _weighted_select(photos: list[dict[str, Any]], recent_shown_ids: set[int]) -> dict[str, Any] | None:
     """Select a single photo using binary CDF search.
 
     O(log n) selection from weighted distribution.
@@ -83,7 +85,7 @@ def _weighted_select(photos, recent_shown_ids):
         return photos[0]
 
     weights = [_compute_weight(p, recent_shown_ids, total_photos=len(photos)) for p in photos]
-    cumulative = []
+    cumulative: list[float] = []
     total = 0.0
     for w in weights:
         total += w
@@ -97,7 +99,7 @@ def _weighted_select(photos, recent_shown_ids):
     return photos[min(idx, len(photos) - 1)]
 
 
-def get_on_this_day():
+def get_on_this_day() -> list[dict[str, Any]]:
     """Return photos whose EXIF date matches today's month-day from a prior year.
 
     Falls back to uploaded_at if exif_date is NULL.
@@ -120,7 +122,7 @@ def get_on_this_day():
                 (today_md, today_md),
             ).fetchall()
 
-        results = []
+        results: list[dict[str, Any]] = []
         for row in rows:
             photo = dict(row)
             # Calculate years ago
@@ -144,7 +146,7 @@ def get_on_this_day():
         return []
 
 
-def _get_recent_shown_ids(total_photos):
+def _get_recent_shown_ids(total_photos: int) -> set[int]:
     """Return set of photo IDs shown in the recent diversity window.
 
     Window size = total_photos * 0.3 (capped to prevent starvation).
@@ -163,7 +165,7 @@ def _get_recent_shown_ids(total_photos):
         return set()
 
 
-def generate_playlist(count=50):
+def generate_playlist(count: int = 50) -> dict[str, Any]:
     """Generate a weighted playlist of photo dicts.
 
     "On This Day" photos are inserted with priority placement and metadata flag.
@@ -190,8 +192,8 @@ def generate_playlist(count=50):
     otd_ids = {p["id"] for p in otd_photos}
 
     # Build the playlist
-    playlist = []
-    selected_ids = set()
+    playlist: list[dict[str, Any]] = []
+    selected_ids: set[int] = set()
 
     # Insert "on this day" photos first (they still count toward the total)
     for otd_photo in otd_photos[:min(len(otd_photos), count // 5 or 1)]:
