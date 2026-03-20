@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "photo:favorited",
+  "description": "Sent when a photo's favorite status is toggled.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "description": "Photo database ID"
+    },
+    "is_favorite": {
+      "type": "boolean"
+    }
+  },
+  "required": ["id", "is_favorite"],
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "heartbeat",
+  "description": "Periodic heartbeat sent alongside SSE keepalive comments. Clients use this to detect TV connection.",
+  "type": "object",
+  "properties": {
+    "ts": {
+      "type": "integer",
+      "description": "Unix timestamp (seconds since epoch)"
+    }
+  },
+  "required": ["ts"],
+  "additionalProperties": false
+}

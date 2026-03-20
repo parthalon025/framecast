@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "photo:added",
+  "description": "Sent after a photo is successfully uploaded and processed.",
+  "type": "object",
+  "properties": {
+    "filename": {
+      "type": "string",
+      "minLength": 1
+    },
+    "photo_id": {
+      "type": "integer",
+      "description": "Photo database ID"
+    }
+  },
+  "required": ["filename", "photo_id"],
+  "additionalProperties": false
+}

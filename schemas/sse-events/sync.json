@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sync",
+  "description": "Sent when stale clients are dropped due to queue overflow. Remaining clients should refetch state.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": ["client_overflow"]
+    }
+  },
+  "required": ["reason"],
+  "additionalProperties": false
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "slideshow:show",
+  "description": "Sent to tell the TV slideshow to immediately display a specific photo.",
+  "type": "object",
+  "properties": {
+    "photo_id": {
+      "type": "integer",
+      "description": "Photo database ID"
+    },
+    "filename": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filepath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "is_video": {
+      "type": "boolean"
+    }
+  },
+  "required": ["photo_id", "filename", "filepath", "is_video"],
+  "additionalProperties": false
+}
