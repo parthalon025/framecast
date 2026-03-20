@@ -15,19 +15,15 @@ import subprocess
 import threading
 import time
 import uuid
-from contextlib import closing
 from pathlib import Path
 
 from flask import (
     Flask,
     abort,
-    flash,
     jsonify,
-    redirect,
     render_template,
     request,
     send_from_directory,
-    url_for,
 )
 from werkzeug.utils import secure_filename
 
@@ -401,24 +397,7 @@ def _auto_resize_image(image_path):
 
 @app.route("/")
 def index():
-    files = media.get_media_files()
-    disk = media.get_disk_usage()
-    photo_count = sum(1 for f in files if not f["is_video"])
-    video_count = sum(1 for f in files if f["is_video"])
-    # Check if any photos have GPS locations for the Map nav link (lightweight DB query)
-    with closing(db.get_db()) as conn:
-        has_locations = conn.execute(
-            "SELECT 1 FROM photos WHERE gps_lat IS NOT NULL AND quarantined = 0 LIMIT 1"
-        ).fetchone() is not None
-    return render_template(
-        "index.html",
-        files=files,
-        disk=disk,
-        photo_count=photo_count,
-        video_count=video_count,
-        max_upload_mb=MAX_UPLOAD_MB,
-        has_locations=has_locations,
-    )
+    return render_template("spa.html", version=_read_version())
 
 
 def _require_pin_or_guest(func):
@@ -735,110 +714,6 @@ def serve_thumbnail(filename):
     abort(404)
 
 
-@app.route("/map")
-def map_page():
-    """Map page showing photo locations."""
-    return render_template("map.html")
-
-
-@app.route("/settings")
-def settings_page():
-    """Settings page to configure the display."""
-    env = config.load_env()
-    return render_template("settings.html", env=env)
-
-
-@app.route("/settings", methods=["POST"])
-@require_pin
-@log_post_request
-def settings_save():
-    """Save settings from the settings form."""
-    updates = {}
-    # Security: MEDIA_DIR and WEB_PORT excluded from web editing.
-    # MEDIA_DIR change enables arbitrary file read/write.
-    # WEB_PORT change could lock users out.
-    allowed_keys = {
-        "PHOTO_DURATION",
-        "SHUFFLE",
-        "LOOP",
-        "MAX_UPLOAD_MB",
-        "AUTO_RESIZE_MAX",
-        "HDMI_SCHEDULE_ENABLED",
-        "HDMI_OFF_TIME",
-        "HDMI_ON_TIME",
-        "AUTO_REFRESH",
-        "REFRESH_INTERVAL",
-        "IMAGE_EXTENSIONS",
-        "VIDEO_EXTENSIONS",
-    }
-
-    for key in allowed_keys:
-        value = request.form.get(key)
-        if value is not None:
-            updates[key] = value.strip()
-
-    # Validate numeric fields
-    for key in ("PHOTO_DURATION", "REFRESH_INTERVAL", "MAX_UPLOAD_MB"):
-        if key in updates:
-            try:
-                val = int(updates[key])
-                if val < 1:
-                    raise ValueError
-            except ValueError:
-                flash(f"Invalid value for {key}: must be a positive number", "error")
-                return redirect(url_for("settings_page"))
-
-    # Validate time fields
-    for key in ("HDMI_OFF_TIME", "HDMI_ON_TIME"):
-        if key in updates:
-            parts = updates[key].split(":")
-            if len(parts) != 2:
-                flash(f"Invalid time format for {key}: use HH:MM", "error")
-                return redirect(url_for("settings_page"))
-            try:
-                h, m = int(parts[0]), int(parts[1])
-                if not (0 <= h <= 23 and 0 <= m <= 59):
-                    raise ValueError
-            except ValueError:
-                flash(f"Invalid time for {key}: use HH:MM (0-23:0-59)", "error")
-                return redirect(url_for("settings_page"))
-
-    # Validate file extensions against a forbidden list to prevent
-    # dangerous file types from being accepted as media.
-    forbidden_ext = {
-        ".html", ".htm", ".js", ".svg", ".php",
-        ".py", ".sh", ".exe", ".bat", ".cmd",
-    }
-    for ext_key in ("IMAGE_EXTENSIONS", "VIDEO_EXTENSIONS"):
-        if ext_key in updates:
-            exts = [
-                e.strip().lower() if e.strip().startswith(".") else f".{e.strip().lower()}"
-                for e in updates[ext_key].split(",")
-                if e.strip()
-            ]
-            bad = [e for e in exts if e in forbidden_ext]
-            if bad:
-                flash(
-                    f"Forbidden extension(s) in {ext_key}: {', '.join(bad)}",
-                    "error",
-                )
-                return redirect(url_for("settings_page"))
-
-    config.save(updates)
-    log.info("Settings updated: %s", list(updates.keys()))
-
-    # Auto-restart slideshow if checkbox was checked
-    if request.form.get("auto_restart") == "1":
-        from modules import services
-        success, _ = services.restart_slideshow()
-        if success:
-            flash("Settings saved and slideshow restarted.", "success")
-        else:
-            flash("Settings saved but failed to restart slideshow.", "warning")
-    else:
-        flash("Settings saved. Restart services for changes to take effect.", "success")
-
-    return redirect(url_for("settings_page"))
 
 
 # --- Periodic thumbnail cleanup ---
@@ -869,7 +744,6 @@ def _periodic_thumbnail_cleanup():
 
 # --- SPA routes ---
 # Serve the SPA shell for all client-side routes.
-# Existing template routes above remain as fallback.
 
 
 @app.route("/display")
@@ -885,6 +759,16 @@ def setup():
 
 @app.route("/update")
 def update():
+    return render_template("spa.html", version=_read_version())
+
+
+@app.route("/map")
+@app.route("/settings")
+@app.route("/albums")
+@app.route("/stats")
+@app.route("/users")
+def spa_phone_routes():
+    """Serve SPA shell for all phone client-side routes."""
     return render_template("spa.html", version=_read_version())
 
 

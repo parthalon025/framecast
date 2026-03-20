@@ -443,6 +443,36 @@ class TestUsers:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GET / — SPA shell
+# ---------------------------------------------------------------------------
+
+
+class TestRootServesSPA:
+    """Tests that GET / serves the SPA shell instead of legacy index.html."""
+
+    def test_root_serves_spa_shell(self, client):
+        """GET / should serve the SPA shell (spa.html), not the legacy index.html."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'id="app"' in html
+        assert "superhot.css" in html
+
+    def test_spa_catch_all_routes(self, client):
+        """Client-side routes should all serve the SPA shell."""
+        for route in ["/map", "/settings", "/albums", "/stats", "/users"]:
+            resp = client.get(route)
+            assert resp.status_code == 200, f"{route} returned {resp.status_code}"
+            html = resp.data.decode()
+            assert 'id="app"' in html, f"{route} missing SPA shell"
+
+
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+
+
 class TestSecurityHeaders:
     """Verify security headers are set on all responses."""
 
