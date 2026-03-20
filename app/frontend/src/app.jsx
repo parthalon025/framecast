@@ -12,7 +12,8 @@ import { Stats } from "./pages/Stats.jsx";
 import { Users } from "./pages/Users.jsx";
 import { DisplayRouter } from "./display/DisplayRouter.jsx";
 import { PinGate } from "./components/PinGate.jsx";
-import { detectCapability, applyCapability, setFacilityState } from "superhot-ui";
+import { detectCapability, applyCapability, setFacilityState, heartbeat, recoverySequence } from "superhot-ui";
+import { raiseIncident, clearIncident } from "./lib/incident.js";
 
 // --- Surface detection ---
 // /display* = TV display surface, everything else = phone UI
@@ -60,6 +61,37 @@ if (!window.location.pathname.startsWith("/display")) {
   const savedTheme = localStorage.getItem("framecast-theme") || "dark";
   document.documentElement.setAttribute("data-theme", savedTheme);
 }
+
+// --- Heartbeat health monitor ---
+let consecutiveFailures = 0;
+
+setInterval(async () => {
+  try {
+    const res = await fetch("/api/status");
+    if (res.ok) {
+      if (consecutiveFailures >= 3) {
+        clearIncident();
+        setFacilityState("normal");
+        const appEl = document.getElementById("app");
+        if (appEl) {
+          recoverySequence({
+            glitchFn: () => heartbeat(appEl, Date.now()),
+            onBorderTransition: () => {},
+            onPulseStop: () => {},
+            onToast: () => {},
+          });
+        }
+      }
+      consecutiveFailures = 0;
+      return;
+    }
+  } catch (_err) { /* network error */ }
+  consecutiveFailures++;
+  if (consecutiveFailures >= 3) {
+    raiseIncident("NETWORK UNREACHABLE", "error");
+    setFacilityState("alert");
+  }
+}, 30000);
 
 // Intercept hash-style links from ShNav and convert to pushState
 document.addEventListener("click", (evt) => {
