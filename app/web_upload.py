@@ -667,6 +667,8 @@ def delete_all():
 
 @app.route("/media/<path:filename>")
 def serve_media(filename):
+    if filename.startswith(("quarantine/", "quarantine\\")):
+        abort(404)
     return send_from_directory(
         MEDIA_DIR, filename, mimetype=None
     )
