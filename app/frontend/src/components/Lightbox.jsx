@@ -1,6 +1,7 @@
 /** @fileoverview Lightbox — full-screen photo viewer with swipe navigation and actions. */
 import { signal } from "@preact/signals";
 import { useEffect, useRef, useCallback } from "preact/hooks";
+import { ShModal } from "superhot-ui/preact";
 import { formatTime } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
 
@@ -12,6 +13,7 @@ const lightboxInfoOpen = signal(false);
 const lightboxTagInput = signal("");
 const lightboxTagSuggestions = signal([]);
 const lightboxAllTags = signal([]);
+const pendingDelete = signal(null);
 
 /**
  * Open the lightbox at a given photo within a list.
@@ -131,8 +133,18 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
   }
 
   function handleDeleteAction() {
-    if (onDelete) onDelete(photo);
+    pendingDelete.value = photo;
+  }
+
+  function confirmDelete() {
+    const target = pendingDelete.value;
+    if (target && onDelete) onDelete(target);
+    pendingDelete.value = null;
     closeLightbox();
+  }
+
+  function cancelDelete() {
+    pendingDelete.value = null;
   }
 
   function toggleInfo() {
@@ -208,7 +220,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
         onClick={closeLightbox}
         type="button"
         aria-label="Close lightbox"
-        style="position: absolute; top: 8px; right: 12px; z-index: 210; background: none; border: none; color: var(--sh-phosphor); font-size: 1.5rem; cursor: pointer; padding: 8px;"
+        style="position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 210; background: none; border: none; color: var(--sh-phosphor); font-size: 1.5rem; cursor: pointer; padding: 8px; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center;"
       >
         X
       </button>
@@ -228,6 +240,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
             src={`/media/${filename}`}
             controls
             autoplay
+            muted
             style="max-width: 100%; max-height: 100%; object-fit: contain;"
           />
         ) : (
@@ -294,6 +307,17 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
           [DELETE]
         </button>
       </div>
+
+      {/* Delete confirmation modal */}
+      <ShModal
+        open={!!pendingDelete.value}
+        title="CONFIRM: DELETE FILE"
+        body={pendingDelete.value ? `Remove "${pendingDelete.value.name || pendingDelete.value.filename}"? IRREVERSIBLE.` : ""}
+        confirmLabel="DELETE"
+        cancelLabel="CANCEL"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
 
       {/* Info panel (toggled) */}
       {lightboxInfoOpen.value && (
