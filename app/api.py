@@ -279,6 +279,10 @@ def update_settings():
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid pin_length: must be 4 or 6"}), 400
 
+    if "schedule_days" in data:
+        if not re.match(r'^[0-6](,[0-6])*$', str(data["schedule_days"])):
+            return jsonify({"error": f"Invalid schedule_days: {data['schedule_days']}"}), 400
+
     # --- Handle action keys (not persistent settings) ---
 
     # display_on is a toggle action, not a persistent setting
