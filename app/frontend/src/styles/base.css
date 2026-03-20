@@ -50,3 +50,24 @@
     outline: 2px solid var(--sh-phosphor);
     outline-offset: 2px;
 }
+
+@media (forced-colors: active) {
+    .fc-day-btn--active {
+        border: 2px solid ButtonText;
+        background: Highlight;
+        color: HighlightText;
+    }
+    .fc-offline-banner {
+        border: 2px solid Mark;
+    }
+    .fc-otd-label {
+        text-shadow: none;
+        border: 1px solid CanvasText;
+    }
+    .fc-card--favorite {
+        border-color: Highlight;
+    }
+    .fc-btn-primary {
+        border: 2px solid ButtonText;
+    }
+}
