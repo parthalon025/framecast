@@ -38,14 +38,14 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 | `pi-gen/` | Custom pi-gen stage for OS image build |
 | `systemd/` | Service and timer definitions |
 | `scripts/` | Health check, HDMI control, smoke tests |
-| `tests/` | pytest suites (test_db, test_rotation, test_users, test_cec, test_albums) |
+| `tests/` | pytest suites (test_db, test_rotation, test_users, test_cec, test_albums, test_auth, test_rate_limiter, test_config) |
 | `docs/plans/` | Design docs, implementation plans, research |
 
 ## Python Modules
 
 | Module | Purpose |
 |--------|---------|
-| `db.py` | SQLite content model (963 lines). WAL, closing(), write lock, stats buffering, migration. |
+| `db.py` | SQLite content model. WAL, closing(), public API (get_playlist_candidates, unquarantine_photo, compute_sha256, prune_quarantined, bulk_quarantine_all, create_user_returning_row, delete_user_reassign), stats buffering, migration. |
 | `rotation.py` | Weighted slideshow playlist. Binary CDF search, "On This Day", recency/favorite/diversity weighting. |
 | `users.py` | Multi-user management. Cookie-based identity, upload attribution, stats aggregation. |
 | `cec.py` | HDMI-CEC via `cec-ctl` (v4l-utils). TV power, standby, status, active source. NOT cec-client (broken on Bookworm). |
@@ -72,7 +72,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Frontend: `cd app/frontend && npm install && npm run build`
 - Image: `cd pi-gen && bash build.sh` (Docker, 20-60min)
 - Dev: `cd app && gunicorn -c gunicorn.conf.py web_upload:app`
-- Tests: `python3 -m pytest tests/ -v --timeout=120` (129 tests)
+- Tests: `python3 -m pytest tests/ -v --timeout=120` (160 tests)
 
 ## Conventions
 
@@ -90,6 +90,8 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - CSS: 8 focused files in `styles/`, no `@import` (concatenated at build time)
 - Navigation: 4 bottom tabs (Upload, Albums, Map, Settings). Stats/System are Settings subsections.
 - Photos in grid: `/thumbnail/` with `/media/` fallback + `loading="lazy"`
+- DB public API only — never reach into `_write_lock` directly from routes; use the named functions in `db.py`
+- `createSSE` helper (sse.js) used on both Phone SPA and TV DisplayRouter — handles exponential backoff and page-background pause
 
 ## Design Docs
 
