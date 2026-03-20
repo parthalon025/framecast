@@ -3,6 +3,7 @@ import { ShNav } from "superhot-ui/preact";
 import { route, navigate } from "./Router.jsx";
 import { uploadProgress } from "../pages/Upload.jsx";
 import { SearchModal, openSearch } from "./SearchModal.jsx";
+import { openLightbox } from "./Lightbox.jsx";
 
 // --- Nav icons (inline SVG, 20x20) ---
 function UploadIcon() {
@@ -64,12 +65,26 @@ function AlbumsIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
 const navItems = [
   { path: "/", label: "Upload", icon: UploadIcon },
   { path: "/albums", label: "Albums", icon: AlbumsIcon },
   { path: "/map", label: "Map", icon: MapIcon },
   { path: "/settings", label: "Settings", icon: SettingsIcon },
 ];
+
+/** Open lightbox when a search result is selected. */
+function handleSearchSelect(photo) {
+  openLightbox([photo], 0);
+}
 
 /**
  * PhoneLayout — page content wrapper with bottom ShNav.
@@ -78,18 +93,29 @@ const navItems = [
 export function PhoneLayout({ children }) {
   return (
     <div style="min-height: 100dvh;">
-      <div style="position: relative;">
+      {/* Header bar with search */}
+      <div
+        class="fc-header"
+        style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top, 0px));"
+      >
+        <span
+          style="font-family: var(--font-mono, monospace); font-size: 0.8rem; letter-spacing: 0.12em; color: var(--sh-phosphor, #39ff14);"
+        >
+          FRAMECAST
+        </span>
         <button
           type="button"
           onClick={openSearch}
           aria-label="Search photos"
-          style="position: absolute; top: 12px; right: 12px; z-index: 50; background: none; border: 1px solid var(--sh-phosphor, #39ff14); color: var(--sh-phosphor, #39ff14); font-family: var(--font-mono, monospace); font-size: 0.75rem; padding: 6px 10px; cursor: pointer; letter-spacing: 0.1em; min-width: 44px; min-height: 44px; display: flex; align-items: center; gap: 4px;"
+          style="background: none; border: 1px solid var(--border-subtle, rgba(255,255,255,0.15)); color: var(--sh-phosphor, #39ff14); cursor: pointer; padding: 6px 10px; min-width: 44px; min-height: 44px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono, monospace); font-size: 0.75rem; border-radius: 3px;"
         >
+          <SearchIcon />
           SEARCH
         </button>
+      </div>
+      <div>
         {children}
       </div>
-      <SearchModal />
       {uploadProgress.value && (
         <div class="fc-upload-toast">
           UPLOADING {uploadProgress.value.current}/{uploadProgress.value.total}
@@ -99,6 +125,7 @@ export function PhoneLayout({ children }) {
           />
         </div>
       )}
+      <SearchModal onSelect={handleSearchSelect} />
       <ShNav
         items={navItems}
         currentPath={route.value}
