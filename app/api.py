@@ -9,6 +9,7 @@ Includes per-IP rate limiting (60 requests/minute) on state-changing API endpoin
 import logging
 import os
 import re
+import socket
 import subprocess
 import threading
 from contextlib import closing
@@ -209,12 +210,19 @@ def status():
         "video_count": video_count,
         "disk": disk,
         "version": _read_version(),
+        "hostname": socket.gethostname(),
         "settings": _current_settings(),
     }
     # Only expose PIN to localhost (TV display needs it to show on-screen)
     if request.remote_addr in ("127.0.0.1", "::1"):
         result["access_pin"] = config.get("ACCESS_PIN", "").strip()
     return jsonify(result)
+
+
+@api.route("/hostname")
+def get_hostname():
+    """Return the current system hostname."""
+    return jsonify({"hostname": socket.gethostname()})
 
 
 @api.route("/settings")
@@ -348,6 +356,44 @@ def update_settings():
         return jsonify({"error": "No valid settings provided"}), 400
 
     return jsonify({"status": "ok", "settings": _current_settings()})
+
+
+@api.route("/timezone", methods=["POST"])
+@require_pin
+def set_timezone():
+    """Set the system timezone via timedatectl."""
+    data = _require_json()
+    tz = data.get("timezone", "").strip()
+    if not tz or "/" not in tz:
+        return jsonify({"error": "Invalid timezone format"}), 400
+    try:
+        result = subprocess.run(
+            ["timedatectl", "set-timezone", tz],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            log.error("timedatectl failed: %s", result.stderr)
+            return jsonify({"error": f"Invalid timezone: {tz}"}), 400
+    except Exception as exc:
+        log.error("Failed to set timezone: %s", exc)
+        return jsonify({"error": "Failed to set timezone"}), 500
+    log.info("Timezone set to %s", tz)
+    return jsonify({"status": "ok", "timezone": tz})
+
+
+@api.route("/timezone")
+def get_timezone():
+    """Get the current system timezone."""
+    try:
+        result = subprocess.run(
+            ["timedatectl", "show", "--property=Timezone", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+        tz = result.stdout.strip() or "UTC"
+    except Exception:
+        log.error("Failed to read timezone", exc_info=True)
+        tz = "UTC"
+    return jsonify({"timezone": tz})
 
 
 @api.route("/events")
@@ -849,6 +895,21 @@ def wifi_scan():
     return jsonify(networks)
 
 
+@api.route("/wifi/test")
+def wifi_test_connection():
+    """Test internet connectivity by pinging a reliable host."""
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "3", "8.8.8.8"],
+            capture_output=True, timeout=5,
+        )
+        online = result.returncode == 0
+    except Exception:
+        log.warning("WiFi connectivity test failed", exc_info=True)
+        online = False
+    return jsonify({"online": online})
+
+
 @api.route("/wifi/connect", methods=["POST"])
 @require_pin
 def wifi_connect():
@@ -882,6 +943,95 @@ def wifi_ap_stop():
     success, message = wifi.stop_ap()
     status_code = 200 if success else 502
     return jsonify({"success": success, "message": message}), status_code
+
+
+# ---------------------------------------------------------------------------
+# SSH control endpoints (Issue #4)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/ssh/status")
+@require_pin
+def ssh_status():
+    """Check if SSH is enabled."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "ssh"],
+            capture_output=True, text=True, timeout=5,
+        )
+        active = result.stdout.strip() == "active"
+    except Exception:
+        log.error("SSH status check failed", exc_info=True)
+        active = False
+    return jsonify({"enabled": active})
+
+
+@api.route("/ssh/toggle", methods=["POST"])
+@require_pin
+def ssh_toggle():
+    """Enable or disable SSH service."""
+    data = _require_json()
+    enable = data.get("enabled", False)
+    try:
+        if enable:
+            subprocess.run(
+                ["sudo", "systemctl", "enable", "--now", "ssh"],
+                capture_output=True, timeout=10, check=True,
+            )
+            log.info("SSH enabled via web UI")
+        else:
+            subprocess.run(
+                ["sudo", "systemctl", "disable", "--now", "ssh"],
+                capture_output=True, timeout=10, check=True,
+            )
+            log.info("SSH disabled via web UI")
+    except subprocess.CalledProcessError as exc:
+        log.error("SSH toggle failed: %s", exc)
+        return jsonify({"error": "Failed to toggle SSH"}), 500
+    except Exception as exc:
+        log.error("SSH toggle failed: %s", exc)
+        return jsonify({"error": "Failed to toggle SSH"}), 500
+    return jsonify({"status": "ok", "enabled": enable})
+
+
+# ---------------------------------------------------------------------------
+# Frame discovery (mDNS / avahi)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/frames")
+def discover_frames():
+    """Discover other FrameCast devices on the local network via mDNS."""
+    frames = []
+    try:
+        result = subprocess.run(
+            ["avahi-browse", "-tprk", "_http._tcp"],
+            capture_output=True, text=True, timeout=5,
+        )
+        my_hostname = socket.gethostname()
+        for line in result.stdout.splitlines():
+            if not line.startswith("=") or "model=framecast" not in line:
+                continue
+            parts = line.split(";")
+            if len(parts) < 8:
+                continue
+            hostname = parts[3]
+            ip = parts[7]
+            port = parts[8] if len(parts) > 8 else "8080"
+            if hostname != my_hostname:
+                frames.append({
+                    "hostname": hostname,
+                    "ip": ip,
+                    "port": port,
+                    "url": f"http://{ip}:{port}",
+                })
+    except FileNotFoundError:
+        log.info("avahi-browse not found — frame discovery disabled")
+    except subprocess.TimeoutExpired:
+        log.warning("avahi-browse timed out during frame discovery")
+    except Exception:
+        log.warning("Frame discovery failed", exc_info=True)
+    return jsonify({"frames": frames})
 
 
 # ---------------------------------------------------------------------------

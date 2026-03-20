@@ -9,6 +9,7 @@ systemctl enable wifi-manager.service
 systemctl enable framecast-update.timer
 systemctl enable framecast-health.timer
 systemctl enable framecast-schedule.timer
+systemctl enable framecast-hostname.service
 systemctl enable avahi-daemon.service
 systemctl enable watchdog.service
 
@@ -24,6 +25,11 @@ EOF
 mkdir -p /home/pi/media
 chown -R 1000:1000 /home/pi/media
 
+# SSH disabled by default for security (Issue #4)
+# Users can enable via Settings UI or by placing an empty file named "ssh"
+# on the boot partition (/boot/firmware/ssh or /boot/ssh) before first boot.
+systemctl disable ssh
+
 # Lock pi user password (SSH disabled, headless device)
 passwd -l pi
 
@@ -38,7 +44,7 @@ chmod +x /opt/framecast/scripts/health-check.sh
 # Scoped sudoers for service restart and reboot
 SUDOERS_TMP=$(mktemp)
 trap 'rm -f "${SUDOERS_TMP:-}"' EXIT
-echo "pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart framecast, /usr/bin/systemctl restart framecast-kiosk, /usr/sbin/reboot, /usr/sbin/shutdown" > "$SUDOERS_TMP"
+echo "pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart framecast, /usr/bin/systemctl restart framecast-kiosk, /usr/bin/systemctl enable --now ssh, /usr/bin/systemctl disable --now ssh, /usr/sbin/reboot, /usr/sbin/shutdown" > "$SUDOERS_TMP"
 if visudo -cf "$SUDOERS_TMP" >/dev/null 2>&1; then
     cp "$SUDOERS_TMP" /etc/sudoers.d/framecast
     chmod 440 /etc/sudoers.d/framecast
