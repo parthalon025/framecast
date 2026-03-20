@@ -228,7 +228,7 @@ framecast/
 |-- pi-gen/                      # OS image build (Docker-based)
 |-- scripts/                     # Health check, HDMI control, smoke tests
 |-- systemd/                     # 6 service/timer definitions
-|-- tests/                       # 129 tests (db, rotation, users, cec, albums)
+|-- tests/                       # 160 tests (db, rotation, users, cec, albums, auth, rate_limiter, config)
 |-- API.md                       # Full endpoint documentation
 |-- CONTRIBUTING.md              # Dev setup + PR guidelines
 |-- VERSION                      # Current version (semver)

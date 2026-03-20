@@ -175,7 +175,7 @@ def generate_playlist(count=50):
         dict with "photos" (list of photo dicts) and "playlist_id" (str).
     """
     try:
-        all_photos = db.get_photos()
+        all_photos = db.get_playlist_candidates()
     except Exception:
         log.error("ROTATION: Failed to fetch photos for playlist", exc_info=True)
         return {"photos": [], "playlist_id": str(uuid4())[:8]}

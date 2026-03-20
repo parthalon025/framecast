@@ -203,7 +203,14 @@ POST /delete-all
 
 **Request:** `application/x-www-form-urlencoded` with `confirm=DELETE`.
 
-Redirects to index page on completion (form-based endpoint, not JSON).
+Redirects to index page on completion for form submissions. Returns JSON for XHR/fetch clients (set `X-Requested-With: XMLHttpRequest` header):
+
+```json
+{
+  "status": "ok",
+  "deleted": 47
+}
+```
 
 ### Toggle Favorite
 
@@ -469,6 +476,28 @@ POST /api/users
 ```json
 {
   "error": "User name already exists"
+}
+```
+
+### Delete User
+
+Delete a user by ID. Their photos are reassigned to the default user.
+
+```
+DELETE /api/users/{user_id}
+```
+
+**Response (200):**
+```json
+{
+  "status": "ok"
+}
+```
+
+**Server error (500):**
+```json
+{
+  "error": "Failed to delete user"
 }
 ```
 
@@ -882,7 +911,7 @@ data: {"filename": "sunset.jpg", "photo_id": 12}
 | `state:current` | `{"connected": true, "clients": 3}` | Sent on initial connection |
 | `photo:added` | `{"filename": "...", "photo_id": N}` | Photo uploaded |
 | `photo:deleted` | `{"filename": "..."}` | Photo deleted |
-| `photo:favorited` | `{"photo_id": N, "is_favorite": bool}` | Favorite toggled |
+| `photo:favorited` | `{"id": N, "is_favorite": bool}` | Favorite toggled |
 | `settings:changed` | `{...settings object...}` | Settings updated |
 | `update:rebooting` | `{"version": "v2.1.0"}` | OTA update applied, reboot imminent |
 

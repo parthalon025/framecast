@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 from flask import (
@@ -226,6 +227,12 @@ def request_timeout(timeout_seconds):
                 # Windows or system without SIGALRM - skip timeout
                 return f(*args, **kwargs)
 
+            # SIGALRM only works in the main thread; gthread workers
+            # dispatch requests to non-main threads where signal.signal()
+            # raises ValueError.  Fall back to gunicorn's own timeout.
+            if threading.current_thread() is not threading.main_thread():
+                return f(*args, **kwargs)
+
             def _timeout_handler(signum, frame):
                 raise TimeoutError(f"Request timed out after {timeout_seconds} seconds")
 
@@ -384,8 +391,11 @@ def index():
     disk = media.get_disk_usage()
     photo_count = sum(1 for f in files if not f["is_video"])
     video_count = sum(1 for f in files if f["is_video"])
-    # Check if any photos have GPS locations for the Map nav link
-    has_locations = bool(media.get_photo_locations())
+    # Check if any photos have GPS locations for the Map nav link (lightweight DB query)
+    with closing(db.get_db()) as conn:
+        has_locations = conn.execute(
+            "SELECT 1 FROM photos WHERE gps_lat IS NOT NULL AND quarantined = 0 LIMIT 1"
+        ).fetchone() is not None
     return render_template(
         "index.html",
         files=files,
@@ -570,23 +580,12 @@ def _do_upload():
 
         # Compute checksum
         try:
-            checksum = db._compute_sha256(str(dest))
+            checksum = db.compute_sha256(str(dest))
         except Exception as exc:
             log.warning("Failed to compute checksum for %s: %s", filename, exc)
 
         # Unquarantine and update metadata in DB
-        from contextlib import closing as _closing
-        with db._write_lock:
-            with _closing(db.get_db()) as conn:
-                conn.execute(
-                    """UPDATE photos SET
-                       quarantined = 0, quarantine_reason = NULL,
-                       file_size = ?, width = ?, height = ?,
-                       checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
-                       WHERE id = ?""",
-                    (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
-                )
-                conn.commit()
+        db.unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon)
 
         uploaded += 1
         uploaded_names.append(filename)
@@ -636,9 +635,12 @@ def delete():
             db.update_photo_quarantine(photo_row["id"], True, "deleted by user")
 
         # Remove associated thumbnail if it exists
-        thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
-        if thumb_path.exists():
-            thumb_path.unlink()
+        try:
+            thumb_path = Path(THUMBNAIL_DIR) / (filepath.stem + ".jpg")
+            if thumb_path.exists():
+                thumb_path.unlink()
+        except OSError as exc:
+            log.warning("Failed to remove thumbnail for %s: %s", filepath.name, exc)
         filepath.unlink()
         log.info("Deleted: %s", filename)
         sse.notify("photo:deleted", {"filename": filename})
@@ -667,15 +669,8 @@ def delete_all():
     all_ext = image_ext | video_ext
 
     # Bulk-quarantine all photos in DB before unlinking files (Lesson: delete-all must update DB)
-    from contextlib import closing as _closing
     try:
-        with db._write_lock:
-            with _closing(db.get_db()) as conn:
-                conn.execute(
-                    "UPDATE photos SET quarantined = 1, quarantine_reason = 'bulk delete' "
-                    "WHERE quarantined = 0"
-                )
-                conn.commit()
+        db.bulk_quarantine_all(reason="bulk delete")
         log.info("Bulk-quarantined all photos in DB before delete-all")
     except Exception as db_exc:
         log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
@@ -683,14 +678,20 @@ def delete_all():
     count = 0
     for f in media_path.iterdir():
         if f.is_file() and f.suffix.lower() in all_ext:
-            f.unlink()
-            count += 1
+            try:
+                f.unlink()
+                count += 1
+            except OSError as exc:
+                log.warning("Failed to delete %s during delete-all: %s", f.name, exc)
     # Clean up all thumbnails
     thumb_dir = Path(THUMBNAIL_DIR)
     if thumb_dir.exists():
         for t in thumb_dir.iterdir():
             if t.is_file():
-                t.unlink()
+                try:
+                    t.unlink()
+                except OSError as exc:
+                    log.warning("Failed to delete thumbnail %s during delete-all: %s", t.name, exc)
     # Clear GPS locations cache
     cache_path = Path(MEDIA_DIR) / ".locations.json"
     if cache_path.exists():
@@ -699,12 +700,16 @@ def delete_all():
         except OSError as exc:
             log.warning("Failed to delete locations cache: %s", exc)
     log.info("Deleted all: %d files", count)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"status": "ok", "deleted": count})
     flash(f"Deleted {count} file(s)", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/media/<path:filename>")
 def serve_media(filename):
+    if filename.startswith(("quarantine/", "quarantine\\")):
+        abort(404)
     return send_from_directory(
         MEDIA_DIR, filename, mimetype=None
     )

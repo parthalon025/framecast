@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 from contextlib import closing
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import media
@@ -29,6 +30,7 @@ _stats_buffer = []
 _stats_buffer_lock = threading.Lock()
 _STATS_FLUSH_THRESHOLD = 30
 _STATS_FLUSH_INTERVAL = 300  # 5 minutes
+_MAX_STATS_BUFFER = 500  # Cap to prevent OOM on persistent DB errors
 _stats_last_flush = time.monotonic()
 _flush_timer = None
 
@@ -119,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_photos_uploaded_by ON photos(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_photos_last_shown ON photos(last_shown_at);
 CREATE INDEX IF NOT EXISTS idx_display_stats_photo ON display_stats(photo_id);
 CREATE INDEX IF NOT EXISTS idx_display_stats_shown ON display_stats(shown_at);
+CREATE INDEX IF NOT EXISTS idx_photos_checksum ON photos(checksum_sha256);
 """
 
 # --- Smart albums (computed queries) ---
@@ -201,6 +204,9 @@ def init_db():
 
     # Auto-prune old display stats on startup
     _prune_old_stats()
+
+    # Auto-prune quarantined photos older than 30 days
+    prune_quarantined()
 
     # Register atexit handler for stats buffer flush
     atexit.register(_flush_stats)
@@ -359,6 +365,16 @@ def get_photos(
         return [dict(r) for r in rows]
 
 
+def get_playlist_candidates():
+    """Get all non-quarantined, non-hidden photos for slideshow rotation."""
+    with closing(get_db()) as conn:
+        rows = conn.execute(
+            """SELECT id, filename, uploaded_at, exif_date, is_favorite, view_count
+               FROM photos WHERE quarantined = 0 AND is_hidden = 0"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def update_photo_quarantine(photo_id, quarantined, reason=None):
     """Set quarantine status for a photo."""
     with _write_lock:
@@ -401,6 +417,32 @@ def toggle_hidden(photo_id):
                 "SELECT is_hidden FROM photos WHERE id = ?", (photo_id,)
             ).fetchone()
             return bool(row["is_hidden"]) if row else None
+
+
+def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon):
+    """Clear quarantine and update metadata after successful upload processing."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                """UPDATE photos SET quarantined = 0, quarantine_reason = NULL,
+                   file_size = ?, width = ?, height = ?,
+                   checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
+                   WHERE id = ?""",
+                (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
+            )
+            conn.commit()
+
+
+def bulk_quarantine_all(reason="bulk delete"):
+    """Mark all non-quarantined photos as quarantined."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "UPDATE photos SET quarantined = 1, quarantine_reason = ? "
+                "WHERE quarantined = 0",
+                (reason,),
+            )
+            conn.commit()
 
 
 def delete_photo(photo_id):
@@ -581,6 +623,36 @@ def get_or_create_user(name, is_admin=False):
             return row["id"] if row else None
 
 
+def create_user_returning_row(name):
+    """Create a new user and return the full row as a dict.
+
+    Raises sqlite3.IntegrityError if name already exists.
+    """
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "INSERT INTO users (name) VALUES (?)", (name,)
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM users WHERE name = ?", (name,)
+            ).fetchone()
+            return dict(row) if row else None
+
+
+def delete_user_reassign(user_id):
+    """Delete a user by id and reassign their photos to 'default'."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "UPDATE photos SET uploaded_by = 'default' "
+                "WHERE uploaded_by = (SELECT name FROM users WHERE id = ?)",
+                (user_id,),
+            )
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+
+
 # --- Display stats buffering ---
 
 
@@ -622,10 +694,14 @@ def _flush_stats():
                         (photo_id,),
                     )
                 conn.commit()
-    except Exception as exc:
-        log.error("STATS: flush failed, re-queuing %d entries: %s", len(batch), exc)
+    except Exception:
+        log.error("STATS: flush failed, re-queuing %d entries", len(batch), exc_info=True)
         with _stats_buffer_lock:
-            _stats_buffer.extend(batch)
+            if len(_stats_buffer) < _MAX_STATS_BUFFER:
+                _stats_buffer.extend(batch)
+            else:
+                log.error("STATS: buffer full (%d), dropping %d entries to prevent OOM",
+                           len(_stats_buffer), len(batch))
         return
 
     _stats_last_flush = time.monotonic()
@@ -682,6 +758,22 @@ def _prune_old_stats():
             conn.commit()
             if cur.rowcount > 0:
                 log.info("STATS: PRUNED %d entries older than 30 days", cur.rowcount)
+
+
+def prune_quarantined(days=30):
+    """Remove quarantined photos older than N days."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cursor = conn.execute(
+                "DELETE FROM photos WHERE quarantined = 1 AND uploaded_at < ?",
+                (cutoff,),
+            )
+            conn.commit()
+            count = cursor.rowcount
+            if count:
+                log.info("DB: pruned %d quarantined photos older than %d days", count, days)
+            return count
 
 
 # --- Aggregated stats ---
@@ -818,6 +910,10 @@ def _compute_sha256(filepath):
         for chunk in iter(lambda: f.read(8192), b""):
             sha.update(chunk)
     return sha.hexdigest()
+
+
+# Public alias for external callers (web_upload.py etc.)
+compute_sha256 = _compute_sha256
 
 
 _pillow_warned = False

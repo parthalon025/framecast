@@ -10,6 +10,7 @@
  */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import { createSSE } from "../lib/sse.js";
 import { Boot } from "./Boot.jsx";
 import { Welcome } from "./Welcome.jsx";
 import { Setup } from "./Setup.jsx";
@@ -83,48 +84,38 @@ export function DisplayRouter() {
   // SSE: react to photo changes after initial boot
   useEffect(() => {
     let cancelled = false;
-    let source = null;
 
-    function connectSSE() {
-      if (source) source.close();
-      source = new EventSource("/api/events");
-
-      source.addEventListener("photo:added", () => {
-        if (cancelled) return;
-        // If we were on welcome, switch to slideshow
-        if (displayState.value === "welcome") {
-          displayState.value = "slideshow";
-        }
-      });
-
-      source.addEventListener("photo:deleted", () => {
-        if (cancelled) return;
-        // Re-check if any photos remain
-        fetch("/api/status")
-          .then((res) => res.json())
-          .then((data) => {
-            if (cancelled) return;
-            const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
-            if (totalMedia === 0) {
-              displayState.value = "welcome";
-            }
-          })
-          .catch((err) => {
+    const sse = createSSE("/api/events", {
+      listeners: {
+        "photo:added": () => {
+          if (cancelled) return;
+          // If we were on welcome, switch to slideshow
+          if (displayState.value === "welcome") {
+            displayState.value = "slideshow";
+          }
+        },
+        "photo:deleted": () => {
+          if (cancelled) return;
+          // Re-check if any photos remain
+          fetch("/api/status")
+            .then((res) => res.json())
+            .then((data) => {
+              if (cancelled) return;
+              const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+              if (totalMedia === 0) {
+                displayState.value = "welcome";
+              }
+            })
+            .catch((err) => {
               console.warn("DisplayRouter: status refetch after delete failed", err);
-          });
-      });
-
-      source.onerror = () => {
-        source.close();
-        setTimeout(connectSSE, 3000);
-      };
-    }
-
-    connectSSE();
+            });
+        },
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (source) source.close();
+      sse.close();
     };
   }, []);
 

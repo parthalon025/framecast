@@ -510,7 +510,7 @@ export function Settings() {
         onClick={save}
         style={`opacity: ${hasDirty ? 1 : 0.4};`}
       >
-        {saving ? "SAVING" : "SAVE"}
+        {saving ? "STANDBY" : "SAVE"}
       </button>
 
       {/* ── RESTART CONFIRMATION MODAL ── */}

@@ -6,15 +6,16 @@
   "scripts": {
     "prebuild": "mkdir -p ../static/css ../static/js && cat src/styles/tokens.css src/styles/base.css src/styles/slideshow.css src/styles/display.css src/styles/photos.css src/styles/settings.css src/styles/responsive.css src/styles/motion.css > ../static/css/app.css",
     "build": "node esbuild.config.js",
-    "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css",
-    "dev": "node esbuild.config.js --watch"
+    "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css && cp node_modules/leaflet/dist/leaflet.css ../static/css/leaflet.css",
+    "dev": "node esbuild.config.js --watch",
+    "postinstall": "node node_modules/superhot-ui/scripts/setup.js"
   },
   "dependencies": {
     "@preact/signals": "^2.0.0",
     "leaflet": "^1.9.4",
     "preact": "^10.25.0",
     "qrcode-generator": "^2.0.4",
-    "superhot-ui": "^0.3.1"
+    "superhot-ui": "^0.4.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

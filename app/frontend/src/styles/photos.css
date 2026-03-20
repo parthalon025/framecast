@@ -10,12 +10,14 @@
 
 /* Context menu items */
 .fc-ctx-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   background: none;
   border: none;
   color: inherit;
-  padding: 8px 14px;
+  padding: 12px 14px;
+  min-height: 44px;
   text-align: left;
   cursor: pointer;
   font-family: var(--font-mono, monospace);
@@ -24,7 +26,6 @@
 }
 
 .fc-ctx-item:hover {
-  background: rgba(255, 255, 255, 0.06);
   border-left: 2px solid var(--sh-phosphor);
 }
 

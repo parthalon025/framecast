@@ -12,7 +12,7 @@ import { Stats } from "./pages/Stats.jsx";
 import { Users } from "./pages/Users.jsx";
 import { DisplayRouter } from "./display/DisplayRouter.jsx";
 import { PinGate } from "./components/PinGate.jsx";
-import { detectCapability, applyCapability } from "superhot-ui";
+import { detectCapability, applyCapability, setFacilityState } from "superhot-ui";
 
 // --- Surface detection ---
 // /display* = TV display surface, everything else = phone UI
@@ -53,6 +53,7 @@ function App() {
 // --- Init ---
 const cap = detectCapability();
 applyCapability(cap);
+setFacilityState("normal");
 
 // Intercept hash-style links from ShNav and convert to pushState
 document.addEventListener("click", (evt) => {
