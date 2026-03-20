@@ -524,3 +524,47 @@ class TestSystemControl:
         assert resp.status_code == 200
         assert resp.get_json()["status"] == "ok"
         mock_timer.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/photos/<id>/quarantine — localhost-only
+# ---------------------------------------------------------------------------
+
+
+class TestQuarantinePhoto:
+    """Tests for the POST /api/photos/<id>/quarantine endpoint."""
+
+    def _insert_photo(self):
+        """Insert a test photo and return its ID."""
+        import modules.db as db_mod
+        return db_mod.insert_photo(
+            filename="test_quarantine.jpg",
+            filepath="test_quarantine.jpg",
+        )
+
+    def test_quarantine_photo_from_localhost(self, client):
+        """POST /api/photos/<id>/quarantine from localhost should succeed."""
+        photo_id = self._insert_photo()
+        resp = client.post(
+            f"/api/photos/{photo_id}/quarantine",
+            json={"reason": "corrupt image"},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "ok"
+        assert data["photo_id"] == photo_id
+
+    def test_quarantine_photo_not_found(self, client):
+        """POST /api/photos/<id>/quarantine with nonexistent ID returns 404."""
+        resp = client.post(
+            "/api/photos/999999/quarantine",
+            json={"reason": "corrupt image"},
+        )
+        assert resp.status_code == 404
+
+    def test_quarantine_photo_default_reason(self, client):
+        """POST without reason body uses default reason."""
+        photo_id = self._insert_photo()
+        resp = client.post(f"/api/photos/{photo_id}/quarantine")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "ok"

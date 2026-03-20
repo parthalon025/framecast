@@ -521,6 +521,23 @@ def toggle_photo_favorite(photo_id):
     return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
 
 
+@api.route("/photos/<int:photo_id>/quarantine", methods=["POST"])
+def quarantine_photo(photo_id):
+    """Quarantine a photo (localhost only — called from TV display)."""
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return jsonify({"error": "LOCALHOST ONLY"}), 403
+
+    photo = db.get_photo_by_id(photo_id)
+    if not photo:
+        return jsonify({"error": "Photo not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason", "auto-quarantined")
+    db.update_photo_quarantine(photo_id, True, reason)
+    log.info("Photo %d quarantined: %s", photo_id, reason)
+    return jsonify({"status": "ok", "photo_id": photo_id})
+
+
 @api.route("/photos/<int:photo_id>/duplicates")
 def photo_duplicates(photo_id):
     """Find near-duplicate photos by perceptual hash."""
