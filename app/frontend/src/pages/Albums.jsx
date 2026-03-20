@@ -3,6 +3,7 @@ import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { ShModal, ShFrozen, ShToast, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
 import { Lightbox, openLightbox } from "../components/Lightbox.jsx";
@@ -154,6 +155,21 @@ function handleToggleFavorite(photo) {
     });
 }
 
+function handleRemoveFromAlbum(photo) {
+  const album = selectedAlbum.value;
+  if (!album) return;
+  fetch(`/api/albums/${album.id}/photos/${photo.id}`, { method: "DELETE" })
+    .then((resp) => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      fetchAlbumPhotos(album.id);
+      showToast("REMOVED", "info");
+    })
+    .catch((err) => {
+      console.warn("Albums: remove from album failed", err);
+      showToast("FAULT: " + err.message, "error");
+    });
+}
+
 function handlePhotoSelect(photo) {
   const photoList = albumPhotos.value;
   const idx = photoList.findIndex((p) => p.id === photo.id);
@@ -244,12 +260,27 @@ export function Albums() {
           <ShFrozen timestamp={albumPhotosLastUpdated}>
             <div class="sh-grid sh-grid-3">
               {albumPhotos.value.map((photo) => (
-                <PhotoCard
-                  key={photo.id}
-                  photo={photo}
-                  onSelect={handlePhotoSelect}
-                  onToggleFavorite={handleToggleFavorite}
-                />
+                <div key={photo.id} style="position: relative;">
+                  <PhotoCard
+                    photo={photo}
+                    onSelect={handlePhotoSelect}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                  {!currentAlbum.smart && (
+                    <button
+                      class="fc-action-btn"
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        handleRemoveFromAlbum(photo);
+                      }}
+                      type="button"
+                      aria-label={`Remove ${photo.name || photo.filename} from album`}
+                      style="position: absolute; bottom: 28px; right: 4px; z-index: 10; background: rgba(0,0,0,0.7); border: 1px solid var(--sh-threat, #ff4444); color: var(--sh-threat, #ff4444); padding: 4px 8px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.65rem; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center;"
+                    >
+                      [X]
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </ShFrozen>
