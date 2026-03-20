@@ -8,11 +8,16 @@ Reference: docs/plans/2026-03-19-v2-polish-research.md § 2a
 """
 
 import logging
+import re
 import subprocess
 from contextlib import suppress
 
 log = logging.getLogger(__name__)
 _TIMEOUT = 5
+
+# CEC power status patterns (compiled once)
+_CEC_STATUS_ON = re.compile(r"\bpwr-status:\s*on\b", re.IGNORECASE)
+_CEC_STATUS_STANDBY = re.compile(r"\bpwr-status:\s*standby\b", re.IGNORECASE)
 
 
 def _cec_cmd(args, timeout=_TIMEOUT):
@@ -60,11 +65,11 @@ def tv_status():
     out = _cec_cmd(["-d0", "--give-device-power-status"])
     if out is None:
         return "unknown"
-    lower = out.lower()
-    if "pwr-on-status: on" in lower:
+    if _CEC_STATUS_ON.search(out):
         return "on"
-    if "pwr-on-status: standby" in lower or "standby" in lower:
+    if _CEC_STATUS_STANDBY.search(out):
         return "standby"
+    log.debug("CEC: unrecognized status output: %s", out.strip())
     return "unknown"
 
 

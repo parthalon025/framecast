@@ -32,7 +32,7 @@ from werkzeug.utils import secure_filename
 
 import sse
 from api import api
-from modules import config, db, media, services
+from modules import config, db, media, services, wifi
 from modules.auth import auth_api, require_pin
 from modules.boot_config import apply_boot_config
 
@@ -41,6 +41,24 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger(__name__)
+
+
+# --- Runtime worker-count guard ---
+
+
+def _check_single_worker():
+    """Guard against multi-worker misconfiguration (Lesson #1356).
+
+    SSE client list, stats buffer, and CEC state are process-local.
+    Multiple workers silently break real-time updates and stats accuracy.
+    """
+    workers = os.environ.get("WEB_CONCURRENCY") or os.environ.get("GUNICORN_WORKERS")
+    if workers and workers not in ("", "1"):
+        raise RuntimeError(
+            f"FrameCast requires exactly 1 gunicorn worker (got {workers}). "
+            "SSE, stats buffer, and CEC state are process-singletons."
+        )
+
 
 # --- Self-healing .env ---
 
@@ -141,6 +159,18 @@ def _validate_media_dir(media_dir):
 _validate_media_dir(MEDIA_DIR)
 
 
+def _validate_upload_path(filepath, media_dir):
+    """Ensure resolved upload path stays within MEDIA_DIR (Lesson #37).
+
+    Prevents path traversal if MEDIA_DIR is reconfigured at runtime.
+    """
+    resolved = Path(filepath).resolve()
+    media_resolved = Path(media_dir).resolve()
+    if not str(resolved).startswith(str(media_resolved) + os.sep) and resolved != media_resolved:
+        log.error("Path traversal blocked: %s is outside %s", resolved, media_resolved)
+        raise ValueError(f"Upload path outside media directory: {resolved}")
+
+
 # --- Startup cleanup: remove leftover .tmp files from interrupted uploads ---
 
 
@@ -169,8 +199,13 @@ _cleanup_tmp_files()
 # --- Boot partition WiFi config ---
 apply_boot_config()
 
+# --- Recover stale AP after crash/restart (Issue #35) ---
+wifi.check_stale_ap()
+
 # --- Initialize SQLite content model ---
 db.init_db()
+db.vacuum_if_needed()
+db.register_shutdown_flush()
 
 
 # --- Request timeout ---
@@ -215,6 +250,7 @@ app = Flask(
     template_folder=str(SCRIPT_DIR / "templates"),
     static_folder=str(SCRIPT_DIR / "static"),
 )
+_check_single_worker()
 
 # Stable secret key: read from .env, generate and persist if missing
 _secret = config.get("FLASK_SECRET_KEY", "")
@@ -438,6 +474,13 @@ def _do_upload():
             filename = f"{stem}_{uuid.uuid4().hex[:8]}{suffix}"
             dest = Path(MEDIA_DIR) / filename
 
+        # Per-upload path traversal guard (Issue #37)
+        try:
+            _validate_upload_path(dest, MEDIA_DIR)
+        except ValueError:
+            skipped += 1
+            continue
+
         is_vid = media.is_video(filename)
 
         # DB INSERT before file write (Lesson #1670) — quarantined until file is safe
@@ -511,6 +554,7 @@ def _do_upload():
         if is_vid:
             _generate_video_thumbnail(dest, filename)
         else:
+            media.fix_orientation(dest)
             _auto_resize_image(dest)
             # Extract GPS
             coords = media.extract_gps(dest)

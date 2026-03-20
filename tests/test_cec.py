@@ -120,18 +120,28 @@ class TestTvStandby:
 class TestTvStatus:
     @patch("modules.cec._cec_cmd")
     def test_on(self, mock_cmd):
-        mock_cmd.return_value = "pwr-on-status: on\n"
+        mock_cmd.return_value = "pwr-status: on\n"
+        assert cec.tv_status() == "on"
+
+    @patch("modules.cec._cec_cmd")
+    def test_on_case_insensitive(self, mock_cmd):
+        mock_cmd.return_value = "PWR-STATUS: ON\n"
         assert cec.tv_status() == "on"
 
     @patch("modules.cec._cec_cmd")
     def test_standby(self, mock_cmd):
-        mock_cmd.return_value = "pwr-on-status: standby\n"
+        mock_cmd.return_value = "pwr-status: standby\n"
         assert cec.tv_status() == "standby"
 
     @patch("modules.cec._cec_cmd")
-    def test_standby_keyword_only(self, mock_cmd):
-        mock_cmd.return_value = "power status: standby\n"
+    def test_standby_extra_whitespace(self, mock_cmd):
+        mock_cmd.return_value = "pwr-status:  standby\n"
         assert cec.tv_status() == "standby"
+
+    @patch("modules.cec._cec_cmd")
+    def test_unrecognized_format_returns_unknown(self, mock_cmd):
+        mock_cmd.return_value = "power status: standby\n"
+        assert cec.tv_status() == "unknown"
 
     @patch("modules.cec._cec_cmd")
     def test_unknown_output(self, mock_cmd):

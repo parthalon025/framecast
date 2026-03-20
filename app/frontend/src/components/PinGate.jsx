@@ -50,7 +50,10 @@ export function PinGate() {
   const [verifying, setVerifying] = useState(false);
   const [toast, setToast] = useState(null);
   const [pinLength, setPinLength] = useState(4);
+  const [locked, setLocked] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const dismissTimer = useRef(null);
+  const lockTimer = useRef(null);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -59,11 +62,12 @@ export function PinGate() {
       .catch((err) => console.warn("PinGate: failed to fetch pin length", err));
     return () => {
       if (dismissTimer.current) clearTimeout(dismissTimer.current);
+      if (lockTimer.current) clearInterval(lockTimer.current);
     };
   }, []);
 
   const handleVerify = useCallback(async () => {
-    if (pinValue.length !== pinLength || verifying) return;
+    if (pinValue.length !== pinLength || verifying || locked) return;
 
     setVerifying(true);
     try {
@@ -86,6 +90,24 @@ export function PinGate() {
             _pendingRetry = null;
           }
         }, 600);
+      } else if (resp.status === 429) {
+        const body = await resp.json();
+        const retryAfter = body.retry_after || 30;
+        setPinValue("");
+        setLocked(true);
+        setCountdown(Math.ceil(retryAfter));
+        if (lockTimer.current) clearInterval(lockTimer.current);
+        lockTimer.current = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(lockTimer.current);
+              lockTimer.current = null;
+              setLocked(false);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
       } else {
         setToast({ type: "error", message: "INVALID PIN" });
         setPinValue("");
@@ -95,7 +117,7 @@ export function PinGate() {
     } finally {
       setVerifying(false);
     }
-  }, [pinValue, verifying]);
+  }, [pinValue, verifying, locked]);
 
   const handleInput = useCallback((evt) => {
     const val = evt.target.value.replace(/\D/g, "").slice(0, 4);
@@ -132,12 +154,21 @@ export function PinGate() {
             gap: 16px; padding: 24px 16px;
           `}
         >
-          <span
-            class="sh-label"
-            style="font-size: 0.85rem; letter-spacing: 0.15em;"
-          >
-            ENTER ACCESS PIN
-          </span>
+          {locked ? (
+            <span
+              class="sh-label"
+              style="color: var(--status-critical, #ff4444); font-size: 0.85rem; letter-spacing: 0.1em;"
+            >
+              LOCKED — TRY AGAIN IN {countdown}s
+            </span>
+          ) : (
+            <span
+              class="sh-label"
+              style="font-size: 0.85rem; letter-spacing: 0.15em;"
+            >
+              ENTER ACCESS PIN
+            </span>
+          )}
 
           <input
             class="sh-input"
@@ -148,11 +179,13 @@ export function PinGate() {
             value={pinValue}
             onInput={handleInput}
             onKeyDown={handleKeyDown}
+            disabled={locked}
             autoFocus
             style={`
               width: 140px; text-align: center;
               font-size: 2rem; letter-spacing: 0.5em;
               font-family: var(--font-mono, monospace);
+              opacity: ${locked ? 0.4 : 1};
             `}
             placeholder="----"
           />
@@ -160,17 +193,17 @@ export function PinGate() {
           <button
             class="sh-input"
             onClick={handleVerify}
-            disabled={pinValue.length !== 4 || verifying}
+            disabled={pinValue.length !== 4 || verifying || locked}
             style={`
               width: 100%; cursor: pointer;
               text-align: center; font-weight: 700;
               text-transform: uppercase; letter-spacing: 0.1em;
-              opacity: ${pinValue.length === 4 && !verifying ? 1 : 0.4};
-              color: ${pinValue.length === 4 ? "var(--sh-phosphor)" : "var(--text-tertiary)"};
-              border-color: ${pinValue.length === 4 ? "var(--sh-phosphor)" : "var(--border-subtle)"};
+              opacity: ${pinValue.length === 4 && !verifying && !locked ? 1 : 0.4};
+              color: ${pinValue.length === 4 && !locked ? "var(--sh-phosphor)" : "var(--text-tertiary)"};
+              border-color: ${pinValue.length === 4 && !locked ? "var(--sh-phosphor)" : "var(--border-subtle)"};
             `}
           >
-            {verifying ? "VERIFYING..." : "VERIFY"}
+            {locked ? `LOCKED ${countdown}s` : verifying ? "VERIFYING..." : "VERIFY"}
           </button>
         </div>
       </div>
