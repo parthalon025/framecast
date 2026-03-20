@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 from flask import (
@@ -354,8 +355,11 @@ def index():
     disk = media.get_disk_usage()
     photo_count = sum(1 for f in files if not f["is_video"])
     video_count = sum(1 for f in files if f["is_video"])
-    # Check if any photos have GPS locations for the Map nav link
-    has_locations = bool(media.get_photo_locations())
+    # Check if any photos have GPS locations for the Map nav link (lightweight DB query)
+    with closing(db.get_db()) as conn:
+        has_locations = conn.execute(
+            "SELECT 1 FROM photos WHERE gps_lat IS NOT NULL AND quarantined = 0 LIMIT 1"
+        ).fetchone() is not None
     return render_template(
         "index.html",
         files=files,
