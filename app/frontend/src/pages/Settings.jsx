@@ -5,9 +5,10 @@
  * piOS voice throughout: STANDBY, FAULT, CONFIRM, etc.
  */
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
-import { ShCollapsible, ShModal, ShToast, ShSkeleton, ShPageBanner } from "superhot-ui/preact";
+import { ShCollapsible, ShModal, ShToast, ShSkeleton, ShPageBanner, ShThreatPulse, ShStatusBadge } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 import { navigate } from "../components/Router.jsx";
 import { TransitionPreview } from "../components/TransitionPreview.jsx";
 
@@ -58,6 +59,13 @@ export function Settings() {
   const [restartOpen, setRestartOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [regeneratingPin, setRegeneratingPin] = useState(false);
+  const [rebootOpen, setRebootOpen] = useState(false);
+  const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [tvStatus, setTvStatus] = useState(null);
+  const [showMapNav, setShowMapNav] = useState(localStorage.getItem("fc_show_map") !== "false");
+  const [gpsCount, setGpsCount] = useState(null);
+  const [crtEnabled, setCrtEnabled] = useState(localStorage.getItem("fc_crt_enabled") !== "false");
+  const [audioEnabled, setAudioEnabled] = useState(localStorage.getItem("fc_audio_enabled") === "true");
   const [currentTz, setCurrentTz] = useState("UTC");
   const [frames, setFrames] = useState([]);
   const [scanningFrames, setScanningFrames] = useState(false);
@@ -89,6 +97,8 @@ export function Settings() {
     loadFrames();
     loadSshStatus();
     loadHttpsStatus();
+    fetch("/api/display/status").then(r => r.json()).then(d => setTvStatus(d.power)).catch(() => setTvStatus("unknown"));
+    fetchWithTimeout("/api/locations").then(r => r.json()).then(locs => setGpsCount(locs.length)).catch(() => {});
   }, []);
 
   /** Apply threshold color to storage bar when status changes. */
@@ -465,6 +475,20 @@ export function Settings() {
               />
               <span class="sh-value fc-range-value">{settings.max_video_duration || 30}s</span>
             </SettingRow>
+
+            <SettingRow label="CRT EFFECT">
+              <Toggle on={crtEnabled} onToggle={(val) => {
+                setCrtEnabled(val);
+                localStorage.setItem("fc_crt_enabled", val ? "true" : "false");
+              }} />
+            </SettingRow>
+
+            <SettingRow label="AUDIO FEEDBACK">
+              <Toggle on={audioEnabled} onToggle={(val) => {
+                setAudioEnabled(val);
+                localStorage.setItem("fc_audio_enabled", val ? "true" : "false");
+              }} />
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>
@@ -673,6 +697,13 @@ export function Settings() {
                 onToggle={(val) => update("display_on", val)}
               />
             </SettingRow>
+
+            <SettingRow label="TV STATUS">
+              <ShStatusBadge
+                status={tvStatus === "on" ? "healthy" : tvStatus === "standby" ? "warning" : "waiting"}
+                label={tvStatus ? tvStatus.toUpperCase() : "STANDBY"}
+              />
+            </SettingRow>
           </div>
         </ShCollapsible>
       </section>
@@ -734,6 +765,23 @@ export function Settings() {
                   SCAN
                 </button>
               </div>
+            </SettingRow>
+          </div>
+        </ShCollapsible>
+      </section>
+
+      {/* ── MAP ── */}
+      <section aria-label="Map settings">
+        <ShCollapsible title="MAP" defaultOpen={false}>
+          <div class="fc-settings-section">
+            <SettingRow label="SHOW IN NAV">
+              <Toggle on={showMapNav} onToggle={(val) => {
+                setShowMapNav(val);
+                localStorage.setItem("fc_show_map", val ? "true" : "false");
+              }} />
+            </SettingRow>
+            <SettingRow label="GPS PHOTOS">
+              <span class="sh-value">{gpsCount !== null ? `${gpsCount} LOCATED` : "STANDBY"}</span>
             </SettingRow>
           </div>
         </ShCollapsible>
@@ -895,6 +943,36 @@ export function Settings() {
               />
             </SettingRow>
 
+            <SettingRow label="DOWNLOAD BACKUP">
+              <a
+                class="sh-input sh-clickable"
+                href="/api/backup"
+                style="text-align: center; min-width: 120px; text-decoration: none; display: inline-block;"
+              >
+                DOWNLOAD
+              </a>
+            </SettingRow>
+
+            <SettingRow label="REBOOT DEVICE">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px;"
+                onClick={() => setRebootOpen(true)}
+              >
+                REBOOT
+              </button>
+            </SettingRow>
+
+            <SettingRow label="SHUT DOWN">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px; color: var(--sh-threat);"
+                onClick={() => setShutdownOpen(true)}
+              >
+                SHUT DOWN
+              </button>
+            </SettingRow>
+
             <SettingRow label="EXPORT SETTINGS">
               <button
                 class="sh-input sh-clickable"
@@ -976,6 +1054,56 @@ export function Settings() {
         onConfirm={handleRestart}
         onCancel={() => setRestartOpen(false)}
       />
+
+      {/* ── REBOOT CONFIRMATION MODAL ── */}
+      <ShModal
+        open={rebootOpen}
+        title="CONFIRM: REBOOT DEVICE?"
+        body="SLIDESHOW INTERRUPTS. RESTARTS IN ~30s."
+        confirmLabel="REBOOT"
+        cancelLabel="CANCEL"
+        onConfirm={async () => {
+          setRebootOpen(false);
+          showToast("REBOOTING — STANDBY", "info", 0);
+          try {
+            await fetch("/api/reboot", { method: "POST" });
+            const poll = setInterval(async () => {
+              try {
+                const res = await fetch("/api/status");
+                if (res.ok) {
+                  clearInterval(poll);
+                  showToast("SYSTEM ONLINE", "info");
+                  window.location.reload();
+                }
+              } catch (_err) { /* still rebooting */ }
+            }, 3000);
+          } catch (err) {
+            showToast("REBOOT FAILED: " + err.message, "error");
+          }
+        }}
+        onCancel={() => setRebootOpen(false)}
+      />
+
+      {/* ── SHUTDOWN CONFIRMATION MODAL ── */}
+      {shutdownOpen && (
+        <ShThreatPulse active persistent>
+          <ShModal
+            open={shutdownOpen}
+            title="CONFIRM: SHUT DOWN?"
+            body="REQUIRES PHYSICAL ACCESS TO RESTART."
+            confirmLabel="SHUT DOWN"
+            cancelLabel="CANCEL"
+            onConfirm={async () => {
+              setShutdownOpen(false);
+              showToast("SHUTTING DOWN", "error", 0);
+              try {
+                await fetch("/api/shutdown", { method: "POST" });
+              } catch (_err) { /* expected */ }
+            }}
+            onCancel={() => setShutdownOpen(false)}
+          />
+        </ShThreatPulse>
+      )}
 
       {/* ── TOAST ── */}
       {toast && (
