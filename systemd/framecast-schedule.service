@@ -5,4 +5,4 @@ After=framecast.service
 [Service]
 Type=oneshot
 ExecStart=/opt/framecast/scripts/hdmi-control.sh check-schedule
-EnvironmentFile=/opt/framecast/app/.env
+EnvironmentFile=-/opt/framecast/app/.env

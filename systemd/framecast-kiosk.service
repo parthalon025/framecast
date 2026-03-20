@@ -1,9 +1,10 @@
 [Unit]
 Description=FrameCast Kiosk Display
-After=framecast.service graphical.target
-Requires=framecast.service
-StartLimitIntervalSec=60
-StartLimitBurst=5
+After=framecast.service graphical.target local-fs.target
+BindsTo=framecast.service
+StartLimitIntervalSec=600
+StartLimitBurst=10
+StartLimitAction=reboot
 
 [Service]
 Type=simple
