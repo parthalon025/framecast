@@ -74,6 +74,49 @@
   color: var(--sh-phosphor, #40ff40);
 }
 
+/* Show on TV overlay button */
+.fc-show-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  color: var(--sh-phosphor, #39ff14);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  padding: 4px 6px;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Show on card hover or focus */
+.sh-card:hover .fc-show-btn,
+.fc-show-btn:focus {
+  opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .fc-show-btn {
+    opacity: 0.7;
+  }
+}
+
+/* Hide TV button when selection checkbox occupies the same corner */
+.fc-select-check ~ .fc-show-btn {
+  display: none;
+}
+
 /* Lightbox overlay — capture horizontal swipe, allow vertical scroll */
 .fc-lightbox-overlay {
   touch-action: pan-y;

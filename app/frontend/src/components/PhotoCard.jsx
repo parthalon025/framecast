@@ -131,6 +131,20 @@ export function PhotoCard({
         {isFav ? "\u2665" : "\u2661"}
       </button>
 
+      {/* Show on TV overlay */}
+      <button
+        class="fc-show-btn"
+        onClick={(evt) => {
+          evt.stopPropagation();
+          fetch(`/api/slideshow/show/${photo.id}`, { method: "POST" })
+            .catch((err) => console.warn("PhotoCard: show on TV failed", err));
+        }}
+        aria-label="Show on TV"
+        type="button"
+      >
+        TV
+      </button>
+
       <img
         src={`/thumbnail/${photo.name || photo.filename}`}
         onError={(evt) => { evt.target.src = `/media/${photo.name || photo.filename}`; evt.target.onerror = null; }}

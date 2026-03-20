@@ -147,6 +147,10 @@ def subscribe(last_event_id=None):
 
                 # Send keepalive comment to prevent connection timeout
                 yield ": keepalive\n\n"
+
+                # Send heartbeat event (clients use this to detect TV connection)
+                hb_eid = _next_event_id()
+                yield f"id: {hb_eid}\nevent: heartbeat\ndata: {{\"ts\": {int(time.time())}}}\n\n"
     except (BrokenPipeError, GeneratorExit):
         # Client disconnected — expected during normal operation (Lesson #36)
         pass
@@ -197,6 +201,16 @@ def notify(event: str, data: dict | None = None):
 
     if stale:
         log.warning("Dropped %d stale SSE client(s)", len(stale))
+        # Notify remaining clients that some peers lost sync — they should refetch
+        sync_eid = _next_event_id()
+        with _recent_lock:
+            _recent_events.append((sync_eid, "sync", {"reason": "client_overflow"}))
+        with _clients_lock:
+            for q in _clients:
+                try:
+                    q.put_nowait((sync_eid, "sync", {"reason": "client_overflow"}))
+                except Full:
+                    pass  # If this one is also full, it'll be cleaned next cycle
 
 
 def client_count():

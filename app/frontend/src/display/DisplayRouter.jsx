@@ -116,6 +116,24 @@ export function DisplayRouter() {
               console.warn("DisplayRouter: status refetch after delete failed", err);
             });
         },
+        "sync": () => {
+          if (cancelled) return;
+          // Peer lost sync — re-check current state
+          fetch("/api/status")
+            .then((res) => res.json())
+            .then((data) => {
+              if (cancelled) return;
+              const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+              if (totalMedia === 0) {
+                displayState.value = "welcome";
+              } else if (displayState.value === "welcome") {
+                displayState.value = "slideshow";
+              }
+            })
+            .catch((err) => {
+              console.warn("DisplayRouter: sync refetch failed", err);
+            });
+        },
       },
     });
 

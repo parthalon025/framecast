@@ -286,15 +286,27 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
           class={`fc-action-btn${photo.is_favorite ? " fc-action-btn--active" : ""}`}
           onClick={handleFav}
           type="button"
-          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem;"
+          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; min-width: 44px; min-height: 44px;"
         >
           [FAV]
         </button>
         <button
           class="fc-action-btn"
+          onClick={() => {
+            fetch(`/api/slideshow/show/${photo.id}`, { method: "POST" })
+              .catch((err) => console.warn("Lightbox: show on TV failed", err));
+          }}
+          type="button"
+          aria-label="Show on TV"
+          style="background: none; border: 1px solid var(--sh-phosphor, #39ff14); color: var(--sh-phosphor, #39ff14); padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; min-width: 44px; min-height: 44px;"
+        >
+          [TV]
+        </button>
+        <button
+          class="fc-action-btn"
           onClick={toggleInfo}
           type="button"
-          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem;"
+          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; min-width: 44px; min-height: 44px;"
         >
           [INFO]
         </button>
