@@ -1,7 +1,7 @@
 """Lightweight user management for FrameCast.
 
 No passwords — just names, upload counts, and stats aggregation.
-All DB access goes through the db module's connection helpers and write lock.
+All DB access goes through the db module's public API.
 """
 
 import logging
@@ -26,30 +26,12 @@ def create_user(name):
 
     Raises sqlite3.IntegrityError if name already exists.
     """
-    with db._write_lock:
-        with closing(db.get_db()) as conn:
-            conn.execute(
-                "INSERT INTO users (name) VALUES (?)", (name,)
-            )
-            conn.commit()
-            row = conn.execute(
-                "SELECT * FROM users WHERE name = ?", (name,)
-            ).fetchone()
-            return dict(row) if row else None
+    return db.create_user_returning_row(name)
 
 
 def delete_user(user_id):
     """Delete a user by id. Reassigns their photos to 'default'."""
-    with db._write_lock:
-        with closing(db.get_db()) as conn:
-            # Reassign photos to 'default' before deleting the user
-            conn.execute(
-                "UPDATE photos SET uploaded_by = 'default' "
-                "WHERE uploaded_by = (SELECT name FROM users WHERE id = ?)",
-                (user_id,),
-            )
-            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-            conn.commit()
+    db.delete_user_reassign(user_id)
     log.info("USER: DELETED id=%d, photos reassigned to 'default'", user_id)
 
 

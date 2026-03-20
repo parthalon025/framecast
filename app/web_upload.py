@@ -532,23 +532,12 @@ def _do_upload():
 
         # Compute checksum
         try:
-            checksum = db._compute_sha256(str(dest))
+            checksum = db.compute_sha256(str(dest))
         except Exception as exc:
             log.warning("Failed to compute checksum for %s: %s", filename, exc)
 
         # Unquarantine and update metadata in DB
-        from contextlib import closing as _closing
-        with db._write_lock:
-            with _closing(db.get_db()) as conn:
-                conn.execute(
-                    """UPDATE photos SET
-                       quarantined = 0, quarantine_reason = NULL,
-                       file_size = ?, width = ?, height = ?,
-                       checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
-                       WHERE id = ?""",
-                    (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
-                )
-                conn.commit()
+        db.unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon)
 
         uploaded += 1
         uploaded_names.append(filename)
@@ -629,15 +618,8 @@ def delete_all():
     all_ext = image_ext | video_ext
 
     # Bulk-quarantine all photos in DB before unlinking files (Lesson: delete-all must update DB)
-    from contextlib import closing as _closing
     try:
-        with db._write_lock:
-            with _closing(db.get_db()) as conn:
-                conn.execute(
-                    "UPDATE photos SET quarantined = 1, quarantine_reason = 'bulk delete' "
-                    "WHERE quarantined = 0"
-                )
-                conn.commit()
+        db.bulk_quarantine_all(reason="bulk delete")
         log.info("Bulk-quarantined all photos in DB before delete-all")
     except Exception as db_exc:
         log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)

@@ -393,6 +393,32 @@ def toggle_hidden(photo_id):
             return bool(row["is_hidden"]) if row else None
 
 
+def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon):
+    """Clear quarantine and update metadata after successful upload processing."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                """UPDATE photos SET quarantined = 0, quarantine_reason = NULL,
+                   file_size = ?, width = ?, height = ?,
+                   checksum_sha256 = ?, gps_lat = ?, gps_lon = ?
+                   WHERE id = ?""",
+                (file_size, width, height, checksum, gps_lat, gps_lon, photo_id),
+            )
+            conn.commit()
+
+
+def bulk_quarantine_all(reason="bulk delete"):
+    """Mark all non-quarantined photos as quarantined."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "UPDATE photos SET quarantined = 1, quarantine_reason = ? "
+                "WHERE quarantined = 0",
+                (reason,),
+            )
+            conn.commit()
+
+
 def delete_photo(photo_id):
     """Mark a photo as quarantined (soft delete)."""
     update_photo_quarantine(photo_id, True, reason="deleted by user")
@@ -569,6 +595,36 @@ def get_or_create_user(name, is_admin=False):
                 "SELECT id FROM users WHERE name = ?", (name,)
             ).fetchone()
             return row["id"] if row else None
+
+
+def create_user_returning_row(name):
+    """Create a new user and return the full row as a dict.
+
+    Raises sqlite3.IntegrityError if name already exists.
+    """
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "INSERT INTO users (name) VALUES (?)", (name,)
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM users WHERE name = ?", (name,)
+            ).fetchone()
+            return dict(row) if row else None
+
+
+def delete_user_reassign(user_id):
+    """Delete a user by id and reassign their photos to 'default'."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            conn.execute(
+                "UPDATE photos SET uploaded_by = 'default' "
+                "WHERE uploaded_by = (SELECT name FROM users WHERE id = ?)",
+                (user_id,),
+            )
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
 
 
 # --- Display stats buffering ---
@@ -796,6 +852,10 @@ def _compute_sha256(filepath):
         for chunk in iter(lambda: f.read(8192), b""):
             sha.update(chunk)
     return sha.hexdigest()
+
+
+# Public alias for external callers (web_upload.py etc.)
+compute_sha256 = _compute_sha256
 
 
 _pillow_warned = False
