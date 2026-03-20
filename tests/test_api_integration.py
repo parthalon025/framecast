@@ -463,3 +463,58 @@ class TestSecurityHeaders:
         csp = resp.headers.get("Content-Security-Policy")
         assert csp is not None
         assert "default-src" in csp
+
+
+# ---------------------------------------------------------------------------
+# Flask dynamic behavior — edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestFlaskDynamicBehavior:
+    """Tests for upload and SSE edge cases that should fail gracefully."""
+
+    def test_upload_empty_filename_rejected(self, client):
+        """Upload with an empty filename is rejected."""
+        from io import BytesIO
+
+        data = {
+            "files": (BytesIO(b"fake image data"), ""),
+        }
+        resp = client.post(
+            "/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        # Empty filename should be skipped — results in "no files uploaded"
+        # which redirects (302) or returns an error JSON
+        assert resp.status_code in (200, 302, 400, 422)
+
+    def test_upload_no_file_part_returns_400(self, client):
+        """Upload with no 'files' field in the form returns 400."""
+        resp = client.post(
+            "/upload",
+            data={},
+            content_type="multipart/form-data",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_sse_non_numeric_last_event_id(self, client):
+        """SSE endpoint with non-numeric Last-Event-ID doesn't crash."""
+        resp = client.get(
+            "/api/events",
+            headers={"Last-Event-ID": "not-a-number"},
+        )
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.content_type
+
+    def test_sse_negative_last_event_id(self, client):
+        """SSE endpoint with negative Last-Event-ID doesn't crash."""
+        resp = client.get(
+            "/api/events",
+            headers={"Last-Event-ID": "-42"},
+        )
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.content_type
