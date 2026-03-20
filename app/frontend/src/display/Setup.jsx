@@ -1,6 +1,7 @@
 /** @fileoverview Setup screen — shown when no WiFi is configured (AP mode). */
 import { useEffect } from "preact/hooks";
 import { signal } from "@preact/signals";
+import { ShPageBanner } from "superhot-ui/preact";
 import { QRCode } from "../components/QRCode.jsx";
 
 /** AP SSID fetched from /api/wifi/status, falls back to generic. */
@@ -34,9 +35,7 @@ export function Setup() {
 
   return (
     <div class="boot-screen" style={{ alignItems: "center", textAlign: "center" }}>
-      <h1 style={{ fontSize: "var(--type-display)", color: "var(--sh-phosphor)", marginBottom: "var(--space-4)" }}>
-        FRAMECAST
-      </h1>
+      <ShPageBanner namespace="FRAMECAST" page="SETUP" />
 
       <div class="sh-frame" data-label="SETUP REQUIRED" style={{ maxWidth: "600px", width: "100%" }}>
         <p class="sh-label" style={{ marginBottom: "var(--space-4)" }}>

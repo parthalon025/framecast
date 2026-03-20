@@ -1,6 +1,6 @@
 /** @fileoverview Update page — OTA update check, install, and reboot flow. */
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { ShToast } from "superhot-ui/preact";
+import { ShToast, ShPageBanner } from "superhot-ui/preact";
 import { bootSequence } from "superhot-ui";
 import { authedFetch } from "../components/PinGate.jsx";
 
@@ -209,6 +209,7 @@ export function Update() {
 
   return (
     <div class="fc-page">
+      <ShPageBanner namespace="FRAMECAST" page="UPDATE" />
       <div class="sh-frame" data-label="SYSTEM UPDATE">
         <div style="display: flex; flex-direction: column; gap: 16px;">
           {/* Version display */}

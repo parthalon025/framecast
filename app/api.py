@@ -81,6 +81,16 @@ def _do_reboot():
     except Exception:
         log.error("reboot subprocess raised", exc_info=True)
 
+
+def _do_shutdown():
+    """Execute a shutdown, logging any failures instead of swallowing them."""
+    try:
+        result = subprocess.run(["sudo", "shutdown", "-h", "now"], capture_output=True, timeout=10)
+        if result.returncode != 0:
+            log.error("shutdown failed (rc=%d): %s", result.returncode, result.stderr)
+    except Exception:
+        log.error("shutdown subprocess raised", exc_info=True)
+
 SCRIPT_DIR = Path(__file__).parent
 VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
 
@@ -509,6 +519,23 @@ def toggle_photo_favorite(photo_id):
     log.info("Photo %d: %s", photo_id, status_label)
     sse.notify("photo:favorited", {"id": photo_id, "is_favorite": new_val})
     return jsonify({"status": "ok", "photo_id": photo_id, "is_favorite": new_val})
+
+
+@api.route("/photos/<int:photo_id>/quarantine", methods=["POST"])
+def quarantine_photo(photo_id):
+    """Quarantine a photo (localhost only — called from TV display)."""
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return jsonify({"error": "LOCALHOST ONLY"}), 403
+
+    photo = db.get_photo_by_id(photo_id)
+    if not photo:
+        return jsonify({"error": "Photo not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason", "auto-quarantined")
+    db.update_photo_quarantine(photo_id, True, reason)
+    log.info("Photo %d quarantined: %s", photo_id, reason)
+    return jsonify({"status": "ok", "photo_id": photo_id})
 
 
 @api.route("/photos/<int:photo_id>/duplicates")
@@ -1182,6 +1209,40 @@ def discover_frames():
     except Exception:
         log.warning("Frame discovery failed", exc_info=True)
     return jsonify({"frames": frames})
+
+
+# ---------------------------------------------------------------------------
+# System control endpoints (migrated from web_upload.py)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/restart-slideshow", methods=["POST"])
+@require_pin
+def restart_slideshow():
+    """Restart the slideshow service."""
+    from modules import services
+    success, message = services.restart_slideshow()
+    if success:
+        return jsonify({"status": "ok", "message": message})
+    return jsonify({"error": message}), 500
+
+
+@api.route("/reboot", methods=["POST"])
+@require_pin
+def api_reboot():
+    """Reboot the device."""
+    log.info("Reboot requested via web UI from %s", request.remote_addr)
+    threading.Timer(0.5, _do_reboot).start()
+    return jsonify({"status": "ok", "message": "Device is rebooting..."})
+
+
+@api.route("/shutdown", methods=["POST"])
+@require_pin
+def api_shutdown():
+    """Shut down the device."""
+    log.info("Shutdown requested via web UI from %s", request.remote_addr)
+    threading.Timer(0.5, _do_shutdown).start()
+    return jsonify({"status": "ok", "message": "Device is shutting down..."})
 
 
 # ---------------------------------------------------------------------------

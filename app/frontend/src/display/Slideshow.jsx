@@ -14,6 +14,7 @@
  */
 import { signal } from "@preact/signals";
 import { useRef, useEffect, useCallback } from "preact/hooks";
+import { ShPageBanner } from "superhot-ui/preact";
 import { createSSE } from "../lib/sse.js";
 
 // --- Signals (module-level for SSE reactivity) ---
@@ -523,6 +524,7 @@ export function Slideshow() {
 
   return (
     <div class="slideshow-container" role="region" aria-label="Photo slideshow" aria-live="polite">
+      <ShPageBanner namespace="FRAMECAST" page="SLIDESHOW" />
       {isEmpty && (
         <div class="boot-screen">
           <div class="boot-status">STANDBY</div>
