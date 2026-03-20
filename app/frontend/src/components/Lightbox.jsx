@@ -1,9 +1,10 @@
 /** @fileoverview Lightbox — full-screen photo viewer with swipe navigation and actions. */
 import { signal } from "@preact/signals";
 import { useEffect, useRef, useCallback } from "preact/hooks";
-import { ShModal } from "superhot-ui/preact";
+import { ShModal, ShStatusBadge } from "superhot-ui/preact";
 import { formatTime } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 
 /** Lightbox state: { photos, index } or null when closed. */
 export const lightboxState = signal(null);
@@ -14,6 +15,8 @@ const lightboxTagInput = signal("");
 const lightboxTagSuggestions = signal([]);
 const lightboxAllTags = signal([]);
 const pendingDelete = signal(null);
+const lightboxAlbums = signal([]);
+const lightboxDuplicates = signal([]);
 
 /**
  * Open the lightbox at a given photo within a list.
@@ -71,6 +74,18 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
         lightboxAllTags.value = [];
         lightboxTagSuggestions.value = [];
       });
+
+    // Fetch albums for add-to-album
+    fetchWithTimeout("/api/albums")
+      .then((resp) => resp.ok ? resp.json() : [])
+      .then((data) => { lightboxAlbums.value = data; })
+      .catch(() => { lightboxAlbums.value = []; });
+
+    // Fetch duplicates
+    fetchWithTimeout(`/api/photos/${photo.id}/duplicates`)
+      .then((resp) => resp.ok ? resp.json() : { duplicates: [] })
+      .then((data) => { lightboxDuplicates.value = data.duplicates || []; })
+      .catch(() => { lightboxDuplicates.value = []; });
   }, [state ? state.index : -1]);
 
   // Keyboard navigation
@@ -429,6 +444,62 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
               )}
             </div>
           </div>
+
+          {/* Add to album */}
+          <div style="border-top: 1px solid var(--border-subtle); padding-top: 8px; margin-top: 8px;">
+            <span class="sh-ansi-dim" style="font-size: 0.75rem; letter-spacing: 0.1em;">ALBUM</span>
+            <select
+              class="sh-input"
+              style="margin-top: 4px; width: 100%; font-size: max(16px, 1rem); padding: 8px; min-height: 44px;"
+              onChange={async (evt) => {
+                const albumId = evt.target.value;
+                if (!albumId) return;
+                try {
+                  const resp = await fetchWithTimeout(`/api/albums/${albumId}/photos`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ photo_id: photo.id }),
+                  });
+                  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                  showToast("ADDED TO ALBUM", "info");
+                } catch (err) {
+                  console.warn("Lightbox: add to album failed", err);
+                  showToast("FAULT: " + err.message, "error");
+                }
+                evt.target.value = "";
+              }}
+            >
+              <option value="">ADD TO ALBUM...</option>
+              {(lightboxAlbums.value || []).filter((album) => !album.smart).map((album) => (
+                <option key={album.id} value={album.id}>{album.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Duplicate detection */}
+          {(lightboxDuplicates.value || []).length > 0 && (
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 8px; margin-top: 8px;">
+              <ShStatusBadge status="warning" label={`${lightboxDuplicates.value.length} SIMILAR`} />
+              <div style="display: flex; gap: 4px; margin-top: 8px; overflow-x: auto;">
+                {lightboxDuplicates.value.map((dupe) => (
+                  <img
+                    key={dupe.id}
+                    src={`/thumbnail/${dupe.filename}`}
+                    alt={dupe.filename}
+                    style="width: 48px; height: 48px; object-fit: cover; cursor: pointer; border: 1px solid var(--sh-dim, rgba(255,255,255,0.3));"
+                    onClick={() => {
+                      // Navigate to duplicate in the current photo list if present
+                      const dupeIdx = photoList.findIndex((p) => p.id === dupe.id);
+                      if (dupeIdx >= 0) {
+                        lightboxState.value = { photos: photoList, index: dupeIdx };
+                      }
+                    }}
+                    loading="lazy"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
