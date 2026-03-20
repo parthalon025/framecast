@@ -2,8 +2,8 @@
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { useState } from "preact/hooks";
-import { ShStatsGrid } from "superhot-ui/preact";
-import { ShStatCard } from "superhot-ui/preact";
+import { ShHeroCard } from "superhot-ui/preact";
+import { ShTimeChart } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { ShFrozen } from "superhot-ui/preact";
 import { ShCollapsible, ShSkeleton, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
@@ -101,7 +101,7 @@ function ActivityLog() {
 }
 
 /**
- * Stats — dashboard page with ShStatsGrid, ShStatCard, and ShDataTable.
+ * Stats — dashboard page with ShHeroCard KPIs, ShTimeChart, and ShDataTable.
  */
 export function Stats() {
   useEffect(() => {
@@ -139,13 +139,11 @@ export function Stats() {
     );
   }
 
-  // Summary stat cards
-  const summaryStats = [
-    { label: "PHOTOS", value: data.total_photos ?? 0 },
-    { label: "VIDEOS", value: data.total_videos ?? 0 },
-    { label: "STORAGE", value: data.storage_used ?? "0 B" },
-    { label: "VIEWS", value: data.total_views ?? 0 },
-  ];
+  // Convert timeline dates to {t, v} for ShTimeChart (t = unix seconds)
+  const uploadTrend = (data.timeline || []).map((day) => ({
+    t: Math.floor(new Date(day.date + "T00:00:00").getTime() / 1000),
+    v: day.count,
+  }));
 
   // Uploads by user table
   const userColumns = [
@@ -183,20 +181,34 @@ export function Stats() {
   return (
     <ShFrozen timestamp={lastUpdated} class="sh-animate-page-enter fc-page">
       <ShPageBanner namespace="FRAMECAST" page="STATS" />
-      {/* Summary cards */}
-      <div class="sh-frame" data-label="OVERVIEW">
-        <div style="padding: 12px;">
-          <ShStatsGrid stats={summaryStats} cols={2} />
-          {data.avg_duration != null && (
-            <div class="sh-ansi-dim" style="margin-top: 12px; font-size: 0.8rem;">
-              AVG DISPLAY: {data.avg_duration}s
-              {data.never_shown_count > 0 && (
-                <span> | NEVER SHOWN: {data.never_shown_count}</span>
-              )}
-            </div>
+      {/* Hero KPI cards */}
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <ShHeroCard label="PHOTOS" value={Math.max(0, (data.total_photos ?? 0) - (data.total_videos ?? 0))} />
+        <ShHeroCard label="VIDEOS" value={data.total_videos ?? 0} />
+        <ShHeroCard label="STORAGE" value={data.storage_used ?? "0 B"} />
+        <ShHeroCard label="TOTAL VIEWS" value={data.total_views ?? 0} />
+      </div>
+      {data.avg_duration != null && (
+        <div class="sh-ansi-dim" style="margin-bottom: 12px; font-size: 0.8rem;">
+          AVG DISPLAY: {data.avg_duration}s
+          {data.never_shown_count > 0 && (
+            <span> | NEVER SHOWN: {data.never_shown_count}</span>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Upload trend chart */}
+      {uploadTrend.length > 1 && (
+        <div class="sh-frame" data-label="UPLOADS / DAY (30 DAYS)">
+          <div style="padding: 12px;">
+            <ShTimeChart
+              data={uploadTrend}
+              label="UPLOADS"
+              color="var(--sh-phosphor)"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Storage breakdown */}
       {data.storage_breakdown && (
@@ -260,24 +272,6 @@ export function Stats() {
         </div>
       )}
 
-      {/* Upload timeline (ASCII bar chart) */}
-      {data.timeline && data.timeline.length > 0 && (
-        <div class="sh-frame" data-label="UPLOAD TIMELINE (30 DAYS)">
-          <div style="padding: 12px; font-family: var(--font-mono, monospace); font-size: 0.75rem;">
-            {data.timeline.map((day) => {
-              const maxCount = Math.max(...data.timeline.map((d) => d.count));
-              const barLen = maxCount > 0 ? Math.max(1, Math.round((day.count / maxCount) * 20)) : 0;
-              return (
-                <div key={day.date} style="display: flex; gap: 8px; line-height: 1.6;">
-                  <span class="sh-ansi-dim" style="min-width: 80px;">{day.date}</span>
-                  <span style="color: var(--sh-phosphor, #0f0);">{"\u2593".repeat(barLen)}</span>
-                  <span class="sh-ansi-dim">{day.count}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </ShFrozen>
   );
 }
