@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 from contextlib import closing
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import config, media
@@ -199,6 +200,9 @@ def init_db():
 
     # Auto-prune old display stats on startup
     _prune_old_stats()
+
+    # Auto-prune quarantined photos older than 30 days
+    prune_quarantined()
 
     # Register atexit handler for stats buffer flush
     atexit.register(_flush_stats)
@@ -717,6 +721,22 @@ def _prune_old_stats():
             conn.commit()
             if cur.rowcount > 0:
                 log.info("STATS: PRUNED %d entries older than 30 days", cur.rowcount)
+
+
+def prune_quarantined(days=30):
+    """Remove quarantined photos older than N days."""
+    with _write_lock:
+        with closing(get_db()) as conn:
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cursor = conn.execute(
+                "DELETE FROM photos WHERE quarantined = 1 AND uploaded_at < ?",
+                (cutoff,),
+            )
+            conn.commit()
+            count = cursor.rowcount
+            if count:
+                log.info("DB: pruned %d quarantined photos older than %d days", count, days)
+            return count
 
 
 # --- Aggregated stats ---
