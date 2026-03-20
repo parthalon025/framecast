@@ -9,7 +9,7 @@ REPO_DIR := $(shell pwd)
 SERVICES := framecast framecast-kiosk wifi-manager
 TIMERS := framecast-update
 
-.PHONY: install uninstall update status logs test help build-frontend dev run build-image
+.PHONY: install uninstall update status logs test help build-frontend dev run build-image pytest typecheck benchmark mutate test-frontend test-shell test-all
 
 help: ## Show this help message
 	@echo "FrameCast - Available targets:"
@@ -162,3 +162,24 @@ test: ## Run smoke tests to verify installation
 		echo "ERROR: scripts/smoke-test.sh not found"; \
 		exit 1; \
 	fi
+
+pytest: ## Run pytest suite
+	python3 -m pytest tests/ -v --timeout=120
+
+typecheck: ## Run mypy strict type checking
+	python3 -m mypy --config-file mypy.ini app/modules/ app/sse.py
+
+benchmark: ## Run performance benchmarks
+	python3 -m pytest tests/test_benchmarks.py --benchmark-only -v
+
+mutate: ## Run mutation testing (on-demand diagnostic)
+	python3 -m mutmut run --paths-to-mutate=app/modules/,app/sse.py --tests-dir=tests/
+
+test-frontend: ## Run frontend unit tests (vitest)
+	cd app/frontend && npx vitest run
+
+test-shell: ## Run shell script tests (bats)
+	bats tests/shell/
+
+test-all: pytest ## Run all test suites
+	@echo "All Python tests passed."

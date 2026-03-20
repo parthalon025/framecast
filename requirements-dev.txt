@@ -1,0 +1,9 @@
+# requirements-dev.txt — testing & type checking (not deployed to Pi)
+-r requirements.txt
+mypy
+types-Flask
+types-Pillow
+hypothesis
+pytest-benchmark
+mutmut
+jsonschema
