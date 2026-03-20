@@ -466,15 +466,33 @@ def create_album(name, description=None):
 
 
 def get_albums():
-    """Return all albums as a list of dicts, including photo_count."""
+    """Return all albums as a list of dicts, including photo_count and cover_filename."""
     with closing(get_db()) as conn:
         rows = conn.execute(
             """SELECT a.*,
-                      (SELECT COUNT(*) FROM album_photos ap WHERE ap.album_id = a.id) AS photo_count
+                      (SELECT COUNT(*) FROM album_photos ap WHERE ap.album_id = a.id) AS photo_count,
+                      p.filename AS cover_filename
                FROM albums a
+               LEFT JOIN photos p ON p.id = a.cover_photo_id
                ORDER BY a.sort_order, a.name"""
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            album = dict(r)
+            # If no explicit cover photo but album has photos, use the first one
+            if not album.get("cover_photo_id") and album.get("photo_count", 0) > 0:
+                first = conn.execute(
+                    """SELECT p.id, p.filename FROM photos p
+                       JOIN album_photos ap ON p.id = ap.photo_id
+                       WHERE ap.album_id = ?
+                       ORDER BY ap.added_at DESC LIMIT 1""",
+                    (album["id"],),
+                ).fetchone()
+                if first:
+                    album["cover_photo_id"] = first["id"]
+                    album["cover_filename"] = first["filename"]
+            result.append(album)
+        return result
 
 
 def delete_album(album_id):

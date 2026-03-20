@@ -1,12 +1,42 @@
 /** @fileoverview Stats dashboard — aggregated content and display statistics. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { ShStatsGrid } from "superhot-ui/preact";
 import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { ShFrozen } from "superhot-ui/preact";
+import { ShCollapsible, ShSkeleton } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
+
+/** Storage breakdown bar chart. */
+function StorageBreakdown({ breakdown }) {
+  if (!breakdown) return null;
+  const items = [
+    { label: "PHOTOS", value: breakdown.photos, human: breakdown.photos_human, color: "var(--sh-phosphor)" },
+    { label: "THUMBNAILS", value: breakdown.thumbnails, human: breakdown.thumbnails_human, color: "var(--text-muted, #666)" },
+    { label: "DATABASE", value: breakdown.database, human: breakdown.database_human, color: "var(--status-warning, #f59e0b)" },
+  ];
+  const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
+
+  return (
+    <div class="fc-storage-breakdown">
+      {items.map((item) => (
+        <div key={item.label} class="fc-storage-row">
+          <span class="sh-label" style="min-width: 90px;">{item.label}</span>
+          <div class="fc-storage-bar-bg">
+            <div
+              class="fc-storage-bar-fill"
+              style={{ width: `${(item.value / total) * 100}%`, background: item.color }}
+            />
+          </div>
+          <span class="sh-value" style="min-width: 60px; text-align: right;">{item.human}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Reactive state */
 const stats = signal(null);
@@ -33,6 +63,41 @@ function fetchStats() {
       error.value = "FETCH FAILED";
       loading.value = false;
     });
+}
+
+/**
+ * ActivityLog — recent uploads fetched from /api/photos.
+ */
+function ActivityLog() {
+  const [activity, setActivity] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/photos")
+      .then((resp) => resp.json())
+      .then((photos) => setActivity(photos.slice(0, 10)))
+      .catch(() => setActivity([]));
+  }, []);
+
+  if (!activity) return <ShSkeleton rows={3} height="2em" />;
+  if (activity.length === 0) return <span class="sh-label">NO UPLOADS</span>;
+
+  return (
+    <div class="fc-activity-list">
+      {activity.map((photo) => (
+        <div key={photo.id} class="fc-activity-row">
+          <span class="sh-ansi-dim" style="font-size: 0.75rem;">
+            {photo.uploaded_at ? photo.uploaded_at.replace("T", " ").slice(0, 16) : "UNKNOWN"}
+          </span>
+          <span class="sh-value" style="flex: 1; overflow: hidden; text-overflow: ellipsis;">
+            {photo.name || photo.filename}
+          </span>
+          <span class="sh-ansi-dim" style="font-size: 0.75rem;">
+            {photo.uploaded_by || "default"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -132,6 +197,20 @@ export function Stats() {
           )}
         </div>
       </div>
+
+      {/* Storage breakdown */}
+      {data.storage_breakdown && (
+        <div class="sh-frame" data-label="STORAGE BREAKDOWN">
+          <div style="padding: 12px;">
+            <StorageBreakdown breakdown={data.storage_breakdown} />
+          </div>
+        </div>
+      )}
+
+      {/* Recent activity */}
+      <ShCollapsible title="RECENT ACTIVITY" defaultOpen={true}>
+        <ActivityLog />
+      </ShCollapsible>
 
       {/* Uploads by user */}
       {userRows.length > 0 ? (

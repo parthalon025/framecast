@@ -378,6 +378,7 @@ export function Settings() {
                     })}
                   </div>
                 </div>
+                <ScheduleTimeline onTime={settings.hdmi_on_time} offTime={settings.hdmi_off_time} />
               </>
             )}
 
@@ -571,6 +572,50 @@ function Toggle({ on, onToggle, labelOn, labelOff }) {
       }}
     >
       <span class="sh-toggle-indicator">{on ? (labelOn || "ON") : (labelOff || "OFF")}</span>
+    </div>
+  );
+}
+
+/** 24-hour timeline bar showing active (ON) vs standby (OFF) hours. */
+function ScheduleTimeline({ onTime, offTime }) {
+  const parseTime = (str) => {
+    const [hh, mm] = (str || "08:00").split(":").map(Number);
+    return hh + mm / 60;
+  };
+
+  const on = parseTime(onTime);
+  const off = parseTime(offTime);
+
+  let activeStart, activeWidth;
+  if (on < off) {
+    activeStart = (on / 24) * 100;
+    activeWidth = ((off - on) / 24) * 100;
+  } else {
+    activeStart = (on / 24) * 100;
+    activeWidth = ((24 - on + off) / 24) * 100;
+  }
+
+  const hours = [0, 6, 12, 18];
+
+  return (
+    <div class="fc-schedule-timeline">
+      <div class="fc-timeline-bar">
+        {on < off ? (
+          <div class="fc-timeline-active" style={{ left: `${activeStart}%`, width: `${activeWidth}%` }} />
+        ) : (
+          <>
+            <div class="fc-timeline-active" style={{ left: `${activeStart}%`, width: `${100 - activeStart}%` }} />
+            <div class="fc-timeline-active" style={{ left: "0%", width: `${(off / 24) * 100}%` }} />
+          </>
+        )}
+      </div>
+      <div class="fc-timeline-labels">
+        {hours.map(hr => (
+          <span key={hr} class="sh-ansi-dim" style={{ left: `${(hr / 24) * 100}%` }}>
+            {String(hr).padStart(2, "0")}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

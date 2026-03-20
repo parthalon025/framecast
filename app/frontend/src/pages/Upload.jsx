@@ -21,15 +21,95 @@ import {
   UserSelectModal,
 } from "./Users.jsx";
 
+/**
+ * usePullToRefresh — touch-based pull-to-refresh for mobile.
+ * Tracks touch drag distance when the page is scrolled to the top.
+ * Fires onRefresh when the user pulls past THRESHOLD and releases.
+ */
+function usePullToRefresh(onRefresh, containerRef) {
+  const touchStartY = useRef(0);
+  const pulling = useRef(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const THRESHOLD = 80;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onTouchStart(evt) {
+      // Only start pull if page is scrolled to the very top
+      if (window.scrollY === 0 && el.scrollTop === 0) {
+        touchStartY.current = evt.touches[0].clientY;
+        pulling.current = true;
+      }
+    }
+
+    function onTouchMove(evt) {
+      if (!pulling.current) return;
+      const dy = evt.touches[0].clientY - touchStartY.current;
+      if (dy > 0 && dy < 150) {
+        setPullDistance(dy);
+        if (dy > 20) evt.preventDefault();
+      }
+    }
+
+    function onTouchEnd() {
+      if (pulling.current) {
+        setPullDistance((current) => {
+          if (current >= THRESHOLD && onRefresh) onRefresh();
+          return 0;
+        });
+      }
+      pulling.current = false;
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onRefresh, containerRef]);
+
+  return pullDistance;
+}
+
 /** Reactive state */
 const photos = signal([]);
 const disk = signal({ percent: 0, used: "\u2014", total: "\u2014", free: "\u2014" });
 const loading = signal(true);
 const filter = signal("all");
 const userFilter = signal("all");
+const sortBy = signal("newest");
 const availableUsers = signal([]);
 const photosLastUpdated = signal(null);
 const fetchError = signal(null);
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "NEWEST" },
+  { value: "oldest", label: "OLDEST" },
+  { value: "favorites", label: "FAVORITES FIRST" },
+  { value: "name", label: "NAME" },
+];
+
+/** Sort photos client-side by the selected criterion. */
+function sortPhotos(list, criterion) {
+  const sorted = [...list];
+  switch (criterion) {
+    case "newest": return sorted.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+    case "oldest": return sorted.sort((a, b) => (a.modified || 0) - (b.modified || 0));
+    case "favorites": return sorted.sort((a, b) => (b.is_favorite ? 1 : 0) - (a.is_favorite ? 1 : 0));
+    case "name": return sorted.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    default: return sorted;
+  }
+}
+
+/** Global upload progress — persists across tab switches. { current, total } or null. */
+const uploadProgress = signal(null);
+export { uploadProgress };
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -175,6 +255,7 @@ export function Upload() {
   const sseRef = useRef(null);
   const storageBarRef = useRef(null);
   const batchClearTimer = useRef(null);
+  const pageRef = useRef(null);
   const [toast, setToast] = useState(null);
 
   /* Batch upload state */
@@ -185,6 +266,8 @@ export function Upload() {
     fetchPhotos();
     fetchStatus();
   }
+
+  const pullDistance = usePullToRefresh(handleRefresh, pageRef);
 
   useEffect(() => {
     Promise.all([fetchPhotos(), fetchStatus()]).then(() => {
@@ -229,11 +312,13 @@ export function Upload() {
       failed: 0,
     };
     setBatch({ ...batchState });
+    uploadProgress.value = { current: 0, total: files.length };
 
     // Upload sequentially to avoid Pi 3 OOM
     for (let idx = 0; idx < files.length; idx++) {
       // Update current file to UPLOADING
       batchState.files[idx].status = "UPLOADING";
+      uploadProgress.value = { current: idx + 1, total: files.length };
       setBatch({ ...batchState });
 
       const result = await uploadFileWithRetry(
@@ -255,6 +340,9 @@ export function Upload() {
       }
       setBatch({ ...batchState });
     }
+
+    // Clear global progress toast
+    uploadProgress.value = null;
 
     // Refresh data after batch completes
     fetchPhotos();
@@ -300,12 +388,13 @@ export function Upload() {
   const isUploadBlocked = diskPct >= 95;
   const currentFilter = filter.value;
 
-  // Apply user filter
+  // Apply user filter + sort
   const allPhotos = photos.value;
   const filterValue = userFilter.value;
   const filteredPhotos = filterValue === "all"
     ? allPhotos
     : allPhotos.filter((p) => p.uploaded_by === filterValue);
+  const displayPhotos = sortPhotos(filteredPhotos, sortBy.value);
 
   if (isLoading) {
     return (
@@ -316,7 +405,12 @@ export function Upload() {
   }
 
   return (
-    <main class="sh-animate-page-enter fc-page" role="main">
+    <main class="sh-animate-page-enter fc-page" role="main" ref={pageRef}>
+      {pullDistance > 0 && (
+        <div class="fc-pull-indicator" style={{ opacity: Math.min(pullDistance / 80, 1), transform: `translateY(${Math.min(pullDistance * 0.5, 40)}px)` }}>
+          {pullDistance >= 80 ? "RELEASE TO REFRESH" : "PULL TO REFRESH"}
+        </div>
+      )}
       <OfflineBanner />
 
       {/* User select modal (shown on first upload if no cookie) */}
@@ -446,8 +540,8 @@ export function Upload() {
         </div>
       )}
 
-      {/* Filter bar */}
-      <div class="sh-filter-panel" style="display: flex; gap: 8px; flex-wrap: wrap;">
+      {/* Filter bar + sort */}
+      <div class="sh-filter-panel" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
         <span
           class={`sh-filter-chip${currentFilter === "all" ? " sh-filter-chip--active" : ""}`}
           onClick={() => { filter.value = "all"; }}
@@ -469,12 +563,23 @@ export function Upload() {
         >
           HIDDEN
         </span>
+        <select
+          class="sh-select"
+          value={sortBy.value}
+          onChange={(evt) => { sortBy.value = evt.target.value; }}
+          aria-label="Sort photos"
+          style="max-width: 140px; margin-left: auto;"
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Photo grid */}
       <ShFrozen timestamp={photosLastUpdated}>
         <PhotoGrid
-          photos={filteredPhotos}
+          photos={displayPhotos}
           onDelete={handleDelete}
           onToggleFavorite={handleToggleFavorite}
           onSelect={handlePhotoSelect}

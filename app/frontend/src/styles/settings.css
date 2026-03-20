@@ -148,6 +148,29 @@
   border-color: var(--status-critical, #ff4444);
 }
 
+/* ── Activity log ── */
+
+.fc-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fc-activity-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+}
+
+/* ── Storage breakdown ── */
+
+.fc-storage-breakdown { display: flex; flex-direction: column; gap: 8px; }
+.fc-storage-row { display: flex; align-items: center; gap: 8px; }
+.fc-storage-bar-bg { flex: 1; height: 8px; background: var(--surface, #111); border-radius: 4px; overflow: hidden; }
+.fc-storage-bar-fill { height: 100%; border-radius: 4px; min-width: 2px; }
+
 /* Boot/display screens — fluid type */
 .boot-screen h1 {
   font-size: clamp(1.5rem, 5vw, 5rem);
@@ -155,6 +178,42 @@
 
 .boot-screen .sh-label {
   font-size: clamp(0.875rem, 2vw, 1.5rem);
+}
+
+/* ── Schedule timeline ── */
+
+.fc-schedule-timeline {
+  padding: 8px 0;
+}
+
+.fc-timeline-bar {
+  position: relative;
+  height: 12px;
+  background: var(--surface, #111);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fc-timeline-active {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--sh-phosphor, #40ff40);
+  opacity: 0.4;
+  border-radius: 6px;
+}
+
+.fc-timeline-labels {
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.fc-timeline-labels span {
+  position: absolute;
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  transform: translateX(-50%);
 }
 
 /* QR — scale with viewport */

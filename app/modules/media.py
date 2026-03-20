@@ -108,6 +108,41 @@ def get_disk_usage():
     }
 
 
+def get_storage_breakdown():
+    """Get storage breakdown by category (photos, thumbnails, database)."""
+    media_path = Path(get_media_dir())
+    if not media_path.exists():
+        return {"photos": 0, "thumbnails": 0, "database": 0}
+
+    photos_size = 0
+    thumbs_size = 0
+    thumb_dir = media_path / "thumbnails"
+
+    image_ext, video_ext = get_allowed_extensions()
+    all_ext = image_ext | video_ext
+
+    for f in media_path.rglob("*"):
+        if not f.is_file():
+            continue
+        if thumb_dir in f.parents or f.parent == thumb_dir:
+            thumbs_size += f.stat().st_size
+        elif f.suffix.lower() in all_ext:
+            photos_size += f.stat().st_size
+
+    # Database sits inside media_dir
+    db_path = media_path / "framecast.db"
+    db_size = db_path.stat().st_size if db_path.exists() else 0
+
+    return {
+        "photos": photos_size,
+        "photos_human": format_size(photos_size),
+        "thumbnails": thumbs_size,
+        "thumbnails_human": format_size(thumbs_size),
+        "database": db_size,
+        "database_human": format_size(db_size),
+    }
+
+
 def cleanup_orphan_thumbnails():
     """Remove thumbnails that no longer have a corresponding media file.
 
