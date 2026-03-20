@@ -148,7 +148,7 @@ export function SearchModal({ onSelect }) {
           autocomplete="off"
           autocorrect="off"
           spellcheck={false}
-          style="width: 100%; font-size: 0.9rem; padding: 10px 12px; font-family: var(--font-mono, monospace); box-sizing: border-box;"
+          style="width: 100%; font-size: max(16px, 0.9rem); padding: 10px 12px; font-family: var(--font-mono, monospace); box-sizing: border-box;"
         />
 
         {/* Status line */}

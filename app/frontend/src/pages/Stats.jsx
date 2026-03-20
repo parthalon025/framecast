@@ -9,6 +9,7 @@ import { ShFrozen } from "superhot-ui/preact";
 import { ShCollapsible, ShSkeleton, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
+import { showToast } from "../lib/toast.js";
 
 /** Storage breakdown bar chart. */
 function StorageBreakdown({ breakdown }) {
@@ -16,7 +17,7 @@ function StorageBreakdown({ breakdown }) {
   const items = [
     { label: "PHOTOS", value: breakdown.photos, human: breakdown.photos_human, color: "var(--sh-phosphor)" },
     { label: "THUMBNAILS", value: breakdown.thumbnails, human: breakdown.thumbnails_human, color: "var(--text-muted, #666)" },
-    { label: "DATABASE", value: breakdown.database, human: breakdown.database_human, color: "var(--status-warning, #f59e0b)" },
+    { label: "DATABASE", value: breakdown.database, human: breakdown.database_human, color: "var(--sh-dim)" },
   ];
   const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
 
@@ -75,7 +76,11 @@ function ActivityLog() {
     fetch("/api/photos")
       .then((resp) => resp.json())
       .then((photos) => setActivity(photos.slice(0, 10)))
-      .catch(() => setActivity([]));
+      .catch((err) => {
+        console.warn("ActivityLog fetch failed:", err);
+        showToast("ACTIVITY FETCH FAULT", "error");
+        setActivity([]);
+      });
   }, []);
 
   if (!activity) return <ShSkeleton rows={3} height="2em" />;

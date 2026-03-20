@@ -173,7 +173,10 @@ function handleToggleFavorite(photo) {
   fetch(`/api/photos/${photo.id}/favorite`, { method: "POST" })
     .then((resp) => resp.json())
     .then(() => fetchPhotos())
-    .catch((err) => console.warn("Favorite toggle error:", err));
+    .catch((err) => {
+      console.warn("Favorite toggle error:", err);
+      showToast("FAVORITE FAULT", "error");
+    });
 }
 
 function handlePhotoSelect(photo) {

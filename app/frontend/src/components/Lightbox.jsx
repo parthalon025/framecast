@@ -329,7 +329,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
           class="fc-action-btn"
           onClick={handleDeleteAction}
           type="button"
-          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem;"
+          style="background: none; border: 1px solid var(--border-subtle); color: inherit; padding: 8px 14px; cursor: pointer; font-family: var(--font-mono, monospace); font-size: 0.8rem; min-width: 44px; min-height: 44px;"
         >
           [DELETE]
         </button>
@@ -413,7 +413,7 @@ export function Lightbox({ onToggleFavorite, onDelete, onAddTag, onRemoveTag, ta
                 value={lightboxTagInput.value}
                 onInput={(evt) => { lightboxTagInput.value = evt.target.value; }}
                 onKeyDown={handleTagKeyDown}
-                style="width: 100%; font-size: 0.8rem; padding: 6px 8px;"
+                style="width: 100%; font-size: max(16px, 0.8rem); padding: 6px 8px;"
               />
               {autoSuggestions.length > 0 && (
                 <div

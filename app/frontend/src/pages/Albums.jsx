@@ -455,7 +455,7 @@ export function Albums() {
                   value={createName.value}
                   onInput={(evt) => { createName.value = evt.target.value; }}
                   placeholder="Album name"
-                  style="width: 100%; font-size: 0.9rem; padding: 8px;"
+                  style="width: 100%; font-size: max(16px, 0.9rem); padding: 8px;"
                   autofocus
                 />
               </div>
@@ -467,7 +467,7 @@ export function Albums() {
                   value={createDesc.value}
                   onInput={(evt) => { createDesc.value = evt.target.value; }}
                   placeholder="Optional"
-                  style="width: 100%; font-size: 0.9rem; padding: 8px;"
+                  style="width: 100%; font-size: max(16px, 0.9rem); padding: 8px;"
                 />
               </div>
             </div>

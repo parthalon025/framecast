@@ -78,10 +78,10 @@ function SearchIcon() {
 }
 
 const navItems = [
-  { path: "/", label: "Upload", icon: UploadIcon },
-  { path: "/albums", label: "Albums", icon: AlbumsIcon },
-  { path: "/map", label: "Map", icon: MapIcon },
-  { path: "/settings", label: "Settings", icon: SettingsIcon },
+  { path: "/", label: "UPLOAD", icon: UploadIcon },
+  { path: "/albums", label: "ALBUMS", icon: AlbumsIcon },
+  { path: "/map", label: "MAP", icon: MapIcon },
+  { path: "/settings", label: "SETTINGS", icon: SettingsIcon },
 ];
 
 /** Open lightbox when a search result is selected. */
