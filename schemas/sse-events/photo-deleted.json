@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "photo:deleted",
+  "description": "Sent when photos are deleted. Shape varies by source: api.py batch delete sends {count}, web_upload.py single delete sends {filename}.",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of photos deleted (batch delete via API)"
+        }
+      },
+      "required": ["count"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Filename of the deleted photo (single delete via web UI)"
+        }
+      },
+      "required": ["filename"],
+      "additionalProperties": false
+    }
+  ]
+}

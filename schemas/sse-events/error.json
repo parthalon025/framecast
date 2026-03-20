@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "error",
+  "description": "Sent when an SSE connection is rejected (e.g., max clients reached).",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "string"
+    }
+  },
+  "required": ["error"],
+  "additionalProperties": false
+}

@@ -4,6 +4,7 @@ Manages photos, albums, tags, users, and display statistics.
 All connections use WAL mode + busy_timeout for reliability on Pi hardware.
 Write operations are serialized via _write_lock.
 """
+from __future__ import annotations
 
 import atexit
 import hashlib
@@ -17,6 +18,7 @@ import time
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from . import media
 
@@ -26,16 +28,16 @@ log = logging.getLogger(__name__)
 _write_lock = threading.Lock()
 
 # --- Stats buffering ---
-_stats_buffer = []
+_stats_buffer: list[tuple[int, float | None, str | None]] = []
 _stats_buffer_lock = threading.Lock()
 _STATS_FLUSH_THRESHOLD = 30
 _STATS_FLUSH_INTERVAL = 300  # 5 minutes
 _MAX_STATS_BUFFER = 500  # Cap to prevent OOM on persistent DB errors
-_stats_last_flush = time.monotonic()
-_flush_timer = None
+_stats_last_flush: float = time.monotonic()
+_flush_timer: threading.Timer | None = None
 
 # --- Double-init guard ---
-_db_initialized = False
+_db_initialized: bool = False
 
 # --- Schema version ---
 CURRENT_SCHEMA_VERSION = 2
@@ -131,7 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_photos_dhash ON photos(dhash);
 
 # --- Smart albums (computed queries) ---
 
-SMART_ALBUMS = {
+SMART_ALBUMS: dict[str, dict[str, Any]] = {
     "recent": {
         "name": "RECENT",
         "query": "uploaded_at > datetime('now', '-30 days')",
@@ -150,12 +152,12 @@ SMART_ALBUMS = {
 }
 
 
-def _db_path():
+def _db_path() -> Path:
     """Return the Path to the FrameCast database file."""
     return Path(media.get_media_dir()) / "framecast.db"
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     """Return a new SQLite connection with WAL mode and busy_timeout.
 
     Caller MUST wrap with ``contextlib.closing()``::
@@ -171,7 +173,7 @@ def get_db():
     return conn
 
 
-def init_db():
+def init_db() -> None:
     """Create tables, indices, and run migrations if needed.
 
     Safe to call multiple times (idempotent).
@@ -236,7 +238,7 @@ def init_db():
     log.info("DATABASE: INITIALIZED at %s", db_path)
 
 
-def vacuum_if_needed():
+def vacuum_if_needed() -> None:
     """Run incremental vacuum to reclaim space from deleted photos.
 
     Uses PRAGMA incremental_vacuum which is lighter than full VACUUM
@@ -257,22 +259,22 @@ def vacuum_if_needed():
 
 
 def insert_photo(
-    filename,
-    filepath,
-    mime_type=None,
-    file_size=None,
-    width=None,
-    height=None,
-    is_video=False,
-    checksum_sha256=None,
-    thumbnail_path=None,
-    gps_lat=None,
-    gps_lon=None,
-    exif_date=None,
-    uploaded_by="default",
-    quarantined=False,
-    quarantine_reason=None,
-):
+    filename: str,
+    filepath: str,
+    mime_type: str | None = None,
+    file_size: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    is_video: bool = False,
+    checksum_sha256: str | None = None,
+    thumbnail_path: str | None = None,
+    gps_lat: float | None = None,
+    gps_lon: float | None = None,
+    exif_date: str | None = None,
+    uploaded_by: str = "default",
+    quarantined: bool = False,
+    quarantine_reason: str | None = None,
+) -> int | None:
     """INSERT a new photo record. Returns the new row id."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -316,7 +318,7 @@ def insert_photo(
             return photo_id
 
 
-def get_photo_by_checksum(checksum):
+def get_photo_by_checksum(checksum: str) -> dict[str, Any] | None:
     """Return a photo row matching the SHA256, or None."""
     with closing(get_db()) as conn:
         row = conn.execute(
@@ -325,7 +327,7 @@ def get_photo_by_checksum(checksum):
         return dict(row) if row else None
 
 
-def get_photo_by_id(photo_id):
+def get_photo_by_id(photo_id: int) -> dict[str, Any] | None:
     """Return a photo row by id, or None."""
     with closing(get_db()) as conn:
         row = conn.execute(
@@ -334,7 +336,7 @@ def get_photo_by_id(photo_id):
         return dict(row) if row else None
 
 
-def get_photo_by_filename(filename):
+def get_photo_by_filename(filename: str) -> dict[str, Any] | None:
     """Return a photo row by filename, or None."""
     with closing(get_db()) as conn:
         row = conn.execute(
@@ -344,18 +346,18 @@ def get_photo_by_filename(filename):
 
 
 def get_photos(
-    favorite_only=False,
-    include_hidden=False,
-    user=None,
-    album_id=None,
-    quarantined=False,
-):
+    favorite_only: bool = False,
+    include_hidden: bool = False,
+    user: str | None = None,
+    album_id: int | None = None,
+    quarantined: bool = False,
+) -> list[dict[str, Any]]:
     """SELECT photos with optional filters.
 
     Returns a list of dicts.
     """
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[Any] = []
 
     if not quarantined:
         conditions.append("p.quarantined = 0")
@@ -388,7 +390,7 @@ def get_photos(
         return [dict(r) for r in rows]
 
 
-def get_playlist_candidates():
+def get_playlist_candidates() -> list[dict[str, Any]]:
     """Get all non-quarantined, non-hidden photos for slideshow rotation."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -398,7 +400,7 @@ def get_playlist_candidates():
         return [dict(r) for r in rows]
 
 
-def update_photo_quarantine(photo_id, quarantined, reason=None):
+def update_photo_quarantine(photo_id: int, quarantined: bool, reason: str | None = None) -> None:
     """Set quarantine status for a photo."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -414,7 +416,7 @@ def update_photo_quarantine(photo_id, quarantined, reason=None):
             conn.commit()
 
 
-def toggle_favorite(photo_id):
+def toggle_favorite(photo_id: int) -> bool | None:
     """Toggle is_favorite using atomic SQL toggle.
 
     Returns the new is_favorite value.
@@ -432,7 +434,7 @@ def toggle_favorite(photo_id):
             return bool(row["is_favorite"]) if row else None
 
 
-def toggle_hidden(photo_id):
+def toggle_hidden(photo_id: int) -> bool | None:
     """Toggle is_hidden using atomic SQL toggle."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -447,7 +449,16 @@ def toggle_hidden(photo_id):
             return bool(row["is_hidden"]) if row else None
 
 
-def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=None):
+def unquarantine_photo(
+    photo_id: int,
+    file_size: int,
+    width: int | None,
+    height: int | None,
+    checksum: str,
+    gps_lat: float | None,
+    gps_lon: float | None,
+    dhash: str | None = None,
+) -> None:
     """Clear quarantine and update metadata after successful upload processing."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -464,7 +475,7 @@ def unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gp
             conn.commit()
 
 
-def find_near_duplicates(dhash, threshold=10):
+def find_near_duplicates(dhash: str | None, threshold: int = 10) -> list[dict[str, Any]]:
     """Find photos with dhash within Hamming distance threshold.
 
     Returns list of photo dicts that are potential duplicates.
@@ -477,7 +488,7 @@ def find_near_duplicates(dhash, threshold=10):
         rows = conn.execute(
             "SELECT * FROM photos WHERE dhash IS NOT NULL AND quarantined = 0"
         ).fetchall()
-        results = []
+        results: list[dict[str, Any]] = []
         for row in rows:
             dist = hamming_distance(dhash, row["dhash"])
             if dist <= threshold:
@@ -487,7 +498,7 @@ def find_near_duplicates(dhash, threshold=10):
         return results
 
 
-def bulk_quarantine_all(reason="bulk delete"):
+def bulk_quarantine_all(reason: str = "bulk delete") -> None:
     """Mark all non-quarantined photos as quarantined."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -499,7 +510,7 @@ def bulk_quarantine_all(reason="bulk delete"):
             conn.commit()
 
 
-def delete_photo(photo_id):
+def delete_photo(photo_id: int) -> None:
     """Mark a photo as quarantined (soft delete)."""
     update_photo_quarantine(photo_id, True, reason="deleted by user")
 
@@ -507,7 +518,7 @@ def delete_photo(photo_id):
 # --- Album CRUD ---
 
 
-def create_album(name, description=None):
+def create_album(name: str, description: str | None = None) -> int | None:
     """Create a new album. Returns the album id."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -519,7 +530,7 @@ def create_album(name, description=None):
             return cur.lastrowid
 
 
-def get_albums():
+def get_albums() -> list[dict[str, Any]]:
     """Return all albums as a list of dicts, including photo_count and cover_filename."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -530,7 +541,7 @@ def get_albums():
                LEFT JOIN photos p ON p.id = a.cover_photo_id
                ORDER BY a.sort_order, a.name"""
         ).fetchall()
-        result = []
+        result: list[dict[str, Any]] = []
         for r in rows:
             album = dict(r)
             # If no explicit cover photo but album has photos, use the first one
@@ -549,7 +560,7 @@ def get_albums():
         return result
 
 
-def delete_album(album_id):
+def delete_album(album_id: int) -> None:
     """Delete an album by id."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -557,7 +568,7 @@ def delete_album(album_id):
             conn.commit()
 
 
-def add_to_album(photo_id, album_id):
+def add_to_album(photo_id: int, album_id: int) -> None:
     """Add a photo to an album. Ignores duplicates."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -568,7 +579,7 @@ def add_to_album(photo_id, album_id):
             conn.commit()
 
 
-def remove_from_album(photo_id, album_id):
+def remove_from_album(photo_id: int, album_id: int) -> None:
     """Remove a photo from an album."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -579,7 +590,7 @@ def remove_from_album(photo_id, album_id):
             conn.commit()
 
 
-def get_album_photos(album_id):
+def get_album_photos(album_id: int) -> list[dict[str, Any]]:
     """Return all photos in an album."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -596,7 +607,7 @@ def get_album_photos(album_id):
 # --- Tag CRUD ---
 
 
-def add_tag(photo_id, tag_name):
+def add_tag(photo_id: int, tag_name: str) -> int | None:
     """Add a tag to a photo. Creates the tag if it doesn't exist.
 
     Returns the tag id.
@@ -608,12 +619,12 @@ def add_tag(photo_id, tag_name):
                 "SELECT id FROM tags WHERE name = ?", (tag_name,)
             ).fetchone()
             if row:
-                tag_id = row["id"]
+                tag_id: int = row["id"]
             else:
                 cur = conn.execute(
                     "INSERT INTO tags (name) VALUES (?)", (tag_name,)
                 )
-                tag_id = cur.lastrowid
+                tag_id = cur.lastrowid  # type: ignore[assignment]
 
             conn.execute(
                 "INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)",
@@ -623,7 +634,7 @@ def add_tag(photo_id, tag_name):
             return tag_id
 
 
-def remove_tag(photo_id, tag_id):
+def remove_tag(photo_id: int, tag_id: int) -> None:
     """Remove a tag from a photo."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -634,7 +645,7 @@ def remove_tag(photo_id, tag_id):
             conn.commit()
 
 
-def get_tags(photo_id):
+def get_tags(photo_id: int) -> list[dict[str, Any]]:
     """Return all tags for a photo as a list of dicts."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -647,7 +658,7 @@ def get_tags(photo_id):
         return [dict(r) for r in rows]
 
 
-def get_all_tags():
+def get_all_tags() -> list[dict[str, Any]]:
     """Return all tags in the system (for autocomplete)."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -659,7 +670,7 @@ def get_all_tags():
 # --- User CRUD ---
 
 
-def create_user(name, is_admin=False):
+def create_user(name: str, is_admin: bool = False) -> int | None:
     """Create a new user. Returns the user id."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -671,7 +682,7 @@ def create_user(name, is_admin=False):
             return cur.lastrowid
 
 
-def get_users():
+def get_users() -> list[dict[str, Any]]:
     """Return all users as a list of dicts."""
     with closing(get_db()) as conn:
         rows = conn.execute(
@@ -680,7 +691,7 @@ def get_users():
         return [dict(r) for r in rows]
 
 
-def get_or_create_user(name, is_admin=False):
+def get_or_create_user(name: str, is_admin: bool = False) -> int | None:
     """Get a user by name, creating if needed. Returns the user id."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -695,7 +706,7 @@ def get_or_create_user(name, is_admin=False):
             return row["id"] if row else None
 
 
-def create_user_returning_row(name):
+def create_user_returning_row(name: str) -> dict[str, Any] | None:
     """Create a new user and return the full row as a dict.
 
     Raises sqlite3.IntegrityError if name already exists.
@@ -712,7 +723,7 @@ def create_user_returning_row(name):
             return dict(row) if row else None
 
 
-def delete_user_reassign(user_id):
+def delete_user_reassign(user_id: int) -> None:
     """Delete a user by id and reassign their photos to 'default'."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -728,7 +739,7 @@ def delete_user_reassign(user_id):
 # --- Display stats buffering ---
 
 
-def record_view(photo_id, duration=None, transition=None):
+def record_view(photo_id: int, duration: float | None = None, transition: str | None = None) -> None:
     """Buffer a display stat entry. Flushes on threshold or timer."""
     global _stats_last_flush
     entry = (photo_id, duration, transition)
@@ -740,7 +751,7 @@ def record_view(photo_id, duration=None, transition=None):
         _flush_stats()
 
 
-def _flush_stats():
+def _flush_stats() -> None:
     """Bulk INSERT buffered stats into the database."""
     global _stats_last_flush, _stats_buffer
     with _stats_buffer_lock:
@@ -780,7 +791,7 @@ def _flush_stats():
     log.info("STATS: FLUSHED %d display entries", len(batch))
 
 
-def _shutdown_db():
+def _shutdown_db() -> None:
     """Flush stats and checkpoint WAL on clean shutdown."""
     _flush_stats()
     try:
@@ -791,7 +802,7 @@ def _shutdown_db():
         log.error("DATABASE: WAL checkpoint on shutdown failed: %s", exc)
 
 
-def _periodic_flush():
+def _periodic_flush() -> None:
     """Called by timer thread to flush stats periodically."""
     try:
         _flush_stats()
@@ -804,7 +815,7 @@ def _periodic_flush():
 _flush_timer_lock = threading.Lock()
 
 
-def _start_flush_timer():
+def _start_flush_timer() -> None:
     """Start the periodic stats flush timer."""
     global _flush_timer
     with _flush_timer_lock:
@@ -815,14 +826,15 @@ def _start_flush_timer():
         _flush_timer.start()
 
 
-def register_shutdown_flush():
+def register_shutdown_flush() -> None:
     """Register signal handlers to flush stats buffer on graceful shutdown.
 
     Prevents stat loss when systemd sends SIGTERM (up to 5min of buffered data).
     """
     import signal
+    import types
 
-    def _shutdown_flush(signum, frame):
+    def _shutdown_flush(signum: int, frame: types.FrameType | None) -> None:
         if _stats_buffer:
             log.info("Flushing %d buffered stats on signal %d", len(_stats_buffer), signum)
             _flush_stats()
@@ -831,7 +843,7 @@ def register_shutdown_flush():
     signal.signal(signal.SIGINT, _shutdown_flush)
 
 
-def _prune_old_stats():
+def _prune_old_stats() -> None:
     """DELETE display_stats older than 30 days."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -843,7 +855,7 @@ def _prune_old_stats():
                 log.info("STATS: PRUNED %d entries older than 30 days", cur.rowcount)
 
 
-def prune_quarantined(days=30):
+def prune_quarantined(days: int = 30) -> int:
     """Remove quarantined photos older than N days."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -862,19 +874,19 @@ def prune_quarantined(days=30):
 # --- Aggregated stats ---
 
 
-def get_stats():
+def get_stats() -> dict[str, Any]:
     """Return aggregated display and content stats."""
     with closing(get_db()) as conn:
-        total = conn.execute(
+        total: int = conn.execute(
             "SELECT COUNT(*) AS c FROM photos WHERE quarantined = 0"
         ).fetchone()["c"]
-        favorites = conn.execute(
+        favorites: int = conn.execute(
             "SELECT COUNT(*) AS c FROM photos WHERE is_favorite = 1 AND quarantined = 0"
         ).fetchone()["c"]
-        hidden = conn.execute(
+        hidden: int = conn.execute(
             "SELECT COUNT(*) AS c FROM photos WHERE is_hidden = 1 AND quarantined = 0"
         ).fetchone()["c"]
-        videos = conn.execute(
+        videos: int = conn.execute(
             "SELECT COUNT(*) AS c FROM photos WHERE is_video = 1 AND quarantined = 0"
         ).fetchone()["c"]
 
@@ -899,7 +911,7 @@ def get_stats():
                ORDER BY view_count ASC LIMIT 5"""
         ).fetchall()
 
-        total_views = conn.execute(
+        total_views: int = conn.execute(
             "SELECT COUNT(*) AS c FROM display_stats"
         ).fetchone()["c"]
 
@@ -918,7 +930,7 @@ def get_stats():
 # --- Smart album queries ---
 
 
-def get_smart_album_photos(smart_key):
+def get_smart_album_photos(smart_key: str) -> list[dict[str, Any]]:
     """Run a smart album query and return matching photos."""
     album_def = SMART_ALBUMS.get(smart_key)
     if not album_def:
@@ -936,7 +948,7 @@ def get_smart_album_photos(smart_key):
 # --- Full-text search (FTS5) ---
 
 
-def rebuild_fts():
+def rebuild_fts() -> None:
     """Rebuild the FTS5 index from current photo data."""
     with _write_lock:
         with closing(get_db()) as conn:
@@ -961,7 +973,7 @@ def rebuild_fts():
                 log.error("FTS: rebuild failed", exc_info=True)
 
 
-def _fts_index_photo(conn, photo_id):
+def _fts_index_photo(conn: sqlite3.Connection, photo_id: int | None) -> None:
     """Add or update a single photo in the FTS index (caller holds _write_lock)."""
     try:
         conn.execute(
@@ -989,7 +1001,7 @@ def _fts_index_photo(conn, photo_id):
         log.warning("FTS: index update failed for photo %d", photo_id, exc_info=True)
 
 
-def _fts_remove_photo(conn, photo_id):
+def _fts_remove_photo(conn: sqlite3.Connection, photo_id: int) -> None:
     """Remove a photo from the FTS index (caller holds _write_lock)."""
     try:
         conn.execute(
@@ -1001,7 +1013,7 @@ def _fts_remove_photo(conn, photo_id):
         log.warning("FTS: remove failed for photo %d", photo_id, exc_info=True)
 
 
-def search_photos(query, limit=50):
+def search_photos(query: str, limit: int = 50) -> list[dict[str, Any]]:
     """Search photos using FTS5. Returns list of photo dicts."""
     if not query or not query.strip():
         return []
@@ -1025,7 +1037,7 @@ def search_photos(query, limit=50):
 # --- Backup ---
 
 
-def backup_db():
+def backup_db() -> str:
     """Copy the database to framecast.db.backup using atomic write pattern.
 
     Returns the backup file path.
@@ -1062,7 +1074,7 @@ def backup_db():
     return str(backup_path)
 
 
-def restore_db(uploaded_path):
+def restore_db(uploaded_path: str | Path) -> bool:
     """Restore database from an uploaded backup file.
 
     Validates the file is a valid SQLite database with expected tables
@@ -1109,7 +1121,7 @@ def restore_db(uploaded_path):
 # --- WAL checkpoint (periodic) ---
 
 
-def wal_checkpoint():
+def wal_checkpoint() -> None:
     """Run WAL checkpoint to reclaim space."""
     with closing(get_db()) as conn:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1119,7 +1131,7 @@ def wal_checkpoint():
 # --- Schema migrations ---
 
 
-def _migrate_v2_dhash(conn):
+def _migrate_v2_dhash(conn: sqlite3.Connection) -> None:
     """v1 -> v2: Add dhash column for perceptual duplicate detection.
 
     Uses ALTER TABLE for existing databases. The column already exists
@@ -1141,7 +1153,7 @@ def _migrate_v2_dhash(conn):
 # --- Migration from files ---
 
 
-def _compute_sha256(filepath):
+def _compute_sha256(filepath: str | Path) -> str:
     """Compute SHA256 hash of a file."""
     sha = hashlib.sha256()
     with open(filepath, "rb") as f:
@@ -1154,10 +1166,10 @@ def _compute_sha256(filepath):
 compute_sha256 = _compute_sha256
 
 
-_pillow_warned = False
+_pillow_warned: bool = False
 
 
-def _extract_exif_date(filepath):
+def _extract_exif_date(filepath: str | Path) -> str | None:
     """Extract the EXIF date from an image file, or None."""
     global _pillow_warned
     try:
@@ -1180,7 +1192,7 @@ def _extract_exif_date(filepath):
     return None
 
 
-def _get_image_dimensions(filepath):
+def _get_image_dimensions(filepath: str | Path) -> tuple[int | None, int | None]:
     """Get (width, height) of an image, or (None, None)."""
     global _pillow_warned
     try:
@@ -1199,7 +1211,7 @@ def _get_image_dimensions(filepath):
         return None, None
 
 
-def _migrate_impl(conn):
+def _migrate_impl(conn: sqlite3.Connection) -> None:
     """Core migration logic — scan MEDIA_DIR and import files into the database.
 
     Called by migrate_from_files with a valid connection.
@@ -1219,13 +1231,13 @@ def _migrate_impl(conn):
         )
 
     # Load existing GPS cache
-    gps_cache = {}
+    gps_cache: dict[str, Any] = {}
     cache_path = media_dir / ".locations.json"
     if cache_path.exists():
         try:
             import json
-            with open(cache_path, "r", encoding="utf-8") as f:
-                gps_cache = json.load(f)
+            with open(cache_path, "r", encoding="utf-8") as cache_fh:
+                gps_cache = json.load(cache_fh)
         except Exception as exc:
             log.warning("MIGRATION: Failed to load GPS cache: %s", exc)
 
@@ -1234,7 +1246,7 @@ def _migrate_impl(conn):
     all_ext = image_ext | video_ext
     skip_dirs = {media_dir / "thumbnails", media_dir / "quarantine"}
 
-    media_files = []
+    media_files: list[Path] = []
     for f in media_dir.rglob("*"):
         if not f.is_file():
             continue
@@ -1279,9 +1291,11 @@ def _migrate_impl(conn):
         file_size = filepath.stat().st_size
 
         # Extract metadata for images
-        width, height = (None, None)
-        exif_date = None
-        gps_lat, gps_lon = None, None
+        width: int | None = None
+        height: int | None = None
+        exif_date: str | None = None
+        gps_lat: float | None = None
+        gps_lon: float | None = None
 
         if not is_vid:
             width, height = _get_image_dimensions(filepath)
@@ -1298,14 +1312,14 @@ def _migrate_impl(conn):
                     gps_lat, gps_lon = coords
 
         # Determine thumbnail path for videos
-        thumb_path = None
+        thumb_path: str | None = None
         if is_vid:
             thumb_file = media_dir / "thumbnails" / (filepath.stem + ".jpg")
             if thumb_file.exists():
                 thumb_path = str(thumb_file)
 
         # Determine MIME type
-        mime_map = {
+        mime_map: dict[str, str] = {
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".png": "image/png",
@@ -1361,7 +1375,7 @@ def _migrate_impl(conn):
     log.info("MIGRATION: COMPLETE — %d new photos indexed", imported)
 
 
-def migrate_from_files(conn=None):
+def migrate_from_files(conn: sqlite3.Connection | None = None) -> None:
     """Scan MEDIA_DIR for media files and import them into the database.
 
     Reads existing GPS JSON cache and merges coordinates into photo rows.
@@ -1372,7 +1386,7 @@ def migrate_from_files(conn=None):
               opens a new connection.
     """
     if conn is None:
-        with closing(get_db()) as conn:
-            _migrate_impl(conn)
+        with closing(get_db()) as new_conn:
+            _migrate_impl(new_conn)
         return
     _migrate_impl(conn)

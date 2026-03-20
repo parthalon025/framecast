@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "update:rebooting",
+  "description": "Sent after an OTA update is applied, just before the device reboots.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Git tag of the applied update (e.g., 'v2.1.0')"
+    }
+  },
+  "required": ["version"],
+  "additionalProperties": false
+}

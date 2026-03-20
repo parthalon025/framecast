@@ -6,6 +6,7 @@ on failure, never raise.
 
 Reference: docs/plans/2026-03-19-v2-polish-research.md § 2a
 """
+from __future__ import annotations
 
 import logging
 import re
@@ -19,7 +20,7 @@ _CEC_STATUS_ON = re.compile(r"\bpwr-status:\s*on\b", re.IGNORECASE)
 _CEC_STATUS_STANDBY = re.compile(r"\bpwr-status:\s*standby\b", re.IGNORECASE)
 
 
-def _cec_cmd(args, timeout=_TIMEOUT):
+def _cec_cmd(args: list[str], timeout: int = _TIMEOUT) -> str | None:
     """Run cec-ctl command, return stdout or None on failure."""
     cmd = ["cec-ctl"] + args
     try:
@@ -47,19 +48,19 @@ def _cec_cmd(args, timeout=_TIMEOUT):
         return None
 
 
-def tv_power_on():
+def tv_power_on() -> bool:
     """Power on TV via CEC Image View On command."""
     out = _cec_cmd(["--playback", "-t0", "--image-view-on"])
     return out is not None
 
 
-def tv_standby():
+def tv_standby() -> bool:
     """Put TV into standby via CEC."""
     out = _cec_cmd(["--playback", "-t0", "--standby"])
     return out is not None
 
 
-def tv_status():
+def tv_status() -> str:
     """Query TV power status. Returns 'on', 'standby', or 'unknown'."""
     out = _cec_cmd(["-d0", "--give-device-power-status"])
     if out is None:
@@ -72,7 +73,7 @@ def tv_status():
     return "unknown"
 
 
-def set_active_source():
+def set_active_source() -> bool:
     """Set Pi as active HDMI source."""
     out = _cec_cmd(
         ["--playback", "-t0", "--active-source", "phys-addr=1.0.0.0"]
@@ -80,7 +81,7 @@ def set_active_source():
     return out is not None
 
 
-def init_cec():
+def init_cec() -> str:
     """Query current TV state on startup (Lesson #7 — don't assume).
 
     Returns the detected TV power status string.

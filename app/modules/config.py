@@ -1,4 +1,5 @@
 """Configuration management - reads and writes .env files."""
+from __future__ import annotations
 
 import logging
 import os
@@ -11,13 +12,13 @@ log = logging.getLogger(__name__)
 SCRIPT_DIR = Path(__file__).parent.parent
 ENV_FILE = SCRIPT_DIR / ".env"
 
-_cache = {}
+_cache: dict[str, str] = {}
 _lock = threading.Lock()
 
 
-def load_env():
+def load_env() -> dict[str, str]:
     """Load .env file into a dict."""
-    env = {}
+    env: dict[str, str] = {}
     if ENV_FILE.exists():
         try:
             with open(ENV_FILE) as f:
@@ -34,7 +35,7 @@ def load_env():
     return env
 
 
-def get(key, default=""):
+def get(key: str, default: str = "") -> str:
     """Read a config value: os.environ > .env file > default."""
     global _cache
     with _lock:
@@ -43,20 +44,20 @@ def get(key, default=""):
         return os.environ.get(key, _cache.get(key, default))
 
 
-def save(updates: dict):
+def save(updates: dict[str, str]) -> None:
     """Update .env file with new values, preserving comments and order.
 
     Thread-safe: serializes read-modify-write to prevent concurrent
     settings saves from clobbering each other.
     """
     with _lock:
-        lines = []
+        lines: list[str] = []
         if ENV_FILE.exists():
             with open(ENV_FILE) as f:
                 lines = f.readlines()
 
-        updated_keys = set()
-        new_lines = []
+        updated_keys: set[str] = set()
+        new_lines: list[str] = []
         for line in lines:
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
@@ -93,7 +94,7 @@ def save(updates: dict):
         _cache.update(updates)
 
 
-def reload():
+def reload() -> dict[str, str]:
     """Force reload config from disk."""
     global _cache
     with _lock:

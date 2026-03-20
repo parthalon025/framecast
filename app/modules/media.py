@@ -1,4 +1,5 @@
 """Media file operations - listing, disk usage, allowed extensions."""
+from __future__ import annotations
 
 import json
 import logging
@@ -6,15 +7,16 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from . import config
 
 log = logging.getLogger(__name__)
 
-_pillow_warned = False
+_pillow_warned: bool = False
 
 
-def get_allowed_extensions():
+def get_allowed_extensions() -> tuple[set[str], set[str]]:
     """Get the set of allowed file extensions."""
     image_ext = [
         e.strip()
@@ -31,25 +33,25 @@ def get_allowed_extensions():
     return set(image_ext), set(video_ext)
 
 
-def get_media_dir():
+def get_media_dir() -> str:
     """Get the media directory path."""
     return config.get("MEDIA_DIR", "/home/pi/media")
 
 
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     """Check if a filename has an allowed extension."""
     image_ext, video_ext = get_allowed_extensions()
     ext = Path(filename).suffix.lower()
     return ext in (image_ext | video_ext)
 
 
-def is_video(filename):
+def is_video(filename: str) -> bool:
     """Check if a filename is a video."""
     _, video_ext = get_allowed_extensions()
     return Path(filename).suffix.lower() in video_ext
 
 
-def format_size(size_bytes):
+def format_size(size_bytes: int | float) -> str:
     """Format bytes to human readable string."""
     for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024:
@@ -60,7 +62,7 @@ def format_size(size_bytes):
     return f"{size_bytes:.1f} TB"
 
 
-def get_media_files():
+def get_media_files() -> list[dict[str, Any]]:
     """Get all media files sorted by modification time (newest first)."""
     media_path = Path(get_media_dir())
     if not media_path.exists():
@@ -68,7 +70,7 @@ def get_media_files():
 
     image_ext, video_ext = get_allowed_extensions()
     all_ext = image_ext | video_ext
-    files = []
+    files: list[dict[str, Any]] = []
 
     # Skip the thumbnails and quarantine subdirectories, and .tmp files
     thumbnails_dir = media_path / "thumbnails"
@@ -93,7 +95,7 @@ def get_media_files():
     return files
 
 
-def get_disk_usage():
+def get_disk_usage() -> dict[str, Any]:
     """Get disk usage stats for the media directory."""
     media_dir = get_media_dir()
     if not Path(media_dir).exists():
@@ -108,7 +110,7 @@ def get_disk_usage():
     }
 
 
-def get_storage_breakdown():
+def get_storage_breakdown() -> dict[str, Any]:
     """Get storage breakdown by category (photos, thumbnails, database)."""
     media_path = Path(get_media_dir())
     if not media_path.exists():
@@ -143,7 +145,7 @@ def get_storage_breakdown():
     }
 
 
-def cleanup_orphan_thumbnails():
+def cleanup_orphan_thumbnails() -> int:
     """Remove thumbnails that no longer have a corresponding media file.
 
     This handles the case where media files are deleted outside the web UI
@@ -157,7 +159,7 @@ def cleanup_orphan_thumbnails():
 
     _, video_ext = get_allowed_extensions()
     # Build a set of stems for all current video files (including subdirectories)
-    video_stems = set()
+    video_stems: set[str] = set()
     for f in media_dir.rglob("*"):
         if f.is_file() and f.suffix.lower() in video_ext:
             video_stems.add(f.stem)
@@ -174,7 +176,7 @@ def cleanup_orphan_thumbnails():
     return removed
 
 
-def fix_orientation(image_path):
+def fix_orientation(image_path: str | Path) -> bool:
     """Apply EXIF orientation tag and strip it from the image.
 
     Some phones store photos rotated with an EXIF flag rather than
@@ -202,7 +204,7 @@ def fix_orientation(image_path):
                 return False  # exif_transpose returns None if no change needed
             # Preserve EXIF but reset orientation to 1 (normal) to prevent
             # double-rotation by viewers that respect the EXIF tag.
-            save_kwargs = {"quality": 95}
+            save_kwargs: dict[str, Any] = {"quality": 95}
             corrected_exif = corrected.getexif()
             corrected_exif[0x0112] = 1  # Orientation = Normal
             save_kwargs["exif"] = corrected_exif.tobytes()
@@ -214,7 +216,7 @@ def fix_orientation(image_path):
         return False
 
 
-def extract_gps(image_path):
+def extract_gps(image_path: str | Path) -> tuple[float, float] | None:
     """Extract GPS coordinates as (lat, lon) or None from EXIF.
 
     Uses Pillow's getexif() and get_ifd(ExifTags.IFD.GPSInfo) to read
@@ -258,7 +260,7 @@ def extract_gps(image_path):
             if not gps_lat or not gps_lon or not gps_lat_ref or not gps_lon_ref:
                 return None
 
-            def dms_to_decimal(dms, ref):
+            def dms_to_decimal(dms: Any, ref: str) -> float:
                 """Convert DMS tuple (degrees, minutes, seconds) to decimal."""
                 degrees = float(dms[0])
                 minutes = float(dms[1])
@@ -277,12 +279,12 @@ def extract_gps(image_path):
         return None
 
 
-def _locations_cache_path():
+def _locations_cache_path() -> Path:
     """Return the path to the locations cache file."""
     return Path(get_media_dir()) / ".locations.json"
 
 
-def _load_locations_cache():
+def _load_locations_cache() -> dict[str, dict[str, float]]:
     """Load the locations cache from disk.
 
     Returns:
@@ -294,13 +296,13 @@ def _load_locations_cache():
         return {}
     try:
         with open(cache_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return json.load(f)  # type: ignore[no-any-return]
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("Locations cache corrupt or unreadable, rebuilding: %s", exc)
         return {}
 
 
-def _save_locations_cache(cache):
+def _save_locations_cache(cache: dict[str, dict[str, float]]) -> None:
     """Atomically write the locations cache to disk.
 
     Uses a temporary file and rename to avoid corruption on power loss.
@@ -331,7 +333,7 @@ def _save_locations_cache(cache):
         log.warning("Failed to save locations cache: %s", exc)
 
 
-def get_photo_locations():
+def get_photo_locations() -> list[dict[str, Any]]:
     """Get GPS locations for all photos, using a JSON cache file.
 
     Scans all image files in MEDIA_DIR. Only extracts GPS for files not
@@ -359,7 +361,7 @@ def get_photo_locations():
     thumbnails_dir = media_path / "thumbnails"
 
     # Collect current image filenames
-    current_images = set()
+    current_images: set[str] = set()
     for f in media_path.rglob("*"):
         if (
             f.is_file()
@@ -401,7 +403,7 @@ def get_photo_locations():
     ]
 
 
-def update_location_cache(filename, coords):
+def update_location_cache(filename: str, coords: tuple[float, float] | None) -> None:
     """Update the locations cache for a single file.
 
     Args:
@@ -416,7 +418,7 @@ def update_location_cache(filename, coords):
     _save_locations_cache(cache)
 
 
-def remove_from_location_cache(filename):
+def remove_from_location_cache(filename: str) -> None:
     """Remove a file from the locations cache.
 
     Args:
@@ -428,7 +430,7 @@ def remove_from_location_cache(filename):
         _save_locations_cache(cache)
 
 
-def compute_dhash(filepath, hash_size=8):
+def compute_dhash(filepath: str | Path, hash_size: int = 8) -> str | None:
     """Compute a 64-bit difference hash (dhash) for duplicate detection.
 
     Returns hex string of the hash, or None if computation fails.
@@ -460,7 +462,7 @@ def compute_dhash(filepath, hash_size=8):
         return None
 
 
-def hamming_distance(hash1, hash2):
+def hamming_distance(hash1: str | None, hash2: str | None) -> int:
     """Compute Hamming distance between two hex hash strings."""
     if not hash1 or not hash2 or len(hash1) != len(hash2):
         return 64  # max distance

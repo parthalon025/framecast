@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "slideshow:now_playing",
+  "description": "Broadcast by the TV display to indicate which photo is currently showing. Fields may be null if no photo is playing.",
+  "type": "object",
+  "properties": {
+    "photo_id": {
+      "type": ["integer", "null"],
+      "description": "Photo database ID, or null if unavailable"
+    },
+    "filename": {
+      "type": ["string", "null"],
+      "description": "Photo filename, or null if unavailable"
+    }
+  },
+  "required": ["photo_id", "filename"],
+  "additionalProperties": false
+}

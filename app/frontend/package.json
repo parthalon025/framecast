@@ -8,6 +8,8 @@
     "build": "node esbuild.config.js",
     "postbuild": "cp node_modules/superhot-ui/dist/superhot.css ../static/css/superhot.css && cp node_modules/leaflet/dist/leaflet.css ../static/css/leaflet.css",
     "dev": "node esbuild.config.js --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "node node_modules/superhot-ui/scripts/setup.js"
   },
   "dependencies": {
@@ -18,6 +20,8 @@
     "superhot-ui": "^0.4.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "happy-dom": "^16.0.0",
+    "vitest": "^3.0.0"
   }
 }

@@ -3,6 +3,7 @@
 Thread-safe client management with keepalive, stale client cleanup,
 event coalescing, and reconnection support via event IDs.
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -10,12 +11,14 @@ import os
 import threading
 import time
 from collections import deque
+from collections.abc import Generator
 from queue import Empty, Full, Queue
+from typing import Any
 
 log = logging.getLogger(__name__)
 
 # Connected SSE clients. Each client is a Queue that receives events.
-_clients = []
+_clients: list[Queue[tuple[int, str, dict[str, Any]]]] = []
 _clients_lock = threading.Lock()
 
 # Max events buffered per client before it's considered stale
@@ -36,11 +39,11 @@ _event_id_lock = threading.Lock()
 
 # Recent event buffer for reconnection (ring buffer of (id, event, data))
 _RECENT_BUFFER_SIZE = 50
-_recent_events = deque(maxlen=_RECENT_BUFFER_SIZE)
+_recent_events: deque[tuple[int, str, dict[str, Any]]] = deque(maxlen=_RECENT_BUFFER_SIZE)
 _recent_lock = threading.Lock()
 
 
-def _next_event_id():
+def _next_event_id() -> int:
     """Return the next monotonically increasing event ID."""
     global _event_id
     with _event_id_lock:
@@ -48,7 +51,7 @@ def _next_event_id():
         return _event_id
 
 
-def _get_current_state():
+def _get_current_state() -> dict[str, Any]:
     """Build a state:current payload from the app's current state.
 
     Returns a dict with basic state info, or None if unavailable.
@@ -61,24 +64,24 @@ def _get_current_state():
         return {"connected": True}
 
 
-def _replay_events_after(last_id):
+def _replay_events_after(last_id: str | None) -> Generator[str, None, None]:
     """Yield SSE-formatted events that occurred after *last_id*.
 
     Used for reconnection: the client sends Last-Event-ID and we replay
     any events that were buffered since that ID.
     """
     try:
-        last_id = int(last_id)
+        parsed_id = int(last_id)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return
 
     with _recent_lock:
         for eid, event, data in _recent_events:
-            if eid > last_id:
+            if eid > parsed_id:
                 yield f"id: {eid}\nevent: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def subscribe(last_event_id=None):
+def subscribe(last_event_id: str | None = None) -> Generator[str, None, None]:
     """Generator that yields SSE-formatted events for a single client.
 
     Args:
@@ -88,7 +91,7 @@ def subscribe(last_event_id=None):
     Yields:
         SSE-formatted strings (event + data lines, or keepalive comments).
     """
-    q = Queue(maxsize=_MAX_QUEUE_SIZE)
+    q: Queue[tuple[int, str, dict[str, Any]]] = Queue(maxsize=_MAX_QUEUE_SIZE)
     with _clients_lock:
         if len(_clients) >= _MAX_CLIENTS:
             log.warning("SSE connection rejected: max clients (%d) reached", _MAX_CLIENTS)
@@ -110,10 +113,10 @@ def subscribe(last_event_id=None):
                 yield replayed
 
         # Coalescing state: track last event type and time
-        pending_eid = None
-        pending_event = None
-        pending_data = None
-        pending_time = 0.0
+        pending_eid: int | None = None
+        pending_event: str | None = None
+        pending_data: dict[str, Any] | None = None
+        pending_time: float = 0.0
 
         while True:
             try:
@@ -166,7 +169,7 @@ def subscribe(last_event_id=None):
         log.info("SSE client disconnected (total: %d)", count)
 
 
-def notify(event: str, data: dict | None = None):
+def notify(event: str, data: dict[str, Any] | None = None) -> None:
     """Push an event to all connected SSE clients.
 
     Drops the event for clients whose queues are full (stale clients).
@@ -184,7 +187,7 @@ def notify(event: str, data: dict | None = None):
     with _recent_lock:
         _recent_events.append((eid, event, data))  # deque auto-trims at maxlen
 
-    stale = []
+    stale: list[Queue[tuple[int, str, dict[str, Any]]]] = []
     with _clients_lock:
         for q in _clients:
             try:
@@ -213,7 +216,7 @@ def notify(event: str, data: dict | None = None):
                     pass  # If this one is also full, it'll be cleaned next cycle
 
 
-def client_count():
+def client_count() -> int:
     """Return the number of connected SSE clients."""
     with _clients_lock:
         return len(_clients)

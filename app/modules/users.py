@@ -3,9 +3,11 @@
 No passwords — just names, upload counts, and stats aggregation.
 All DB access goes through the db module's public API.
 """
+from __future__ import annotations
 
 import logging
 from contextlib import closing
+from typing import Any
 
 from . import db
 from . import media
@@ -14,7 +16,7 @@ from .media import format_size
 log = logging.getLogger(__name__)
 
 
-def get_users():
+def get_users() -> list[dict[str, Any]]:
     """Return all users ordered by upload count (highest first)."""
     with closing(db.get_db()) as conn:
         return [dict(r) for r in conn.execute(
@@ -22,7 +24,7 @@ def get_users():
         ).fetchall()]
 
 
-def create_user(name):
+def create_user(name: str) -> dict[str, Any] | None:
     """Create a new user by name. Returns the new user row as a dict.
 
     Raises sqlite3.IntegrityError if name already exists.
@@ -30,13 +32,13 @@ def create_user(name):
     return db.create_user_returning_row(name)
 
 
-def delete_user(user_id):
+def delete_user(user_id: int) -> None:
     """Delete a user by id. Reassigns their photos to 'default'."""
     db.delete_user_reassign(user_id)
     log.info("USER: DELETED id=%d, photos reassigned to 'default'", user_id)
 
 
-def get_upload_stats():
+def get_upload_stats() -> list[dict[str, Any]]:
     """Return per-user upload stats from the photos table.
 
     Groups non-quarantined photos by uploaded_by with count and last upload time.
@@ -50,7 +52,7 @@ def get_upload_stats():
         ).fetchall()]
 
 
-def get_full_stats():
+def get_full_stats() -> dict[str, Any]:
     """Return aggregated stats for the dashboard.
 
     Includes totals, per-user breakdown, most/least shown, and upload timeline.
@@ -63,9 +65,9 @@ def get_full_stats():
             "COALESCE(SUM(file_size), 0) AS storage "
             "FROM photos WHERE quarantined = 0"
         ).fetchone()
-        total_photos = totals["total"]
-        total_videos = totals["videos"]
-        storage_bytes = totals["storage"]
+        total_photos: int = totals["total"]
+        total_videos: int = totals["videos"]
+        storage_bytes: int = totals["storage"]
 
         # Photos by user
         by_user = [dict(r) for r in conn.execute(
@@ -90,7 +92,7 @@ def get_full_stats():
         ).fetchall()]
 
         # Never shown (uploaded but view_count = 0)
-        never_shown_count = conn.execute(
+        never_shown_count: int = conn.execute(
             "SELECT COUNT(*) AS c FROM photos "
             "WHERE quarantined = 0 AND view_count = 0"
         ).fetchone()["c"]
@@ -104,7 +106,7 @@ def get_full_stats():
         ).fetchall()]
 
         # Total display views
-        total_views = conn.execute(
+        total_views: int = conn.execute(
             "SELECT COUNT(*) AS c FROM display_stats"
         ).fetchone()["c"]
 
@@ -113,7 +115,7 @@ def get_full_stats():
             "SELECT AVG(duration_seconds) AS avg "
             "FROM display_stats WHERE duration_seconds IS NOT NULL"
         ).fetchone()
-        avg_duration = avg_duration_row["avg"]
+        avg_duration: float | None = avg_duration_row["avg"]
 
     return {
         "total_photos": total_photos,
@@ -129,5 +131,3 @@ def get_full_stats():
         "avg_duration": round(avg_duration, 1) if avg_duration else None,
         "timeline": timeline,
     }
-
-

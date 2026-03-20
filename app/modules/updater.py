@@ -7,6 +7,7 @@ Security: after git fetch, the tag's commit SHA is verified against what
 the GitHub API reported.  If the SHA does not match (e.g. tag was force-pushed
 or MITM), the update is aborted.
 """
+from __future__ import annotations
 
 import hashlib
 import hmac
@@ -52,7 +53,7 @@ def get_current_version() -> str:
         return "0.0.0"
 
 
-def check_for_update() -> dict:
+def check_for_update() -> dict[str, object]:
     """Check GitHub Releases API for a newer version.
 
     Returns:
@@ -63,7 +64,7 @@ def check_for_update() -> dict:
     response, used to verify the fetched tag matches expectations.
     """
     current = get_current_version()
-    result = {
+    result: dict[str, object] = {
         "available": False,
         "current": current,
         "latest": current,
@@ -122,7 +123,7 @@ def _hmac_sign(data: str) -> str:
     ).hexdigest()
 
 
-def _atomic_write(path: Path, content: str):
+def _atomic_write(path: Path, content: str) -> None:
     """Write *content* to *path* atomically (tmp + fsync + rename)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = str(path) + ".tmp"
@@ -140,7 +141,7 @@ def _atomic_write(path: Path, content: str):
         raise
 
 
-def _verify_tag_sha(tag: str, expected_sha: str) -> tuple:
+def _verify_tag_sha(tag: str, expected_sha: str) -> tuple[bool, str]:
     """Verify the local tag commit SHA matches the expected SHA from GitHub API.
 
     After git fetch, resolve the tag to its commit SHA and compare.
@@ -174,7 +175,7 @@ def _verify_tag_sha(tag: str, expected_sha: str) -> tuple:
     return False, f"SHA mismatch: expected {expected_sha[:12]}, got {local_sha[:12]}"
 
 
-def apply_update(tag: str, expected_sha: str = "") -> tuple:
+def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     """Apply update: git fetch, verify SHA, git checkout <tag>.
 
     Saves current version tag to ``/var/lib/framecast/rollback-tag`` with
@@ -236,7 +237,7 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def _git(*args) -> tuple:
+def _git(*args: str) -> tuple[bool, str]:
     """Run a git command inside INSTALL_DIR.
 
     Returns:
