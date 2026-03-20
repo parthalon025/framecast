@@ -15,6 +15,7 @@ import { Boot } from "./Boot.jsx";
 import { Welcome } from "./Welcome.jsx";
 import { Setup } from "./Setup.jsx";
 import { Slideshow } from "./Slideshow.jsx";
+import { AmbientClock } from "./AmbientClock.jsx";
 
 /** Current display state -- exported for other components to read. */
 export const displayState = signal("boot");
@@ -72,7 +73,12 @@ function renderState(stateName) {
     case "setup":
       return <Setup />;
     case "welcome":
-      return <Welcome />;
+      return (
+        <>
+          <Welcome />
+          <AmbientClock />
+        </>
+      );
     case "slideshow":
       return <Slideshow />;
     default:

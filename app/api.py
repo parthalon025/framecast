@@ -122,6 +122,7 @@ def _current_settings():
         "auto_resize_max": _safe_int(config.get("AUTO_RESIZE_MAX", "1920"), 1920),
         "auto_update_enabled": config.get("AUTO_UPDATE_ENABLED", "no").lower() == "yes",
         "pin_length": _safe_int(config.get("PIN_LENGTH", "4"), 4),
+        "max_video_duration": _safe_int(config.get("MAX_VIDEO_DURATION", "30"), 30),
         "web_port": _safe_int(config.get("WEB_PORT", "8080"), 8080),
     }
 
@@ -149,6 +150,7 @@ _SETTINGS_ENV_MAP = {
     "auto_resize_max": ("AUTO_RESIZE_MAX", str),
     "auto_update_enabled": ("AUTO_UPDATE_ENABLED", lambda v: "yes" if v else "no"),
     "pin_length": ("PIN_LENGTH", str),
+    "max_video_duration": ("MAX_VIDEO_DURATION", str),
 }
 
 
@@ -270,6 +272,14 @@ def update_settings():
                 raise ValueError
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid transition_duration_ms: must be 500-3000"}), 400
+
+    if "max_video_duration" in data:
+        try:
+            val = int(data["max_video_duration"])
+            if not (5 <= val <= 300):
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid max_video_duration: must be 5-300"}), 400
 
     if "pin_length" in data:
         try:

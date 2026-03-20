@@ -131,6 +131,42 @@
   animation: fcDissolveOut var(--fc-transition-ms) ease-in-out forwards;
 }
 
+/* --- Photo info overlay --- */
+
+.fc-info-overlay {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+  animation: fcInfoFade 3s ease-in-out forwards;
+}
+
+@keyframes fcInfoFade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.fc-info-text {
+  display: inline-block;
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.65rem, 1.2vw, 1rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--sh-phosphor-glow);
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* --- "On This Day" overlay --- */
 
 .fc-otd-overlay {
