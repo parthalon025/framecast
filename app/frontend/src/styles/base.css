@@ -41,3 +41,12 @@
   border-color: var(--status-critical, #ff4444);
   background: oklch(50% 0.2 30 / 0.05);
 }
+
+/* Focus indicators for custom interactive elements */
+.fc-day-btn:focus-visible,
+.fc-ctx-item:focus-visible,
+.fc-btn-primary:focus-visible,
+.fc-action-btn:focus-visible {
+    outline: 2px solid var(--sh-phosphor);
+    outline-offset: 2px;
+}
