@@ -130,6 +130,17 @@ rotate_pin_on_boot()
 # --- Config ---
 
 SCRIPT_DIR = Path(__file__).parent
+VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
+
+
+def _read_version():
+    """Read version string from VERSION file for cache-busting."""
+    try:
+        return VERSION_FILE.read_text().strip()
+    except OSError:
+        return "dev"
+
+
 MEDIA_DIR = media.get_media_dir()
 THUMBNAIL_DIR = str(Path(MEDIA_DIR) / "thumbnails")
 PORT = int(config.get("WEB_PORT", "8080"))
@@ -898,17 +909,17 @@ def api_shutdown():
 @app.route("/display")
 @app.route("/display/<path:subpath>")
 def display(subpath=None):
-    return render_template("spa.html")
+    return render_template("spa.html", version=_read_version())
 
 
 @app.route("/setup")
 def setup():
-    return render_template("spa.html")
+    return render_template("spa.html", version=_read_version())
 
 
 @app.route("/update")
 def update():
-    return render_template("spa.html")
+    return render_template("spa.html", version=_read_version())
 
 
 if __name__ == "__main__":
