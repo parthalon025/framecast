@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import logging
 import secrets
+import time
 
 
 from flask import Blueprint, jsonify, make_response, request
@@ -161,6 +162,43 @@ def _validate_origin() -> bool:
         origin, host, request.remote_addr, request.path,
     )
     return False
+
+
+def generate_guest_token(ttl_hours=24):
+    """Generate an HMAC-signed guest upload token with TTL.
+
+    Token format: ``{expires_timestamp}:{signature_prefix}``.
+    The signature is the first 16 hex chars of HMAC-SHA256 over the
+    payload ``guest:{expires}`` keyed with FLASK_SECRET_KEY.
+    """
+    secret = config.get("FLASK_SECRET_KEY", "")
+    if not secret:
+        log.error("FLASK_SECRET_KEY not set — guest token will be insecure")
+        secret = "insecure-fallback"
+    expires = int(time.time()) + (ttl_hours * 3600)
+    payload = f"guest:{expires}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{expires}:{sig}"
+
+
+def validate_guest_token(token):
+    """Validate a guest upload token. Returns True if valid and not expired."""
+    if not token or ":" not in token:
+        return False
+    try:
+        expires_str, sig = token.rsplit(":", 1)
+        expires = int(expires_str)
+    except (ValueError, TypeError):
+        return False
+    if time.time() > expires:
+        return False
+    secret = config.get("FLASK_SECRET_KEY", "")
+    if not secret:
+        log.error("FLASK_SECRET_KEY not set — guest token validation unreliable")
+        secret = "insecure-fallback"
+    payload = f"guest:{expires}"
+    expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return hmac.compare_digest(sig, expected)
 
 
 def generate_pin(length: int = 4) -> str:

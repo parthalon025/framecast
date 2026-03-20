@@ -9,6 +9,7 @@ import { ShCollapsible, ShModal, ShToast, ShSkeleton } from "superhot-ui/preact"
 import { applyThreshold } from "superhot-ui";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { navigate } from "../components/Router.jsx";
+import { TransitionPreview } from "../components/TransitionPreview.jsx";
 
 const TRANSITION_OPTIONS = ["fade", "slide", "zoom", "dissolve", "none"];
 const TRANSITION_MODE_OPTIONS = [
@@ -62,9 +63,24 @@ export function Settings() {
   const [scanningFrames, setScanningFrames] = useState(false);
   const [sshEnabled, setSshEnabled] = useState(false);
   const [sshToggling, setSshToggling] = useState(false);
+  const [httpsStatus, setHttpsStatus] = useState({ has_cert: false, enabled: false });
+  const [httpsToggling, setHttpsToggling] = useState(false);
+  const [guestToken, setGuestToken] = useState(null);
+  const [guestTtl, setGuestTtl] = useState(24);
+  const [guestExpiry, setGuestExpiry] = useState(null);
+  const [generatingGuest, setGeneratingGuest] = useState(false);
   const storageBarRef = useRef(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem("framecast-theme") || "dark");
 
-  /** Load settings + status + wifi info + timezone + frames + ssh on mount. */
+  /** Toggle phone UI theme (dark/light). TV display always stays dark. */
+  function handleThemeToggle(isLight) {
+    const next = isLight ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("framecast-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  }
+
+  /** Load settings + status + wifi info + timezone + frames + ssh + https on mount. */
   useEffect(() => {
     loadSettings();
     loadStatus();
@@ -72,6 +88,7 @@ export function Settings() {
     loadTimezone();
     loadFrames();
     loadSshStatus();
+    loadHttpsStatus();
   }, []);
 
   /** Apply threshold color to storage bar when status changes. */
@@ -154,6 +171,39 @@ export function Settings() {
     }
   }
 
+  function loadHttpsStatus() {
+    fetchWithTimeout("/api/https/status")
+      .then((res) => res.json())
+      .then((data) => setHttpsStatus(data))
+      .catch((err) => console.warn("Settings: HTTPS status load failed", err));
+  }
+
+  async function handleHttpsToggle() {
+    setHttpsToggling(true);
+    try {
+      const res = await fetchWithTimeout("/api/https/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !httpsStatus.enabled }),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        setHttpsStatus({ has_cert: true, enabled: body.enabled });
+        setToast({
+          type: "info",
+          message: body.enabled ? "HTTPS ENABLED — RESTART REQUIRED" : "HTTPS DISABLED — RESTART REQUIRED",
+        });
+      } else {
+        const body = await res.json();
+        setToast({ type: "error", message: body.error || "HTTPS TOGGLE FAULT" });
+      }
+    } catch (err) {
+      setToast({ type: "error", message: err.message || "NETWORK FAULT" });
+    } finally {
+      setHttpsToggling(false);
+    }
+  }
+
   const update = useCallback((key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setDirty((prev) => ({ ...prev, [key]: true }));
@@ -229,6 +279,42 @@ export function Settings() {
     }
   }
 
+  async function handleGenerateGuestLink() {
+    setGeneratingGuest(true);
+    setGuestToken(null);
+    setGuestExpiry(null);
+    try {
+      const res = await fetchWithTimeout("/api/guest/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl_hours: guestTtl }),
+      });
+      const body = await res.json();
+      if (res.ok && body.token) {
+        setGuestToken(body.token);
+        // Parse expiry from token (format: "expires:sig")
+        const expires = parseInt(body.token.split(":")[0], 10);
+        setGuestExpiry(new Date(expires * 1000));
+        setToast({ type: "info", message: "GUEST LINK GENERATED" });
+      } else {
+        setToast({ type: "error", message: body.error || "GENERATE FAULT" });
+      }
+    } catch (err) {
+      setToast({ type: "error", message: err.message || "NETWORK FAULT" });
+    } finally {
+      setGeneratingGuest(false);
+    }
+  }
+
+  function copyGuestLink() {
+    if (!guestToken) return;
+    const url = `${window.location.origin}/?guest=${guestToken}`;
+    navigator.clipboard.writeText(url).then(
+      () => setToast({ type: "info", message: "LINK COPIED" }),
+      () => setToast({ type: "error", message: "COPY FAULT" }),
+    );
+  }
+
   /* Error state with retry */
   if (error) {
     return (
@@ -276,6 +362,15 @@ export function Settings() {
       <section aria-label="Display settings">
         <ShCollapsible title="DISPLAY" defaultOpen={true}>
           <div class="fc-settings-section">
+            <SettingRow label="THEME">
+              <Toggle
+                on={theme === "light"}
+                onToggle={handleThemeToggle}
+                labelOn="LIGHT"
+                labelOff="DARK"
+              />
+            </SettingRow>
+
             <SettingRow label="DURATION" suffix="s">
               <input
                 class="sh-input"
@@ -304,15 +399,18 @@ export function Settings() {
 
             {(settings.transition_mode || "single") === "single" && (
               <SettingRow label="TRANSITION">
-                <select
-                  class="sh-select"
-                  value={settings.transition_type}
-                  onChange={(evt) => update("transition_type", evt.target.value)}
-                >
-                  {TRANSITION_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt.toUpperCase()}</option>
-                  ))}
-                </select>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <select
+                    class="sh-select"
+                    value={settings.transition_type}
+                    onChange={(evt) => update("transition_type", evt.target.value)}
+                  >
+                    {TRANSITION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt.toUpperCase()}</option>
+                    ))}
+                  </select>
+                  <TransitionPreview type={settings.transition_type || "fade"} />
+                </div>
               </SettingRow>
             )}
 
@@ -410,6 +508,98 @@ export function Settings() {
                 {sshToggling ? "STANDBY" : sshEnabled ? "ENABLED" : "DISABLED"}
               </button>
             </SettingRow>
+
+            <SettingRow label="HTTPS">
+              <div style="display: flex; align-items: center; gap: var(--space-2, 8px);">
+                <button
+                  class="sh-input sh-clickable"
+                  style="min-width: 100px; text-align: center;"
+                  onClick={handleHttpsToggle}
+                  disabled={httpsToggling}
+                >
+                  {httpsToggling ? "STANDBY" : httpsStatus.enabled ? "ENABLED" : "DISABLED"}
+                </button>
+                {httpsStatus.has_cert && (
+                  <span class="sh-ansi-dim" style="font-size: 0.75rem;">CERT OK</span>
+                )}
+              </div>
+            </SettingRow>
+            {httpsStatus.enabled && (
+              <div class="fc-setting-row">
+                <span class="sh-label" style="white-space: nowrap; color: var(--sh-phosphor, #39ff14); font-size: 0.75rem;">
+                  RESTART REQUIRED FOR CHANGES
+                </span>
+              </div>
+            )}
+          </div>
+        </ShCollapsible>
+      </section>
+
+      {/* ── GUEST UPLOAD ── */}
+      <section aria-label="Guest upload settings">
+        <ShCollapsible title="GUEST UPLOAD" defaultOpen={false}>
+          <div class="fc-settings-section">
+            <SettingRow label="LINK DURATION">
+              <select
+                class="sh-select"
+                value={guestTtl}
+                onChange={(evt) => setGuestTtl(parseInt(evt.target.value, 10))}
+              >
+                <option value="1">1 HOUR</option>
+                <option value="6">6 HOURS</option>
+                <option value="12">12 HOURS</option>
+                <option value="24">24 HOURS</option>
+                <option value="48">48 HOURS</option>
+                <option value="168">7 DAYS</option>
+              </select>
+            </SettingRow>
+
+            <SettingRow label="GENERATE LINK">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px;"
+                onClick={handleGenerateGuestLink}
+                disabled={generatingGuest}
+              >
+                {generatingGuest ? "STANDBY" : "GENERATE"}
+              </button>
+            </SettingRow>
+
+            {guestToken && (
+              <>
+                <SettingRow label="GUEST URL">
+                  <div style="display: flex; flex-direction: column; gap: 4px; max-width: 240px;">
+                    <span
+                      class="sh-value"
+                      style="font-family: var(--font-mono, monospace); font-size: 0.7rem; word-break: break-all; opacity: 0.8;"
+                    >
+                      {`${window.location.origin}/?guest=${guestToken}`}
+                    </span>
+                    <button
+                      class="sh-input sh-clickable"
+                      style="text-align: center; min-width: 80px;"
+                      onClick={copyGuestLink}
+                    >
+                      COPY LINK
+                    </button>
+                  </div>
+                </SettingRow>
+
+                <SettingRow label="EXPIRES">
+                  <span class="sh-value" style="font-family: var(--font-mono, monospace);">
+                    {guestExpiry
+                      ? guestExpiry.toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: false,
+                        })
+                      : "UNKNOWN"}
+                  </span>
+                </SettingRow>
+              </>
+            )}
           </div>
         </ShCollapsible>
       </section>
@@ -698,6 +888,64 @@ export function Settings() {
                     }
                   } catch (err) {
                     alert("Network error: " + err.message);
+                  }
+                  evt.target.value = "";
+                }}
+              />
+            </SettingRow>
+
+            <SettingRow label="EXPORT SETTINGS">
+              <button
+                class="sh-input sh-clickable"
+                style="text-align: center; min-width: 120px;"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/settings/export");
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "framecast-settings.json";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setToast({ type: "info", message: "SETTINGS EXPORTED" });
+                  } catch (err) {
+                    setToast({ type: "error", message: err.message || "EXPORT FAULT" });
+                  }
+                }}
+              >
+                DOWNLOAD JSON
+              </button>
+            </SettingRow>
+
+            <SettingRow label="IMPORT SETTINGS">
+              <input
+                type="file"
+                accept=".json"
+                class="sh-input"
+                style="max-width: 200px;"
+                onChange={async (evt) => {
+                  const file = evt.target.files[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const data = JSON.parse(text);
+                    const res = await fetch("/api/settings/import", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(data),
+                    });
+                    const result = await res.json();
+                    if (res.ok) {
+                      setToast({ type: "info", message: `IMPORTED ${result.imported} SETTINGS` });
+                      loadSettings();
+                    } else {
+                      setToast({ type: "error", message: result.error || "IMPORT FAULT" });
+                    }
+                  } catch (err) {
+                    setToast({ type: "error", message: "INVALID JSON FILE" });
                   }
                   evt.target.value = "";
                 }}

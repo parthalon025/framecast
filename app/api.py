@@ -358,6 +358,35 @@ def update_settings():
     return jsonify({"status": "ok", "settings": _current_settings()})
 
 
+@api.route("/settings/export")
+@require_pin
+def export_settings():
+    """Export current settings as JSON."""
+    settings = _current_settings()
+    return jsonify(settings)
+
+
+@api.route("/settings/import", methods=["POST"])
+@require_pin
+def import_settings():
+    """Import settings from JSON. Validates keys before applying."""
+    data = _require_json()
+    # Only allow known settings keys
+    allowed = set(_SETTINGS_ENV_MAP.keys())
+    filtered = {k: v for k, v in data.items() if k in allowed}
+    if not filtered:
+        return jsonify({"error": "No valid settings found"}), 400
+    # Apply through normal settings update path
+    env_updates = {}
+    for key, val in filtered.items():
+        env_key, converter = _SETTINGS_ENV_MAP[key]
+        env_updates[env_key] = converter(val)
+    config.save(env_updates)
+    config.reload()
+    sse.notify("settings:changed", _current_settings())
+    return jsonify({"status": "ok", "imported": len(filtered), "keys": list(filtered.keys())})
+
+
 @api.route("/timezone", methods=["POST"])
 @require_pin
 def set_timezone():
@@ -428,6 +457,41 @@ def locations():
 
 
 # ---------------------------------------------------------------------------
+# Guest upload links (Issue #44)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/guest/create", methods=["POST"])
+@require_pin
+def create_guest_link():
+    """Generate a time-limited guest upload token.
+
+    Requires PIN auth (only the frame owner can create guest links).
+    Body (optional): ``{"ttl_hours": 24}`` — clamped to 1h–168h (7d).
+    """
+    from modules.auth import generate_guest_token
+
+    data = request.get_json(silent=True) or {}
+    try:
+        ttl = int(data.get("ttl_hours", 24))
+    except (TypeError, ValueError):
+        ttl = 24
+    ttl = min(max(ttl, 1), 168)  # 1h to 7d
+    token = generate_guest_token(ttl)
+    log.info("Guest upload link created (TTL=%dh) by %s", ttl, request.remote_addr)
+    return jsonify({"token": token, "ttl_hours": ttl})
+
+
+@api.route("/guest/validate")
+def validate_guest():
+    """Check if a guest token is valid (unauthenticated — used by the SPA)."""
+    from modules.auth import validate_guest_token
+
+    token = request.args.get("token", "")
+    return jsonify({"valid": validate_guest_token(token)})
+
+
+# ---------------------------------------------------------------------------
 # Photo actions
 # ---------------------------------------------------------------------------
 
@@ -459,6 +523,48 @@ def photo_duplicates(photo_id):
     # Exclude self
     dupes = [d for d in dupes if d["id"] != photo_id]
     return jsonify({"duplicates": _enrich_photos(dupes)})
+
+
+# ---------------------------------------------------------------------------
+# Batch photo actions
+# ---------------------------------------------------------------------------
+
+
+@api.route("/photos/batch/delete", methods=["POST"])
+@require_pin
+def batch_delete_photos():
+    """Delete multiple photos by ID (quarantine)."""
+    data = _require_json()
+    ids = data.get("ids", [])
+    if not ids or not isinstance(ids, list):
+        return jsonify({"error": "ids required"}), 400
+    deleted = 0
+    for pid in ids[:100]:  # Cap at 100
+        try:
+            db.update_photo_quarantine(int(pid), True, "batch delete")
+            deleted += 1
+        except Exception as exc:
+            log.warning("Batch delete failed for %d: %s", pid, exc)
+    sse.notify("photo:deleted", {"count": deleted})
+    return jsonify({"status": "ok", "deleted": deleted})
+
+
+@api.route("/photos/batch/favorite", methods=["POST"])
+@require_pin
+def batch_favorite_photos():
+    """Toggle favorite on multiple photos."""
+    data = _require_json()
+    ids = data.get("ids", [])
+    if not ids or not isinstance(ids, list):
+        return jsonify({"error": "ids required"}), 400
+    toggled = 0
+    for pid in ids[:100]:
+        try:
+            db.toggle_favorite(int(pid))
+            toggled += 1
+        except Exception as exc:
+            log.warning("Batch favorite failed for %d: %s", pid, exc)
+    return jsonify({"status": "ok", "toggled": toggled})
 
 
 # ---------------------------------------------------------------------------
@@ -992,6 +1098,50 @@ def ssh_toggle():
         log.error("SSH toggle failed: %s", exc)
         return jsonify({"error": "Failed to toggle SSH"}), 500
     return jsonify({"status": "ok", "enabled": enable})
+
+
+# ---------------------------------------------------------------------------
+# HTTPS (self-signed certificate)
+# ---------------------------------------------------------------------------
+
+
+@api.route("/https/status")
+@require_pin
+def https_status():
+    """Check HTTPS configuration status."""
+    cert_dir = Path(media.get_media_dir()) / "certs"
+    has_cert = (cert_dir / "server.crt").exists() and (cert_dir / "server.key").exists()
+    enabled = config.get("HTTPS_ENABLED", "no").lower() == "yes"
+    return jsonify({"has_cert": has_cert, "enabled": enabled})
+
+
+@api.route("/https/toggle", methods=["POST"])
+@require_pin
+def https_toggle():
+    """Enable or disable HTTPS. Generates cert if missing."""
+    data = _require_json()
+    enable = data.get("enabled", False)
+
+    if enable:
+        # Generate cert if missing
+        cert_dir = Path(media.get_media_dir()) / "certs"
+        if not (cert_dir / "server.crt").exists():
+            try:
+                subprocess.run(
+                    [str(Path(__file__).parent.parent / "scripts" / "generate-cert.sh")],
+                    env={**os.environ, "MEDIA_DIR": media.get_media_dir()},
+                    capture_output=True, timeout=30, check=True,
+                )
+            except Exception as exc:
+                log.error("Cert generation failed: %s", exc)
+                return jsonify({"error": "Failed to generate certificate"}), 500
+
+    config.save({"HTTPS_ENABLED": "yes" if enable else "no"})
+    return jsonify({
+        "status": "ok",
+        "enabled": enable,
+        "message": "Restart required for changes to take effect",
+    })
 
 
 # ---------------------------------------------------------------------------

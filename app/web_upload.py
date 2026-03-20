@@ -34,7 +34,7 @@ from werkzeug.utils import secure_filename
 import sse
 from api import api
 from modules import config, db, media, services, wifi
-from modules.auth import auth_api, require_pin
+from modules.auth import auth_api, require_pin, validate_guest_token
 from modules.boot_config import apply_boot_config, apply_boot_ssh
 
 logging.basicConfig(
@@ -429,8 +429,27 @@ def _is_xhr():
     )
 
 
+def _require_pin_or_guest(func):
+    """Like require_pin, but also accepts a valid guest_token query param.
+
+    Guest tokens grant upload-only access — no other routes accept them.
+    """
+
+    @functools.wraps(func)
+    def decorated(*args, **kwargs):
+        # Check guest token first (query param on upload URL)
+        guest_token = request.args.get("guest_token", "")
+        if guest_token and validate_guest_token(guest_token):
+            log.info("Guest upload authorized (token valid) from %s", request.remote_addr)
+            return func(*args, **kwargs)
+        # Fall through to normal PIN auth
+        return require_pin(func)(*args, **kwargs)
+
+    return decorated
+
+
 @app.route("/upload", methods=["POST"])
-@require_pin
+@_require_pin_or_guest
 @log_post_request
 @request_timeout(UPLOAD_TIMEOUT_SECONDS)
 def upload():

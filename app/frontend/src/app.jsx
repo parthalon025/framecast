@@ -55,6 +55,12 @@ const cap = detectCapability();
 applyCapability(cap);
 setFacilityState("normal");
 
+// --- Theme: restore saved preference (phone only, TV always dark) ---
+if (!window.location.pathname.startsWith("/display")) {
+  const savedTheme = localStorage.getItem("framecast-theme") || "dark";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+}
+
 // Intercept hash-style links from ShNav and convert to pushState
 document.addEventListener("click", (evt) => {
   const anchor = evt.target.closest("a[href]");

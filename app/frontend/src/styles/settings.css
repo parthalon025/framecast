@@ -216,6 +216,12 @@
   transform: translateX(-50%);
 }
 
+/* ── Transition preview ── */
+
+.fc-preview-box {
+  --fc-transition-ms: 800ms;
+}
+
 /* QR — scale with viewport */
 .qr-overlay {
   bottom: 16px;

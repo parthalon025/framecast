@@ -90,6 +90,10 @@ const availableUsers = signal([]);
 const photosLastUpdated = signal(null);
 const fetchError = signal(null);
 
+/** Bulk selection state */
+const selectionMode = signal(false);
+const selectedIds = signal(new Set());
+
 const SORT_OPTIONS = [
   { value: "newest", label: "NEWEST" },
   { value: "oldest", label: "OLDEST" },
@@ -187,6 +191,80 @@ function handleAddTag(photo, tagName) {
 function handleRemoveTag(photo, tag) {
   fetch(`/api/photos/${photo.id}/tags/${tag.id}`, { method: "DELETE" })
     .catch((err) => console.warn("Remove tag error:", err));
+}
+
+// ---------------------------------------------------------------------------
+// Bulk selection handlers
+// ---------------------------------------------------------------------------
+
+/** Enter selection mode — triggered by long-press on a PhotoCard. */
+function handleEnterSelection(photo) {
+  selectionMode.value = true;
+  selectedIds.value = new Set([photo.id]);
+}
+
+/** Toggle a single photo's selection. */
+function handleSelectionToggle(photo) {
+  const next = new Set(selectedIds.value);
+  if (next.has(photo.id)) {
+    next.delete(photo.id);
+  } else {
+    next.add(photo.id);
+  }
+  selectedIds.value = next;
+  // Exit selection mode if nothing selected
+  if (next.size === 0) {
+    selectionMode.value = false;
+  }
+}
+
+/** Exit selection mode and clear selections. */
+function exitSelectionMode() {
+  selectionMode.value = false;
+  selectedIds.value = new Set();
+}
+
+/** Select all currently visible photos. */
+function selectAllVisible(visiblePhotos) {
+  const next = new Set();
+  for (const photo of visiblePhotos) {
+    next.add(photo.id);
+  }
+  selectedIds.value = next;
+}
+
+/** Batch delete selected photos. */
+function handleBatchDelete() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+  fetch("/api/photos/batch/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  })
+    .then((resp) => resp.json())
+    .then((data) => {
+      exitSelectionMode();
+      fetchPhotos();
+      fetchStatus();
+    })
+    .catch((err) => console.warn("Batch delete error:", err));
+}
+
+/** Batch favorite selected photos. */
+function handleBatchFavorite() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+  fetch("/api/photos/batch/favorite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  })
+    .then((resp) => resp.json())
+    .then(() => {
+      fetchPhotos();
+    })
+    .catch((err) => console.warn("Batch favorite error:", err));
 }
 
 /**
@@ -294,8 +372,17 @@ export function Upload() {
     });
     sseRef.current = sse;
 
+    /** ESC exits bulk selection mode. */
+    function onKeyDown(evt) {
+      if (evt.key === "Escape" && selectionMode.value) {
+        exitSelectionMode();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+
     return () => {
       sse.close();
+      document.removeEventListener("keydown", onKeyDown);
       if (batchClearTimer.current) clearTimeout(batchClearTimer.current);
     };
   }, []);
@@ -598,8 +685,59 @@ export function Upload() {
           onDelete={handleDelete}
           onToggleFavorite={handleToggleFavorite}
           onSelect={handlePhotoSelect}
+          selectionMode={selectionMode.value}
+          selectedIds={selectedIds.value}
+          onSelectionToggle={handleSelectionToggle}
+          onEnterSelection={handleEnterSelection}
         />
       </ShFrozen>
+
+      {/* Floating bulk action bar */}
+      {selectionMode.value && (
+        <div class="fc-bulk-bar" role="toolbar" aria-label="Bulk actions">
+          <span class="fc-bulk-bar__count">
+            {selectedIds.value.size} SELECTED
+          </span>
+          <div class="fc-bulk-bar__actions">
+            <button
+              class="fc-bulk-bar__btn"
+              onClick={() => {
+                const allSelected = selectedIds.value.size === displayPhotos.length;
+                if (allSelected) {
+                  exitSelectionMode();
+                } else {
+                  selectAllVisible(displayPhotos);
+                }
+              }}
+              type="button"
+            >
+              {selectedIds.value.size === displayPhotos.length ? "CLEAR" : "SELECT ALL"}
+            </button>
+            <button
+              class="fc-bulk-bar__btn"
+              onClick={handleBatchFavorite}
+              type="button"
+            >
+              FAVORITE
+            </button>
+            <button
+              class="fc-bulk-bar__btn fc-bulk-bar__btn--danger"
+              onClick={handleBatchDelete}
+              type="button"
+            >
+              DELETE
+            </button>
+            <button
+              class="fc-bulk-bar__btn fc-bulk-bar__btn--exit"
+              onClick={exitSelectionMode}
+              aria-label="Exit selection mode"
+              type="button"
+            >
+              X
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Context menu (long-press) */}
       <ContextMenu />

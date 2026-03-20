@@ -19,6 +19,7 @@ const LONG_PRESS_MS = 500;
  * @param {boolean}  [props.selected]       - Whether this card is selected
  * @param {boolean}  [props.selectable]     - Whether selection checkbox is shown
  * @param {Function} [props.onSelectionToggle] - Called when selection checkbox is toggled
+ * @param {Function} [props.onEnterSelection] - Called on long-press to enter selection mode (photo passed)
  * @param {Function} [props.onAddToAlbum]   - Called for "add to album" context action
  */
 export function PhotoCard({
@@ -29,6 +30,7 @@ export function PhotoCard({
   selected,
   selectable,
   onSelectionToggle,
+  onEnterSelection,
   onAddToAlbum,
 }) {
   const longPressTimer = useRef(null);
@@ -57,25 +59,26 @@ export function PhotoCard({
     if (onToggleFavorite) onToggleFavorite(photo);
   }
 
-  function handleCheckboxChange(evt) {
-    evt.stopPropagation();
-    if (onSelectionToggle) onSelectionToggle(photo);
-  }
-
   // --- Long-press handlers (touch + mouse) ---
   function startLongPress(evt) {
     didLongPress.current = false;
     longPressTimer.current = setTimeout(() => {
       didLongPress.current = true;
-      const rect = evt.currentTarget.getBoundingClientRect();
-      contextTarget.value = {
-        photo,
-        x: rect.left + rect.width / 2,
-        y: rect.top,
-        onDelete,
-        onToggleFavorite,
-        onAddToAlbum,
-      };
+      // If not already in selection mode, enter it via long-press
+      if (!selectable && onEnterSelection) {
+        onEnterSelection(photo);
+      } else {
+        // Already in selection mode or no selection support — show context menu
+        const rect = evt.currentTarget.getBoundingClientRect();
+        contextTarget.value = {
+          photo,
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+          onDelete,
+          onToggleFavorite,
+          onAddToAlbum,
+        };
+      }
     }, LONG_PRESS_MS);
   }
 
@@ -103,21 +106,20 @@ export function PhotoCard({
       aria-label={`${photo.name || photo.filename} — ${isFav ? "favorite" : "photo"}`}
       style="position: relative;"
     >
-      {/* Selection checkbox */}
+      {/* Selection circle overlay */}
       {selectable && (
-        <label
-          class="fc-select-check"
-          onClick={(evt) => evt.stopPropagation()}
-          style="position: absolute; top: 4px; left: 4px; z-index: 2; cursor: pointer;"
+        <div
+          class={`fc-select-check${selected ? " fc-select-check--selected" : ""}`}
+          onClick={(evt) => {
+            evt.stopPropagation();
+            if (onSelectionToggle) onSelectionToggle(photo);
+          }}
+          role="checkbox"
+          aria-checked={!!selected}
+          aria-label={`Select ${photo.name || photo.filename}`}
         >
-          <input
-            type="checkbox"
-            checked={!!selected}
-            onChange={handleCheckboxChange}
-            aria-label={`Select ${photo.name || photo.filename}`}
-            style="width: 24px; height: 24px; accent-color: var(--sh-phosphor);"
-          />
-        </label>
+          <span class="fc-select-check__mark">{"\u2713"}</span>
+        </div>
       )}
 
       {/* Favorite toggle — heart overlay */}
