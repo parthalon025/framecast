@@ -29,6 +29,8 @@ from modules.rate_limiter import RateLimiter
 
 log = logging.getLogger(__name__)
 
+_ephemeral_secret = None
+
 COOKIE_NAME = "framecast_pin"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days in seconds
 
@@ -79,12 +81,13 @@ def _get_pin_limiter() -> RateLimiter:
 
 def _make_auth_token(pin):
     """Create an HMAC-SHA256 token from the PIN (never store raw PIN in cookie)."""
+    global _ephemeral_secret
     secret = config.get("FLASK_SECRET_KEY", "")
     if not secret:
-        log.error("FLASK_SECRET_KEY not set — auth tokens will be insecure")
-        # Generate ephemeral key for this session (forces PIN re-entry on restart)
-        import secrets as _secrets
-        secret = _secrets.token_hex(24)
+        if _ephemeral_secret is None:
+            _ephemeral_secret = secrets.token_hex(24)
+            log.error("FLASK_SECRET_KEY not set — using ephemeral key (auth invalidated on restart)")
+        secret = _ephemeral_secret
     return hmac.HMAC(secret.encode(), pin.encode(), hashlib.sha256).hexdigest()
 
 
