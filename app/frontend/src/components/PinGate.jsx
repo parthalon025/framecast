@@ -170,7 +170,7 @@ export function PinGate() {
               border-color: ${pinValue.length === pinLength ? "var(--sh-phosphor)" : "var(--border-subtle)"};
             `}
           >
-            {verifying ? "VERIFYING..." : "VERIFY"}
+            {verifying ? "STANDBY" : "VERIFY"}
           </button>
         </div>
       </div>

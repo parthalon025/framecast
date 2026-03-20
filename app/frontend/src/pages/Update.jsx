@@ -262,7 +262,7 @@ export function Update() {
                 border-color: ${checking ? "var(--border-subtle)" : "var(--sh-phosphor)"};
               `}
             >
-              {checking ? "CHECKING..." : "CHECK FOR UPDATES"}
+              {checking ? "STANDBY" : "CHECK FOR UPDATES"}
             </button>
           )}
 

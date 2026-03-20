@@ -254,7 +254,7 @@ export function Albums() {
           open={!!deleteTarget.value}
           title="CONFIRM: DELETE ALBUM?"
           body="PHOTOS PRESERVED. Only the album grouping will be removed."
-          confirmLabel={deleting.value ? "DELETING..." : "DELETE"}
+          confirmLabel={deleting.value ? "STANDBY" : "DELETE"}
           cancelLabel="CANCEL"
           onConfirm={handleDeleteAlbum}
           onCancel={() => { deleteTarget.value = null; }}
@@ -421,7 +421,7 @@ export function Albums() {
                 disabled={creating.value || !createName.value.trim()}
                 type="button"
               >
-                [{creating.value ? "CREATING..." : "CONFIRM"}]
+                [{creating.value ? "STANDBY" : "CONFIRM"}]
               </button>
             </div>
           </div>

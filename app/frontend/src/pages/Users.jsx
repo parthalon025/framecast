@@ -206,8 +206,8 @@ export function Users() {
       <ShModal
         open={!!target}
         title="CONFIRM: DELETE USER"
-        body={target ? `Remove "${target.name}"? Photos will be reassigned to DEFAULT.` : ""}
-        confirmLabel={isDeleting ? "DELETING..." : "DELETE"}
+        body={target ? `Remove "${target.name}"? PHOTOS REASSIGNED TO DEFAULT.` : ""}
+        confirmLabel={isDeleting ? "STANDBY" : "DELETE"}
         cancelLabel="CANCEL"
         onConfirm={confirmDelete}
         onCancel={() => { deleteTarget.value = null; }}
