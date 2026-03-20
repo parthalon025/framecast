@@ -15,8 +15,10 @@ Turn any TV into a family photo frame — flash an SD card, boot the Pi, done. B
 ## Architecture
 
 One Flask app serves two surfaces:
-- **Phone** → upload, albums, settings, map, stats, onboarding (Preact SPA, 4 nav tabs)
-- **TV** → slideshow with CSS transitions, boot sequence, QR codes (kiosk browser)
+- **Phone** → upload, albums, settings, map, stats, onboarding (Preact SPA at `/`, 4 nav tabs)
+- **TV** → slideshow with CSS transitions, boot sequence, QR codes (kiosk browser at `/display`)
+
+**Route architecture:** `api.py` blueprint is the single source of truth for all `/api/*` endpoints (~70 routes). `web_upload.py` is a thin app factory + upload/delete handlers + static file serving. All routes return JSON only — no dual-mode HTML/JSON responses.
 
 Data layer: SQLite DB (`framecast.db`) with photos, albums, tags, users, display_stats tables. WAL mode + busy_timeout for concurrent access. Stats buffered in memory, flushed every 5 minutes (SD card protection).
 
@@ -29,7 +31,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 | `app/` | Flask web app (routes, modules, templates) |
 | `app/frontend/src/` | Preact + superhot-ui JSX source |
 | `app/frontend/src/styles/` | CSS architecture (8 files: tokens, base, slideshow, display, photos, settings, responsive, motion) |
-| `app/frontend/src/lib/` | Shared JS utilities (sse.js, fetch.js, format.js) |
+| `app/frontend/src/lib/` | Shared JS utilities (sse.js, fetch.js, format.js, toast.js, incident.js) |
 | `app/frontend/src/components/` | Reusable components (PhotoCard, Lightbox, PinGate, ShDropzone, PhoneLayout, OfflineBanner) |
 | `app/frontend/src/pages/` | Page components (Upload, Albums, Settings, Map, Stats, Users, Onboard, Update) |
 | `app/frontend/src/display/` | TV display components (Slideshow, DisplayRouter, Boot, Setup, Welcome) |
@@ -70,9 +72,20 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 ## Build
 
 - Frontend: `cd app/frontend && npm install && npm run build`
-- Image: `cd pi-gen && bash build.sh` (Docker, 20-60min)
 - Dev: `cd app && gunicorn -c gunicorn.conf.py web_upload:app`
-- Tests: `python3 -m pytest tests/ -v --timeout=120` (160 tests)
+- Tests (Python): `make pytest` (~330 tests — unit, property, concurrency, fault injection, contracts, benchmarks)
+- Tests (Frontend): `make test-frontend` (vitest — SSE client tests)
+- Tests (Shell): `make test-shell` (bats — health-check rollback logic)
+- Tests (All): `make test-all` (runs Python + frontend + shell)
+- Type check: `make typecheck` (mypy strict on modules + sse)
+- Benchmarks: `make benchmark` (Pi 3 regression thresholds)
+- Mutation: `make mutate` (on-demand test quality audit)
+- Image (full): `cd pi-gen && ./build.sh` (native, ~30-40min first time)
+- Image (base only): `cd pi-gen && ./build.sh --base-only` (OS without app)
+- Image (add app): `cd pi-gen && ./build.sh --continue` (~5min, reuses cached rootfs)
+- Image (iterate): `cd pi-gen && ./build.sh --app-only` (~3min, fastest — rebuilds only 02-app)
+- Image (Docker): `cd pi-gen && ./build.sh --docker`
+- Pi-gen branch: `bookworm-arm64`. Frontend builds on host (native x86), not QEMU chroot.
 
 ## Conventions
 
@@ -92,6 +105,8 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Photos in grid: `/thumbnail/` with `/media/` fallback + `loading="lazy"`
 - DB public API only — never reach into `_write_lock` directly from routes; use the named functions in `db.py`
 - `createSSE` helper (sse.js) used on both Phone SPA and TV DisplayRouter — handles exponential backoff and page-background pause
+- TV display uses superhot-ui atmosphere: facility state (normal/alert), narrator (GLaDOS/Wheatley), ShAnnouncement for boot/setup/welcome
+- Boot is keyboard-free: masked getty, kiosk service with TTYPath, quiet kernel, hidden cursor
 
 ## Design Docs
 

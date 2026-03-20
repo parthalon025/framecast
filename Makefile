@@ -172,8 +172,8 @@ typecheck: ## Run mypy strict type checking
 benchmark: ## Run performance benchmarks
 	python3 -m pytest tests/test_benchmarks.py --benchmark-only -v
 
-mutate: ## Run mutation testing (on-demand diagnostic)
-	python3 -m mutmut run --paths-to-mutate=app/modules/,app/sse.py --tests-dir=tests/
+mutate: ## Run mutation testing (on-demand diagnostic, config in setup.cfg)
+	python3 -m mutmut run
 
 test-frontend: ## Run frontend unit tests (vitest)
 	cd app/frontend && npx vitest run
@@ -181,5 +181,5 @@ test-frontend: ## Run frontend unit tests (vitest)
 test-shell: ## Run shell script tests (bats)
 	bats tests/shell/
 
-test-all: pytest ## Run all test suites
-	@echo "All Python tests passed."
+test-all: pytest test-frontend test-shell ## Run all test suites
+	@echo "All tests passed."
