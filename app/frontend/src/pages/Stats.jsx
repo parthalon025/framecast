@@ -6,7 +6,7 @@ import { ShStatsGrid } from "superhot-ui/preact";
 import { ShStatCard } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { ShFrozen } from "superhot-ui/preact";
-import { ShCollapsible, ShSkeleton, ShPageBanner } from "superhot-ui/preact";
+import { ShCollapsible, ShSkeleton, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
 
@@ -118,15 +118,13 @@ export function Stats() {
 
   if (error.value) {
     return (
-      <div class="sh-frame" style="padding: 24px; text-align: center;">
-        <div class="sh-status-badge" data-sh-status="critical">{error.value}</div>
-        <button
-          class="sh-btn"
-          style="margin-top: 12px;"
-          onClick={fetchStats}
-        >
-          RETRY
-        </button>
+      <div class="fc-page">
+        <ShPageBanner namespace="FRAMECAST" page="STATS" />
+        <ShErrorState
+          title="FAULT"
+          message={error.value}
+          onRetry={() => { error.value = null; fetchStats(); }}
+        />
       </div>
     );
   }
@@ -134,8 +132,9 @@ export function Stats() {
   const data = stats.value;
   if (!data) {
     return (
-      <div class="sh-frame" style="padding: 24px; text-align: center;">
-        <div class="sh-ansi-dim">NO DATA</div>
+      <div class="fc-page">
+        <ShPageBanner namespace="FRAMECAST" page="STATS" />
+        <ShEmptyState message="NO DISPLAY DATA" hint="SLIDESHOW NOT YET ACTIVE" />
       </div>
     );
   }

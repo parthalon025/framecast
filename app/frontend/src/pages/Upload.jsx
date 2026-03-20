@@ -6,7 +6,7 @@
  */
 import { signal } from "@preact/signals";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { ShToast, ShFrozen, ShPageBanner } from "superhot-ui/preact";
+import { ShToast, ShFrozen, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
@@ -680,18 +680,22 @@ export function Upload() {
       </div>
 
       {/* Photo grid */}
-      <ShFrozen timestamp={photosLastUpdated}>
-        <PhotoGrid
-          photos={displayPhotos}
-          onDelete={handleDelete}
-          onToggleFavorite={handleToggleFavorite}
-          onSelect={handlePhotoSelect}
-          selectionMode={selectionMode.value}
-          selectedIds={selectedIds.value}
-          onSelectionToggle={handleSelectionToggle}
-          onEnterSelection={handleEnterSelection}
-        />
-      </ShFrozen>
+      {displayPhotos.length === 0 && !fetchError.value ? (
+        <ShEmptyState message="NO PHOTOS" hint="DROP FILES TO BEGIN" />
+      ) : (
+        <ShFrozen timestamp={photosLastUpdated}>
+          <PhotoGrid
+            photos={displayPhotos}
+            onDelete={handleDelete}
+            onToggleFavorite={handleToggleFavorite}
+            onSelect={handlePhotoSelect}
+            selectionMode={selectionMode.value}
+            selectedIds={selectedIds.value}
+            onSelectionToggle={handleSelectionToggle}
+            onEnterSelection={handleEnterSelection}
+          />
+        </ShFrozen>
+      )}
 
       {/* Floating bulk action bar */}
       {selectionMode.value && (
@@ -751,16 +755,13 @@ export function Upload() {
         onRemoveTag={handleRemoveTag}
       />
 
-      {/* Toast — fetch error */}
+      {/* Fetch error */}
       {fetchError.value && (
-        <div class="fc-toast-container">
-          <ShToast
-            type="error"
-            message={fetchError.value}
-            duration={4000}
-            onDismiss={() => { fetchError.value = null; }}
-          />
-        </div>
+        <ShErrorState
+          title="FAULT"
+          message={fetchError.value}
+          onRetry={() => { fetchError.value = null; fetchPhotos(); fetchStatus(); }}
+        />
       )}
 
       {/* Toast — batch upload */}

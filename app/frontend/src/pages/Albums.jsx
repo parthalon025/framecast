@@ -1,7 +1,7 @@
 /** @fileoverview Albums page — album management with smart albums, create/delete, photo grid. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal, ShFrozen, ShToast, ShPageBanner } from "superhot-ui/preact";
+import { ShModal, ShFrozen, ShToast, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { fetchWithTimeout } from "../lib/fetch.js";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
 import { PhotoCard } from "../components/PhotoCard.jsx";
@@ -30,6 +30,9 @@ const albumFilter = signal("all");
 /** Toast state */
 const albumToast = signal(null);
 
+/** Fetch error state */
+const fetchError = signal(null);
+
 /** Data freshness timestamps for ShFrozen */
 const albumsLastUpdated = signal(null);
 const albumPhotosLastUpdated = signal(null);
@@ -47,7 +50,7 @@ function fetchAlbums() {
     })
     .catch((err) => {
       console.warn("Albums: fetchAlbums failed", err);
-      albumToast.value = { type: "error", message: "ALBUMS FETCH FAILED" };
+      fetchError.value = err.message || "ALBUMS FETCH FAILED";
     });
 }
 
@@ -236,11 +239,7 @@ export function Albums() {
             <div class="sh-ansi-dim">STANDBY</div>
           </div>
         ) : albumPhotos.value.length === 0 ? (
-          <div class="sh-frame" data-label="PHOTOS">
-            <div style="padding: 32px; text-align: center;">
-              <div class="sh-ansi-dim">NO DATA</div>
-            </div>
-          </div>
+          <ShEmptyState message="NO PHOTOS" hint="ADD PHOTOS TO THIS ALBUM" />
         ) : (
           <ShFrozen timestamp={albumPhotosLastUpdated}>
             <div class="sh-grid sh-grid-3">
@@ -306,6 +305,14 @@ export function Albums() {
   return (
     <div class="sh-animate-page-enter fc-page">
       <ShPageBanner namespace="FRAMECAST" page="ALBUMS" />
+      {/* Fetch error */}
+      {fetchError.value && (
+        <ShErrorState
+          title="FAULT"
+          message={fetchError.value}
+          onRetry={() => { fetchError.value = null; fetchAlbums(); }}
+        />
+      )}
       {/* Header + create button */}
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
         <button
@@ -335,11 +342,7 @@ export function Albums() {
       {/* Album cards grid */}
       <ShFrozen timestamp={albumsLastUpdated}>
       {orderedAlbums.length === 0 ? (
-        <div class="sh-frame" data-label="ALBUMS">
-          <div style="padding: 32px; text-align: center;">
-            <div class="sh-ansi-dim">NO DATA</div>
-          </div>
-        </div>
+        <ShEmptyState message="NO ALBUMS" hint="CREATE ONE TO ORGANIZE" />
       ) : (
         <div class="sh-grid sh-grid-3">
           {orderedAlbums.map((album) => (

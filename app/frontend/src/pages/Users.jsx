@@ -1,7 +1,7 @@
 /** @fileoverview User management — "Who's uploading?" modal + user CRUD. */
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ShModal, ShPageBanner } from "superhot-ui/preact";
+import { ShModal, ShPageBanner, ShEmptyState, ShErrorState } from "superhot-ui/preact";
 import { ShDataTable } from "superhot-ui/preact";
 import { fmtDateTime } from "../lib/format.js";
 
@@ -14,6 +14,7 @@ const creating = signal(false);
 const deleteTarget = signal(null);
 const deleting = signal(false);
 const errorMsg = signal("");
+const fetchError = signal(null);
 
 /** Fetch all users from API. */
 function fetchUsers() {
@@ -25,6 +26,7 @@ function fetchUsers() {
     })
     .catch((err) => {
       console.warn("Users: fetch failed", err);
+      fetchError.value = err.message || "USERS FETCH FAILED";
       loading.value = false;
     });
 }
@@ -138,6 +140,14 @@ export function Users() {
   return (
     <div class="sh-animate-page-enter fc-page">
       <ShPageBanner namespace="FRAMECAST" page="USERS" />
+      {/* Fetch error */}
+      {fetchError.value && (
+        <ShErrorState
+          title="FAULT"
+          message={fetchError.value}
+          onRetry={() => { fetchError.value = null; fetchUsers(); }}
+        />
+      )}
       {/* User table */}
       {rows.length > 0 ? (
         <ShDataTable
@@ -146,12 +156,8 @@ export function Users() {
           rows={rows}
           searchable={false}
         />
-      ) : (
-        <div class="sh-frame" data-label="USERS">
-          <div style="padding: 24px; text-align: center;">
-            <div class="sh-ansi-dim">NO DATA</div>
-          </div>
-        </div>
+      ) : !fetchError.value && (
+        <ShEmptyState message="NO USERS" hint="DEFAULT ACTIVE" />
       )}
 
       {/* Create user */}
