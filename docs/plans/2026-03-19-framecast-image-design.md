@@ -285,18 +285,33 @@ User clicks "CHECK FOR UPDATES" on settings/update page.
 - Checks GitHub Releases API for newer tags
 
 ### Update Flow
-1. Compare local version tag vs. latest GitHub Release
-2. If newer: `git fetch && git checkout <tag>`
-3. Re-run install steps (apt is pre-baked, only app files change)
-4. Reboot
+1. Pre-flight: validate git repo (`rev-parse --git-dir`, `remote get-url origin`)
+2. Require `FLASK_SECRET_KEY` in `.env` (no ephemeral keys — breaks rollback HMAC)
+3. Save rollback tag + HMAC signature (atomic writes to `/var/lib/framecast/`)
+4. Write `update-in-progress` flag (power loss protection)
+5. `git fetch --tags` (30s timeout)
+6. Verify fetched tag SHA matches GitHub API `target_commitish` (MITM protection)
+7. `git checkout <tag>`
+8. Update VERSION file (atomic write, keeps version tracking in sync)
+9. SSE notify `update:rebooting` → TV shows boot sequence
+10. Reboot in 5s
 
-### Rollback (health check + git revert)
+### Rollback (health check + HMAC validation)
 After update + reboot:
-1. 90-second watchdog timer starts
-2. Check: are `framecast` and `framecast-kiosk` services both `active`?
-3. If YES → update confirmed, clear rollback state
-4. If NO → `git checkout <previous-tag>`, re-install, reboot
-5. Failure mode: "frame shows old version" not "frame is bricked"
+1. If `update-in-progress` flag exists → power was lost mid-update, force rollback
+2. 90-second health timer starts (`framecast-health.timer`)
+3. Validate rollback tag HMAC signature (prevents tag injection)
+4. Wait up to 60s for Flask `/api/status` to respond
+5. Verify `framecast-kiosk` is active (extra 10s grace period)
+6. If PASS → clear rollback files, update confirmed
+7. If FAIL → `git checkout --force <rollback-tag>` → reboot
+8. If rollback tag missing → try `git checkout main` as last resort
+9. Failure mode: "frame shows old version" not "frame is bricked"
+
+### Update service hardening
+- `TimeoutStartSec=300` on `framecast-update.service` (prevents indefinite hang)
+- `WatchdogSec=120` on `framecast.service` (detects Flask cold-start hangs)
+- Browser retry limit: 12 attempts then exit (systemd restarts, no infinite black screen)
 
 ---
 

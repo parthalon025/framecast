@@ -180,7 +180,11 @@ class TestApplyUpdate:
     @patch.object(updater, "get_current_version", return_value="1.0.0")
     @patch.object(updater, "_hmac_sign", return_value="sig123")
     def test_apply_fetch_failure(self, mock_sign, mock_ver, mock_write, mock_git):
-        mock_git.return_value = (False, "network error")
+        def git_side_effect(*args):
+            if args[0] == "fetch":
+                return (False, "network error")
+            return (True, "ok")  # pre-flight checks pass
+        mock_git.side_effect = git_side_effect
         success, msg = updater.apply_update("v2.0.0")
         assert success is False
         assert "fetch" in msg.lower()

@@ -11,6 +11,7 @@ Type=simple
 User=pi
 WorkingDirectory=/opt/framecast/app
 ExecStart=/usr/bin/gunicorn -c /opt/framecast/app/gunicorn.conf.py web_upload:app
+WatchdogSec=120
 Restart=always
 RestartSec=5
 MemoryMax=512M

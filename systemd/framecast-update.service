@@ -8,6 +8,7 @@ Type=oneshot
 User=root
 WorkingDirectory=/opt/framecast
 ExecStart=/opt/framecast/scripts/update-check.sh
+TimeoutStartSec=300
 ProtectSystem=strict
 NoNewPrivileges=true
 ReadWritePaths=/opt/framecast /var/lib/framecast

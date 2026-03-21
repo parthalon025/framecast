@@ -1,6 +1,6 @@
 [Unit]
 Description=FrameCast Kiosk Display
-After=framecast.service graphical.target local-fs.target
+After=framecast.service local-fs.target
 BindsTo=framecast.service
 StartLimitIntervalSec=600
 StartLimitBurst=10
@@ -26,4 +26,4 @@ ProtectSystem=strict
 ReadWritePaths=/home/pi/framecast
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
