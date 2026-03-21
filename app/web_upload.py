@@ -213,6 +213,14 @@ apply_boot_ssh()
 # --- Recover stale AP after crash/restart (Issue #35) ---
 wifi.check_stale_ap()
 
+# --- Auto-start AP if no WiFi configured (first boot flow) ---
+try:
+    if not wifi.is_connected():
+        log.info("No WiFi connection detected — starting AP for onboarding")
+        wifi.start_ap()
+except Exception as e:
+    log.warning("AP auto-start failed: %s", e)
+
 # --- Initialize SQLite content model ---
 db.init_db()
 db.vacuum_if_needed()

@@ -187,6 +187,12 @@ def connect(ssid: str, password: str) -> tuple[bool, str]:
         Tuple of (success: bool, message: str).
     """
     log.info("Attempting WiFi connection to '%s'", ssid)
+
+    # Stop AP before connecting — can't do both on one radio
+    if is_ap_active():
+        stop_ap()
+        time.sleep(2)  # Let NM release the interface
+
     cmd = ["nmcli", "dev", "wifi", "connect", ssid, "password", password]
     rc, stdout, stderr = _run(cmd, timeout=30)
     if rc == 0:
@@ -229,7 +235,7 @@ def _has_ap_clients() -> bool:
 
 
 def _ap_timeout_handler() -> None:
-    """Called when AP timeout expires. Restart AP if no clients connected."""
+    """Called when AP timeout expires. Try known WiFi before restarting AP."""
     global _ap_timer
     with _ap_timer_lock:
         _ap_timer = None
@@ -243,11 +249,14 @@ def _ap_timeout_handler() -> None:
         _start_ap_timer()
         return
 
-    log.warning("AP timeout: no clients connected in %d minutes — restarting AP",
+    log.warning("AP timeout: no clients connected in %d minutes — trying known WiFi",
                 _AP_TIMEOUT_SECONDS // 60)
-    # Cycle AP to reset state
+    # Try connecting to a known WiFi before restarting AP
     stop_ap()
-    start_ap()
+    time.sleep(2)
+    if not is_connected():
+        # No known WiFi available — restart AP
+        start_ap()
 
 
 def _start_ap_timer(seconds: float | None = None) -> None:
