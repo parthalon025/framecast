@@ -36,6 +36,10 @@ _MAX_STATS_BUFFER = 500  # Cap to prevent OOM on persistent DB errors
 _stats_last_flush: float = time.monotonic()
 _flush_timer: threading.Timer | None = None
 
+# --- Periodic WAL checkpoint ---
+_WAL_CHECKPOINT_INTERVAL = 1800  # 30 minutes
+_last_wal_checkpoint: float = time.monotonic()
+
 # --- Double-init guard ---
 _db_initialized: bool = False
 
@@ -515,6 +519,25 @@ def delete_photo(photo_id: int) -> None:
     update_photo_quarantine(photo_id, True, reason="deleted by user")
 
 
+def delete_photos_by_ids(photo_ids: list[int]) -> int:
+    """Hard-delete photo records by ID list. Returns count deleted.
+
+    Used after files have already been unlinked (C15 — disk-full recovery).
+    Cascades to album_photos, photo_tags, display_stats via FK ON DELETE CASCADE.
+    """
+    if not photo_ids:
+        return 0
+    placeholders = ",".join("?" * len(photo_ids))
+    with _write_lock:
+        with closing(get_db()) as conn:
+            cur = conn.execute(
+                f"DELETE FROM photos WHERE id IN ({placeholders})",
+                photo_ids,
+            )
+            conn.commit()
+            return cur.rowcount
+
+
 # --- Album CRUD ---
 
 
@@ -803,13 +826,23 @@ def _shutdown_db() -> None:
 
 
 def _periodic_flush() -> None:
-    """Called by timer thread to flush stats periodically."""
+    """Called by timer thread to flush stats and run periodic WAL checkpoint."""
+    global _last_wal_checkpoint
     try:
         _flush_stats()
     except Exception as exc:
         log.error("STATS: periodic flush error: %s", exc)
-    finally:
-        _start_flush_timer()
+    # Passive WAL checkpoint every 30 minutes (R — prevents unbounded WAL growth)
+    now = time.monotonic()
+    if now - _last_wal_checkpoint >= _WAL_CHECKPOINT_INTERVAL:
+        try:
+            with closing(get_db()) as conn:
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            _last_wal_checkpoint = now
+            log.debug("DATABASE: periodic WAL checkpoint (PASSIVE)")
+        except Exception as exc:
+            log.warning("DATABASE: periodic WAL checkpoint failed: %s", exc)
+    _start_flush_timer()
 
 
 _flush_timer_lock = threading.Lock()
@@ -1084,22 +1117,20 @@ def restore_db(uploaded_path: str | Path) -> bool:
     """
     # Validate it's a real SQLite database
     try:
-        test_conn = sqlite3.connect(str(uploaded_path))
-        test_conn.row_factory = sqlite3.Row
-        # Check for required tables
-        tables = {row["name"] for row in test_conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
-        required = {"photos", "albums", "tags", "users"}
-        missing = required - tables
-        if missing:
-            test_conn.close()
-            raise ValueError(
-                f"Missing required tables: {', '.join(sorted(missing))}"
-            )
-        # Quick sanity: can we read from photos?
-        test_conn.execute("SELECT COUNT(*) FROM photos").fetchone()
-        test_conn.close()
+        with closing(sqlite3.connect(str(uploaded_path))) as test_conn:
+            test_conn.row_factory = sqlite3.Row
+            # Check for required tables
+            tables = {row["name"] for row in test_conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            required = {"photos", "albums", "tags", "users"}
+            missing = required - tables
+            if missing:
+                raise ValueError(
+                    f"Missing required tables: {', '.join(sorted(missing))}"
+                )
+            # Quick sanity: can we read from photos?
+            test_conn.execute("SELECT COUNT(*) FROM photos").fetchone()
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"Invalid SQLite database: {exc}") from exc
 
@@ -1110,10 +1141,22 @@ def restore_db(uploaded_path: str | Path) -> bool:
         shutil.copy2(str(current_path), safety_backup)
         log.info("Pre-restore safety backup: %s", safety_backup)
 
-    # Replace current DB with restored one
+    # Atomic restore: copy to temp, fsync, rename (C14 — prevents truncation on power loss)
     with _write_lock:
-        shutil.copy2(str(uploaded_path), str(current_path))
-        log.info("Database restored from uploaded backup")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(current_path.parent), suffix=".db.tmp")
+        try:
+            shutil.copy2(str(uploaded_path), tmp_path)
+            os.fsync(tmp_fd)
+            os.close(tmp_fd)
+            tmp_fd = None
+            os.replace(tmp_path, str(current_path))
+        except Exception:
+            if tmp_fd is not None:
+                os.close(tmp_fd)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+        log.info("Database restored from uploaded backup (atomic)")
 
     return True
 

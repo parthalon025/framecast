@@ -918,9 +918,11 @@ def restore_backup():
         return jsonify({"error": "Empty filename"}), 400
 
     # Save to temp file for validation
+    # Use media_dir (not /tmp) to avoid tmpfs overflow on Pi (I24)
     import tempfile
 
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    media_dir = Path(media.get_media_dir())
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db", dir=str(media_dir))
     os.close(tmp_fd)
 
     try:
@@ -976,7 +978,8 @@ def export_photos():
     if not photos:
         return jsonify({"error": "No photos to export"}), 404
 
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+    # Use media_dir (not /tmp) to avoid tmpfs overflow on Pi (I23)
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=str(media_dir))
     os.close(tmp_fd)
 
     @after_this_request

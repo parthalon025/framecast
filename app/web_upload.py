@@ -386,7 +386,15 @@ def _auto_resize_image(image_path):
             save_kwargs = {"quality": 90}
             if exif:
                 save_kwargs["exif"] = exif
-            resized.save(str(image_path), **save_kwargs)
+            # Atomic write: save to tmp, then rename (I21 — prevents corrupt on power loss)
+            tmp_path = str(image_path) + ".tmp"
+            try:
+                resized.save(tmp_path, **save_kwargs)
+                os.replace(tmp_path, str(image_path))
+            except Exception:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
             log.info("Resized %s: %dx%d -> %dx%d", image_path.name, w, h, new_w, new_h)
     except Exception as exc:
         log.warning("Auto-resize failed for %s: %s", image_path.name, exc)
@@ -655,22 +663,25 @@ def delete_all():
     image_ext, video_ext = media.get_allowed_extensions()
     all_ext = image_ext | video_ext
 
-    # Bulk-quarantine all photos in DB before unlinking files (Lesson: delete-all must update DB)
-    try:
-        db.bulk_quarantine_all(reason="bulk delete")
-        log.info("Bulk-quarantined all photos in DB before delete-all")
-    except Exception as db_exc:
-        log.error("Failed to bulk-quarantine photos in DB: %s", db_exc)
-        return jsonify({"error": "Delete all failed: database error"}), 500
-
+    # Phase 1: Delete files first (C15 — frees disk space even if DB fails on full disk)
     count = 0
+    deleted_filenames = []
     for f in media_path.iterdir():
         if f.is_file() and f.suffix.lower() in all_ext:
             try:
                 f.unlink()
                 count += 1
+                deleted_filenames.append(f.name)
             except OSError as exc:
                 log.warning("Failed to delete %s during delete-all: %s", f.name, exc)
+
+    # Phase 2: Clean up DB records for successfully deleted files
+    if deleted_filenames:
+        try:
+            db.bulk_quarantine_all(reason="bulk delete")
+            log.info("Bulk-quarantined %d photos in DB after delete-all", len(deleted_filenames))
+        except Exception as db_exc:
+            log.error("Failed to clean up DB records after delete-all: %s", db_exc)
     # Clean up all thumbnails
     thumb_dir = Path(THUMBNAIL_DIR)
     if thumb_dir.exists():
