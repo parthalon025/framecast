@@ -8,7 +8,8 @@ imports.gi.versions.Gtk = '3.0';
 imports.gi.versions.WebKit2 = '4.1';
 const { Gtk, WebKit2, GLib, Gdk } = imports.gi;
 
-const TARGET_URI = 'http://localhost:8080/display';
+const WEB_PORT = ARGV[0] || '8080';
+const TARGET_URI = `http://localhost:${WEB_PORT}/display`;
 const RETRY_INTERVAL_MS = 5000;
 
 Gtk.init(null);
@@ -46,7 +47,8 @@ webview.set_background_color(bgColor);
 webview.connect('load-changed', (_wv, event) => {
     if (event === WebKit2.LoadEvent.FINISHED) {
         const css = '::-webkit-scrollbar { display: none !important; } '
-                  + 'html, body { overflow: hidden !important; }';
+                  + 'html, body { overflow: hidden !important; } '
+                  + '* { cursor: none !important; }';
         webview.run_javascript(
             `(function() {
                 var s = document.createElement('style');
