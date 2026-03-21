@@ -221,6 +221,7 @@ def status():
         "disk": disk,
         "version": _read_version(),
         "hostname": socket.gethostname(),
+        "wifi_connected": wifi.is_connected(),
         "settings": _current_settings(),
     }
     # Only expose PIN to localhost (TV display needs it to show on-screen)

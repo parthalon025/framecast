@@ -1,17 +1,19 @@
 /** @fileoverview State-based router for the TV display surface.
  *
  * Determines what to show on the TV:
- *   "boot"      - Startup animation (bootSequence typewriter)
- *   "setup"     - WiFi/network setup screen (AP mode)
- *   "welcome"   - No photos yet, show upload instructions + QR
- *   "slideshow" - Photo slideshow
+ *   "boot"      - Startup animation (bootSequence typewriter + narrator greeting)
+ *   "setup"     - WiFi/network setup screen (AP mode) — facility: alert
+ *   "welcome"   - No photos yet, show upload instructions + QR — facility: normal
+ *   "slideshow" - Photo slideshow — facility: normal
  *
+ * Facility state and narrator personality shift with display state.
  * Connects to SSE /api/events for real-time state transitions.
  */
-import { signal } from "@preact/signals";
+import { signal, effect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { ShPageBanner } from "superhot-ui/preact";
 import { createSSE } from "../lib/sse.js";
+import { setFacilityState, ShNarrator } from "superhot-ui";
 import { Boot } from "./Boot.jsx";
 import { Welcome } from "./Welcome.jsx";
 import { Setup } from "./Setup.jsx";
@@ -23,6 +25,20 @@ export const displayState = signal("boot");
 
 /** Access PIN fetched from /api/status -- shown on TV screens. */
 const accessPin = signal("");
+
+// Shift facility state + narrator personality when display state changes
+effect(() => {
+  const state = displayState.value;
+  if (state === "setup") {
+    setFacilityState("alert");
+    ShNarrator.personality = "wheatley";
+  } else if (state === "boot") {
+    // Boot handles its own facility transitions
+  } else {
+    setFacilityState("normal");
+    ShNarrator.personality = "glados";
+  }
+});
 
 /** PIN display shown on Setup and Welcome screens. */
 function PinDisplay() {
@@ -53,6 +69,12 @@ async function handleBootComplete() {
       accessPin.value = data.access_pin;
     }
 
+    // No WiFi → setup screen (facility shifts to alert via effect)
+    if (!data.wifi_connected) {
+      displayState.value = "setup";
+      return;
+    }
+
     const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
     if (totalMedia > 0) {
       displayState.value = "slideshow";
@@ -61,8 +83,8 @@ async function handleBootComplete() {
     }
   } catch (err) {
     console.error("DisplayRouter: status fetch failed", err);
-    // Default to welcome on error -- SSE will correct if needed
-    displayState.value = "welcome";
+    // Default to setup on error — can't reach API, likely no network
+    displayState.value = "setup";
   }
 }
 

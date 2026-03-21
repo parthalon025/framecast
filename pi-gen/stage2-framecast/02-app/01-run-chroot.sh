@@ -1,6 +1,8 @@
 #!/bin/bash -e
 set -u -o pipefail
-# Runs inside the chroot (Pi filesystem)
+# Runs inside the chroot (Pi filesystem).
+# Frontend is already built on the host — this script only does things
+# that require the arm64 chroot (service enablement, pip, firewall).
 
 # Enable services
 systemctl enable framecast.service
@@ -13,21 +15,13 @@ systemctl enable framecast-hostname.service
 systemctl enable avahi-daemon.service
 systemctl enable watchdog.service
 
-# Auto-login on tty1 (for cage kiosk)
-mkdir -p /etc/systemd/system/getty@tty1.service.d
-cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << 'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin pi --noclear %I $TERM
-EOF
+# getty@tty1 is masked in 03-system — kiosk service owns the VT directly
 
 # Create media directory
 mkdir -p /home/pi/media
 chown -R 1000:1000 /home/pi/media
 
 # SSH disabled by default for security (Issue #4)
-# Users can enable via Settings UI or by placing an empty file named "ssh"
-# on the boot partition (/boot/firmware/ssh or /boot/ssh) before first boot.
 systemctl disable ssh
 
 # Lock pi user password (SSH disabled, headless device)
@@ -53,46 +47,32 @@ else
 fi
 rm -f "$SUDOERS_TMP"
 
-# Build frontend (node/npm available in chroot)
-cd /opt/framecast/app/frontend || { echo "ERROR: frontend dir missing"; exit 1; }
-npm install --production
-npm run build
-rm -rf node_modules  # Save image space
+# Frontend already built on host — no npm install/build needed here
 
-# Install Python deps (pinned from requirements.txt)
-pip3 install --break-system-packages -q -r /opt/framecast/requirements.txt
-
-# mDNS service advertisement
-mkdir -p /etc/avahi/services
-cat > /etc/avahi/services/framecast.service << 'AVAHI'
-<?xml version="1.0" standalone='no'?>
-<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
-<service-group>
-  <name>FrameCast</name>
-  <service>
-    <type>_http._tcp</type>
-    <port>8080</port>
-  </service>
-</service-group>
-AVAHI
+# Install Python deps — use pre-downloaded wheels if available
+if [ -d /opt/framecast/.wheels ] && [ "$(ls -A /opt/framecast/.wheels 2>/dev/null)" ]; then
+    echo "Installing Python deps from pre-downloaded wheels..."
+    pip3 install --break-system-packages -q \
+        --no-index --find-links=/opt/framecast/.wheels \
+        -r /opt/framecast/requirements.txt 2>&1 || {
+        echo "Wheel install failed, falling back to network pip..."
+        pip3 install --break-system-packages -q -r /opt/framecast/requirements.txt
+    }
+    rm -rf /opt/framecast/.wheels
+else
+    echo "No pre-downloaded wheels, installing via network..."
+    pip3 install --break-system-packages -q -r /opt/framecast/requirements.txt
+fi
 
 # Generate .env from example
 cp /opt/framecast/app/.env.example /opt/framecast/app/.env
 SECRET=$(python3 -c "import secrets; print(secrets.token_hex(24))")
-# Use printf to avoid sed injection from special characters
 grep -v '^FLASK_SECRET_KEY=' /opt/framecast/app/.env > /opt/framecast/app/.env.tmp || true
 printf 'FLASK_SECRET_KEY=%s\n' "$SECRET" >> /opt/framecast/app/.env.tmp
 mv /opt/framecast/app/.env.tmp /opt/framecast/app/.env
 sed -i "s|^MEDIA_DIR=.*|MEDIA_DIR=/home/pi/media|" /opt/framecast/app/.env
 chmod 600 /opt/framecast/app/.env
 chown 1000:1000 /opt/framecast/app/.env
-
-# .profile for auto-startx equivalent (cage via kiosk service handles this)
-cat > /home/pi/.profile << 'PROF'
-# FrameCast auto-start is handled by systemd (framecast-kiosk.service)
-# This file is kept minimal
-PROF
-chown 1000:1000 /home/pi/.profile
 
 # Configure and enable firewall (ufw)
 /usr/local/bin/ufw-setup.sh

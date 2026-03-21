@@ -48,3 +48,4 @@ app/.env
 
 # pi-gen cloned upstream
 pi-gen/pi-gen/
+.hypothesis/
