@@ -337,7 +337,7 @@ jobs:
         run: |
           for f in systemd/*.service systemd/*.timer; do
             [ -f "$f" ] || continue
-            if grep -q '^\\[Unit\\]' "$f" && grep -q '^\\[Service\\]\\|^\\[Timer\\]' "$f"; then
+            if grep -q '^\[Unit\]' "$f" && grep -q '^\[Service\]\|^\[Timer\]' "$f"; then
               echo "  OK  $f"
             else
               echo "  FAIL  $f (missing required sections)"
