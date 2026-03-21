@@ -1,43 +1,58 @@
 # FrameCast
 
-**Turn any TV into a family photo frame -- flash, boot, done.**
+[![CI](https://github.com/parthalon025/framecast/actions/workflows/test.yml/badge.svg)](https://github.com/parthalon025/framecast/actions/workflows/test.yml)
+[![Build Image](https://github.com/parthalon025/framecast/actions/workflows/build-image.yml/badge.svg)](https://github.com/parthalon025/framecast/actions/workflows/build-image.yml)
+[![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-FrameCast is a ready-to-flash OS image for Raspberry Pi. Download the image, write it to an SD card, plug the Pi into your TV, and you have a photo frame. No SSH, no terminal, no Linux knowledge required.
+**Turn any TV into a family photo frame -- flash an SD card, plug in the Pi, done.**
 
-Anyone on your WiFi can upload photos from their phone's browser. No app, no cloud, no subscription.
+Anyone on your WiFi uploads photos from their phone's browser. No app. No cloud. No subscription. Photos appear on the TV within seconds.
 
 ---
 
 ## Quick Start
 
-1. **Download** the latest `.img.xz` from [Releases](../../releases)
-2. **Flash** with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (select "Use custom" and pick the downloaded file)
+1. **Download** the latest `.zip` from [Releases](../../releases)
+2. **Flash** with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (select "Use custom")
 3. **Boot** the Pi -- it displays a setup screen with a QR code
 4. **Scan the QR code** from your phone to open the web UI
-5. **Upload** photos -- they appear on the TV within seconds
+5. **Upload photos** -- the slideshow starts automatically
 
-The slideshow starts automatically. No configuration required.
+No SSH. No terminal. No Linux knowledge required.
+
+---
+
+## Who This Is For
+
+**This is for you if:**
+- You want a zero-config photo frame that anyone in the family can add photos to from their phone
+- You want a self-hosted solution with no cloud dependency, no subscriptions, and no data leaving your network
+- You want something that boots, connects to WiFi, and just works -- even after power outages
+
+**This is not for you if:**
+- You need cloud sync (Google Photos, iCloud) -- FrameCast is local-only by design
+- You need video playback with audio -- FrameCast displays photos and silent video loops
+- You want to run this on non-Pi hardware -- the OS image is Pi-specific (3/4/5, arm64)
 
 ---
 
 ## Features
 
-- **Browser-based slideshow** with weighted rotation, CSS transitions (fade, slide, Ken Burns), and "On This Day" memories
-- **Drag-and-drop upload** from any phone, tablet, or computer
-- **Favorites and albums** for content curation
-- **Multi-user support** -- each person gets credit for their uploads
-- **Stats dashboard** -- most shown, least shown, upload timeline, per-user breakdown
-- **WiFi captive portal** with onboarding wizard -- no SSH or terminal needed
-- **HDMI-CEC TV control** -- scheduled on/off, manual toggle from the web UI
-- **OTA updates** with SHA-256 verification and health-check rollback
-- **PIN authentication** (4 or 6 digits) with rate limiting and cookie hardening
-- **Firewall** (ufw) -- only allows traffic from your local network
-- **superhot-ui terminal aesthetic** -- green phosphor monitor interface
-- **Photo map** plotting GPS EXIF data on an offline SVG world map
-- **Server-Sent Events** for real-time display updates with reconnection support
-- **Self-healing** -- crash recovery, hardware watchdog, config restore
-- **WiFi hotspot fallback** when your home network is unavailable
-- **SQLite content model** with duplicate detection and SD card write optimization
+| Category | What it does |
+|---|---|
+| **Slideshow** | Weighted rotation with CSS transitions (fade, slide, Ken Burns, dissolve). "On This Day" memories from EXIF dates. Recency, favorites, and diversity weighting. |
+| **Upload** | Drag-and-drop from any browser. Auto-resize, duplicate detection, EXIF GPS extraction. |
+| **Albums & Favorites** | Organize photos into albums. Star favorites for 3x slideshow weight. |
+| **Multi-user** | Each person gets credit for their uploads. Per-user stats and attribution. |
+| **Stats dashboard** | Most shown, least shown, upload timeline, per-user breakdown, storage usage. |
+| **Photo map** | GPS EXIF data plotted on an offline SVG world map. |
+| **WiFi setup** | Captive portal with onboarding wizard. AP mode auto-starts on first boot. Hotspot fallback when home network is unavailable. |
+| **TV control** | HDMI-CEC scheduled on/off. Manual toggle from the web UI. |
+| **OTA updates** | GitHub Releases API with SHA-256 verification. Health-check rollback within 90 seconds. |
+| **Security** | PIN authentication (4/6 digit), rate limiting, ufw firewall (RFC1918 only), cookie hardening. |
+| **Self-healing** | Crash recovery via systemd watchdog. Config restore. Hardware watchdog. |
+| **Terminal aesthetic** | superhot-ui green phosphor monitor interface. piOS voice. |
 
 ---
 
@@ -46,21 +61,18 @@ The slideshow starts automatically. No configuration required.
 | Pi Model | Status |
 |----------|--------|
 | Raspberry Pi 3B / 3B+ | Supported (64-bit, performance-optimized) |
-| Raspberry Pi 4 | Supported (64-bit) |
-| Raspberry Pi 5 | Supported (64-bit) |
+| Raspberry Pi 4 | Supported |
+| Raspberry Pi 5 | Supported |
 
-Any HDMI TV or monitor works. A small 7" or 10" HDMI display works well as a dedicated frame.
+Any HDMI TV or monitor. A 7" or 10" HDMI display works well as a dedicated frame.
 
-**Requirements:**
-- microSD card (16 GB minimum, 32 GB recommended)
-- Power supply for your Pi model
-- HDMI cable (micro-HDMI adapter for Pi 4/5)
+**Requirements:** microSD card (16 GB min, 32 GB recommended), power supply for your Pi model, HDMI cable (micro-HDMI adapter for Pi 4/5).
 
 ---
 
 ## Architecture
 
-FrameCast is one Flask app serving two surfaces:
+One Flask app serves two surfaces:
 
 ```
 +-----------------------------------------------+
@@ -89,72 +101,56 @@ FrameCast is one Flask app serving two surfaces:
               +---------------+
 ```
 
-- **Phone** surface: upload, settings, albums, favorites, stats, map, users, update (Preact SPA)
-- **TV** surface: slideshow with CSS animations, boot sequence, QR codes (Wayland kiosk)
-- **Database**: SQLite with WAL mode, co-located with photos for unified backup
+- **Phone** -- upload, settings, albums, favorites, stats, map, users, update (Preact SPA, 4 nav tabs)
+- **TV** -- slideshow with CSS animations, boot sequence, QR codes (Wayland kiosk via cage + GTK-WebKit)
+- **Database** -- SQLite with WAL mode, co-located with photos for unified backup
 
-Wayland only -- no X11. The kiosk browser (cage compositor + GTK-WebKit) renders the slideshow page served by the same Flask app.
+Wayland only -- no X11. The kiosk browser renders the slideshow page served by the same Flask app.
 
 ---
 
-## Configuration Reference
+## Configuration
 
-All settings are in `/opt/framecast/app/.env` and can be changed from the web UI Settings page.
+All settings live in `/opt/framecast/app/.env` and can be changed from the web UI Settings page.
 
 ### Slideshow
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `PHOTO_DURATION` | `10` | Seconds each photo is displayed |
-| `SHUFFLE` | `yes` | Randomize photo order |
-| `TRANSITION_TYPE` | `fade` | Effect: `fade`, `slide`, `zoom`, `dissolve`, `none` |
-| `TRANSITION_MODE` | `single` | `single` (one type) or `random` (mix transitions) |
-| `TRANSITION_DURATION_MS` | `1000` | Transition speed in milliseconds (500-3000) |
-| `KENBURNS_INTENSITY` | `moderate` | Ken Burns zoom: `subtle`, `moderate`, `dramatic` |
-| `PHOTO_ORDER` | `shuffle` | Order: `shuffle`, `newest`, `oldest`, `alphabetical` |
-| `QR_DISPLAY_SECONDS` | `30` | How long the QR code shows on boot (0 to disable) |
-
-### Web Server
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `WEB_PORT` | `8080` | HTTP port (not editable from web UI) |
-| `MAX_UPLOAD_MB` | `200` | Maximum upload file size in MB |
-| `AUTO_RESIZE_MAX` | `1920` | Max dimension for auto-resize (0 to disable) |
+| `TRANSITION_TYPE` | `fade` | `fade`, `slide`, `zoom`, `dissolve`, `none` |
+| `TRANSITION_MODE` | `single` | `single` (one type) or `random` (mix) |
+| `TRANSITION_DURATION_MS` | `1000` | Transition speed in ms (500-3000) |
+| `KENBURNS_INTENSITY` | `moderate` | `subtle`, `moderate`, `dramatic` |
+| `PHOTO_ORDER` | `shuffle` | `shuffle`, `newest`, `oldest`, `alphabetical` |
+| `QR_DISPLAY_SECONDS` | `30` | QR code duration on boot (0 to disable) |
 
 ### Security
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ACCESS_PIN` | (generated) | PIN displayed on TV screen for authentication |
-| `PIN_LENGTH` | `4` | PIN digit count: `4` or `6` |
-| `PIN_ROTATE_ON_BOOT` | `no` | Generate a new PIN every time the Pi boots |
-| `FLASK_SECRET_KEY` | (generated) | Secret key for cookie signing |
+| `ACCESS_PIN` | (generated) | PIN shown on TV for authentication |
+| `PIN_LENGTH` | `4` | `4` or `6` digits |
+| `PIN_ROTATE_ON_BOOT` | `no` | New PIN every boot |
 
 ### Display Schedule
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `HDMI_SCHEDULE_ENABLED` | `no` | Enable automatic TV on/off schedule |
-| `HDMI_ON_TIME` | `08:00` | Time to turn TV on (HH:MM, 24-hour) |
-| `HDMI_OFF_TIME` | `22:00` | Time to turn TV off (HH:MM, 24-hour) |
-| `DISPLAY_SCHEDULE_DAYS` | `mon,tue,wed,thu,fri,sat,sun` | Days schedule is active |
+| `HDMI_SCHEDULE_ENABLED` | `no` | Automatic TV on/off |
+| `HDMI_ON_TIME` | `08:00` | Turn on (24h) |
+| `HDMI_OFF_TIME` | `22:00` | Turn off (24h) |
+| `DISPLAY_SCHEDULE_DAYS` | `mon,tue,wed,thu,fri,sat,sun` | Active days |
 
-### Updates
+### Server & Media
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `WEB_PORT` | `8080` | HTTP port |
+| `MAX_UPLOAD_MB` | `200` | Max upload size |
+| `AUTO_RESIZE_MAX` | `1920` | Max dimension for auto-resize (0 to disable) |
+| `MEDIA_DIR` | `/home/pi/media` | Photo storage path |
 | `AUTO_UPDATE_ENABLED` | `no` | Check for OTA updates daily |
-| `GITHUB_OWNER` | `parthalon025` | GitHub repo owner (for forks) |
-| `GITHUB_REPO` | `framecast` | GitHub repo name (for forks) |
-
-### Media
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MEDIA_DIR` | `/home/pi/media` | Photo/video storage path (not editable from web UI) |
-| `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.bmp,.gif,.webp,.tiff` | Accepted image types |
-| `VIDEO_EXTENSIONS` | `.mp4,.mkv,.avi,.mov,.webm,.m4v,.mpg,.mpeg` | Accepted video types |
 
 ---
 
@@ -163,7 +159,7 @@ All settings are in `/opt/framecast/app/.env` and can be changed from the web UI
 ### Prerequisites
 
 - Node.js 18+ (frontend build)
-- Python 3.11+ with pip (backend)
+- Python 3.11+ with pip
 - Linux x86_64 with sudo (native image build) or Docker
 
 ### Frontend
@@ -182,111 +178,93 @@ cd app
 gunicorn -c gunicorn.conf.py web_upload:app
 ```
 
-Open `http://localhost:8080` for the phone UI. The kiosk display (`/display`) requires a Wayland compositor -- test visually on a Pi or use a browser.
+Open `http://localhost:8080` for the phone UI. The TV display (`/display`) requires a Wayland compositor.
 
 ### Build the OS Image
 
-Built with [pi-gen](https://github.com/RPi-Distro/pi-gen) (bookworm-arm64 branch):
+Built with [pi-gen](https://github.com/RPi-Distro/pi-gen) (bookworm-arm64):
 
 ```bash
 cd pi-gen
-./build.sh                 # Full build (~30 min first time)
-./build.sh --app-only      # Rebuild app only (~7 min, reuses cached rootfs)
-./build.sh --base-only     # OS layer without app (for validation)
+./build.sh                 # Full build (~35 min first time)
+./build.sh --app-only      # Rebuild app stage only (~5 min)
+./build.sh --base-only     # OS layer without app
 ./build.sh --continue      # Add app layer to existing base
-./build.sh --docker        # Build via Docker instead of native
+./build.sh --docker        # Build via Docker
 ./build.sh --clean         # Wipe work/ and deploy/ first
 ```
 
-Output: `pi-gen/pi-gen/deploy/image_*-FrameCast-v*.zip`. Frontend builds on the host (native speed), not under QEMU emulation.
+Output: `pi-gen/pi-gen/deploy/image_*-FrameCast-v*.zip`
 
-### Project Structure
+---
+
+## Project Structure
 
 ```
 framecast/
 |-- app/
-|   |-- web_upload.py            # Flask web server (entry point)
-|   |-- api.py                   # REST API (~80 routes) + rate limiting
-|   |-- sse.py                   # Server-Sent Events with reconnection
-|   |-- gunicorn.conf.py         # Gunicorn (workers=1, gthread)
-|   |-- modules/
-|   |   |-- db.py                # SQLite content model (photos, albums, tags, users, stats)
-|   |   |-- rotation.py          # Weighted slideshow playlist (recency, favorites, diversity)
-|   |   |-- users.py             # Multi-user management + stats aggregation
-|   |   |-- cec.py               # HDMI-CEC TV control (cec-ctl)
-|   |   |-- auth.py              # PIN authentication (4/6 digit) + CSRF
-|   |   |-- rate_limiter.py      # Shared rate limiter (API + PIN)
-|   |   |-- config.py            # .env configuration (atomic writes)
-|   |   |-- media.py             # Image/video processing + GPS extraction
-|   |   |-- updater.py           # OTA updates with SHA256 verification
-|   |   |-- wifi.py              # WiFi provisioning (nmcli, AP mode)
-|   |   |-- services.py          # System service management (restart, reboot)
-|   |   |-- boot_config.py       # Boot config + SSH toggle
-|   |-- frontend/
-|   |   |-- src/
-|   |   |   |-- styles/          # CSS architecture (8 files)
-|   |   |   |-- lib/             # Shared JS (sse.js, fetch.js, format.js)
-|   |   |   |-- components/      # Reusable (PhotoCard, Lightbox, PinGate, etc.)
-|   |   |   |-- pages/           # Phone UI (Upload, Albums, Settings, Map, Stats, etc.)
-|   |   |   |-- display/         # TV display (Slideshow, Boot, Setup, Welcome)
-|   |   |-- esbuild.config.js    # Build configuration
-|   |-- static/                  # Built CSS/JS assets
-|   |-- templates/               # HTML template (spa.html — SPA shell for phone + TV)
-|-- pi-gen/                      # OS image build (Docker-based)
-|-- scripts/                     # Health check, HDMI control, OTA post-update, WiFi check, smoke test, cert generation
-|-- systemd/                     # 10 service/timer definitions
-|-- tests/                       # 391 tests (Python + frontend + shell: db, rotation, users, cec, albums, auth, rate_limiter, config, API integration, SSE, rollback)
-|-- API.md                       # Full endpoint documentation
-|-- CONTRIBUTING.md              # Dev setup + PR guidelines
-|-- VERSION                      # Current version (semver)
+|   |-- web_upload.py            # Flask app factory + static serving
+|   |-- api.py                   # REST API (~70 routes)
+|   |-- sse.py                   # Server-Sent Events
+|   |-- gunicorn.conf.py         # workers=1 (mandatory — SSE singleton)
+|   |-- modules/                 # db, rotation, users, cec, auth, wifi, updater, config, media, services, rate_limiter, boot_config
+|   |-- frontend/src/            # Preact + esbuild + superhot-ui
+|   |-- static/                  # Built CSS/JS
+|   |-- templates/               # spa.html (SPA shell)
+|-- pi-gen/                      # OS image build
+|-- scripts/                     # health-check, HDMI control, post-update, smoke test
+|-- systemd/                     # 6 service/timer units
+|-- tests/                       # 439 Python + vitest + bats tests
 ```
 
-### CI/CD
+---
 
-**PR gate (16 parallel jobs):**
+## CI/CD
+
+### PR Gate (16 jobs)
 
 | Job | What |
 |-----|------|
 | lint-python | ruff |
 | shellcheck | all `.sh` files |
 | typecheck | mypy strict |
-| pytest | 363 tests (unit, property, concurrency, fault injection, benchmarks) |
-| integration | starts gunicorn, hits real endpoints end-to-end |
+| pytest | unit, property, concurrency, fault injection, benchmarks |
+| integration | gunicorn + real endpoint verification |
 | build-frontend | esbuild + asset verification |
-| test-frontend | vitest (SSE client tests) |
+| test-frontend | vitest (SSE client) |
 | test-shell | bats (health-check rollback) |
-| architecture | structural invariants (no duplicate resource owners, no stale naming, watchdog correctness) |
-| smoke | file structure, permissions, systemd units, VERSION/CHANGELOG |
-| Claude Code Review | AI review reading CLAUDE.md conventions |
-| Claude Security Review | OWASP analysis (path-triggered on auth/wifi/api) |
-| actionlint | workflow file validation |
-| commitlint | conventional commit enforcement |
-| CodeQL | SAST (SQL injection, XSS, unsafe subprocess) |
+| architecture | structural invariants |
+| smoke | file structure, permissions, systemd units |
+| Claude Code Review | AI review against CLAUDE.md conventions |
+| Claude Security Review | OWASP analysis (path-triggered) |
+| actionlint | workflow validation |
+| commitlint | conventional commits |
+| CodeQL | SAST |
 | gitleaks | secret scanning |
 
-**Release pipeline (on `v*` tag):**
+### Release Pipeline (on `v*` tag)
 
 1. Full test suite gate
-2. pi-gen image build
-3. QEMU arm64 boot test (verifies kernel loads, systemd starts, no panic)
-4. SBOM generation (CycloneDX — Python + Node)
-5. cosign keyless signing (Sigstore OIDC)
+2. Pi-gen image build (~41 min, cached ~5 min)
+3. Structural image validation (boot partition + rootfs + systemd units)
+4. SBOM generation (CycloneDX -- Python + Node)
+5. Cosign keyless signing (Sigstore OIDC)
 6. SLSA Build Level 2 attestation
 7. GitHub Release (image + checksums + signatures + SBOMs)
 8. Telegram notification
 
-**Automation:** [release-please](https://github.com/googleapis/release-please) (auto VERSION + CHANGELOG), [Dependabot](https://docs.github.com/en/code-security/dependabot) (weekly pip/npm, monthly Actions), branch protection (CI Pass required, enforce admins, linear history, squash-only).
+**Automation:** [release-please](https://github.com/googleapis/release-please) (auto VERSION + CHANGELOG), [Dependabot](https://docs.github.com/en/code-security/dependabot) (weekly pip/npm, monthly Actions), branch protection (squash-only, linear history).
 
-**Verify a release:**
+### Verify a Release
 
 ```bash
-# Verify cosign signature
+# Cosign signature
 cosign verify-blob \
   --certificate image.pem --signature image.sig \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   image.zip
 
-# Verify SLSA provenance
+# SLSA provenance
 gh attestation verify image.zip -R parthalon025/framecast
 ```
 
@@ -296,59 +274,50 @@ gh attestation verify image.zip -R parthalon025/framecast
 
 ### WiFi won't connect
 
-- **Check the password.** The most common cause is a typo. Re-enter via the web UI.
-- **Network not found.** Move the Pi closer to the router. The Pi 3 has limited WiFi range.
+- **Check the password.** Most common cause is a typo. Re-enter via the web UI.
+- **Network not found.** Move the Pi closer to the router.
 - **AP mode stuck.** Power cycle the Pi. It will restart the captive portal.
-- **Hidden network.** FrameCast cannot scan hidden SSIDs. Either unhide it or configure WiFi via `wpa_supplicant.conf` on the boot partition.
+- **Hidden network.** FrameCast cannot scan hidden SSIDs.
 
 ### TV is black
 
-- **Check HDMI connection.** Unplug and re-plug the HDMI cable.
-- **Check power supply.** An undervoltage-throttled Pi may not drive the display. Use the official power supply for your model.
-- **HDMI schedule.** If the schedule is enabled, the display turns off at the configured time. Check Settings or disable `HDMI_SCHEDULE_ENABLED`.
-- **Kiosk crash.** Check logs: `journalctl -u framecast-kiosk -n 50`. The watchdog should auto-restart within 60 seconds.
+- **Check HDMI.** Unplug and re-plug.
+- **Power supply.** Undervoltage throttling may prevent display output. Use the official PSU.
+- **Schedule.** If enabled, the display turns off at the configured time.
+- **Kiosk crash.** `journalctl -u framecast-kiosk -n 50`. Auto-restarts within 60s.
 
 ### Photos not showing
 
-- **Upload completed?** The web UI shows a confirmation. Check the upload page for errors.
-- **File format.** Only standard image/video formats are accepted (see Configuration Reference above).
-- **Disk full.** Check Settings for storage usage. Delete old photos or use a larger SD card.
-- **Quarantined.** Corrupt images are automatically quarantined. Check `journalctl -u framecast` for warnings.
+- **Upload completed?** Check the upload page for errors.
+- **File format.** Only standard image/video formats accepted.
+- **Disk full.** Check Settings for storage usage.
+- **Quarantined.** Corrupt images are auto-quarantined. Check `journalctl -u framecast`.
 
 ### OTA update failed
 
-- **No internet.** Updates require internet access. Verify WiFi is connected.
-- **SHA mismatch.** The update reports a SHA mismatch as a security check. Try again -- if it persists, report an issue.
-- **Rollback.** If a bad update gets through, the health-check timer will automatically roll back within 90 seconds.
+- **No internet.** Updates require internet access.
+- **SHA mismatch.** Try again. If persistent, report an issue.
+- **Rollback.** Health-check timer auto-rolls back within 90 seconds.
 
-### General debugging
+### Debugging
 
 ```bash
-# Web server logs
-journalctl -u framecast -n 100
-
-# Display/kiosk logs
-journalctl -u framecast-kiosk -n 50
-
-# WiFi provisioning logs
-journalctl -u wifi-manager -n 50
-
-# System health
+journalctl -u framecast -n 100        # Web server
+journalctl -u framecast-kiosk -n 50   # Display
+journalctl -u wifi-manager -n 50      # WiFi
 systemctl status framecast framecast-kiosk wifi-manager
-
-# Firewall status
-sudo ufw status
+sudo ufw status                       # Firewall
 ```
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture overview, dev setup, and PR guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup and PR guidelines.
 
-## API Documentation
+## API
 
-See [API.md](API.md) for complete endpoint documentation with request/response examples.
+See [API.md](API.md) for complete endpoint documentation.
 
 ## Credits
 
@@ -356,4 +325,4 @@ Based on [pi-video-photo-slideshow](https://github.com/bobburgers7/pi-video-phot
 
 ## License
 
-MIT License -- see [LICENSE](LICENSE) for details.
+MIT -- see [LICENSE](LICENSE).
