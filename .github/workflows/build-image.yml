@@ -51,8 +51,22 @@ jobs:
             grep rsync xz-utils file git curl bc gpg pigz xxd arch-test \
             binfmt-support qemu-utils kpartx fdisk
 
+      - name: Cache pi-gen base rootfs
+        id: cache-rootfs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: pi-gen/pi-gen/work
+          key: pigen-rootfs-${{ hashFiles('pi-gen/config', 'pi-gen/build.sh', 'pi-gen/stage2-framecast/00-packages/00-packages') }}
+
       - name: Build pi-gen image
-        run: cd pi-gen && sudo bash build.sh
+        run: |
+          if [ "${{ steps.cache-rootfs.outputs.cache-hit }}" = "true" ]; then
+            echo "Cache hit — rebuilding app stage only (~5 min)"
+            cd pi-gen && sudo bash build.sh --continue
+          else
+            echo "No cache — full build (~35 min)"
+            cd pi-gen && sudo bash build.sh
+          fi
         env:
           GITHUB_OWNER: parthalon025
           GITHUB_REPO: framecast
