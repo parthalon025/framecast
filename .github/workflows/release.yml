@@ -15,21 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
           name: framecast-image
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate checksum
-        run: sha256sum *.img.xz > SHA256SUMS
+      - name: Download build info
+        uses: actions/download-artifact@v4
+        with:
+          name: framecast-build-info
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Generate checksums
+        run: sha256sum *.zip > SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.workflow_run.head_branch }}
           files: |
-            *.img.xz
+            *.zip
+            *.info
             SHA256SUMS
           generate_release_notes: true
