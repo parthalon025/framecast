@@ -315,6 +315,24 @@ app.register_blueprint(api)
 app.register_blueprint(auth_api)
 
 
+# ---------------------------------------------------------------------------
+# Captive portal detection — iOS/Android probe these URLs on new networks.
+# When the Pi is in AP mode, NM shared mode routes all DNS back to us, so
+# these probes land here. A 302 to /setup triggers the OS captive portal popup.
+# ---------------------------------------------------------------------------
+
+from flask import redirect  # noqa: E402 — imported here to co-locate with route
+
+
+@app.route("/generate_204")
+@app.route("/hotspot-detect.html")
+@app.route("/connecttest.txt")
+@app.route("/ncsi.txt")
+def captive_portal_redirect():
+    """Redirect captive portal probes to the setup page."""
+    return redirect("/setup", code=302)
+
+
 @app.after_request
 def security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"

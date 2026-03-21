@@ -10,6 +10,7 @@ TimeoutStartSec=180
 ProtectSystem=strict
 ReadWritePaths=/opt/framecast /var/lib/framecast
 NoNewPrivileges=true
+PrivateDevices=true
 ProtectHome=read-only
 ProtectKernelTunables=true
 SyslogIdentifier=framecast-health
