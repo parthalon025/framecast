@@ -241,9 +241,52 @@ framecast/
 
 ### CI/CD
 
-- **Pull requests** trigger lint (ruff) and frontend build checks
-- **Tag pushes** (`v*`) build the OS image via pi-gen Docker
-- **Releases** are created automatically with the image and SHA256 checksum
+**PR gate (10+ parallel jobs):**
+
+| Job | What |
+|-----|------|
+| lint-python | ruff |
+| shellcheck | all `.sh` files |
+| typecheck | mypy strict |
+| pytest | 330+ tests (unit, property, concurrency, fault injection, benchmarks) |
+| integration | starts gunicorn, hits real endpoints end-to-end |
+| build-frontend | esbuild + asset verification |
+| test-frontend | vitest (SSE client tests) |
+| test-shell | bats (health-check rollback) |
+| architecture | structural invariants (no duplicate resource owners, no stale naming, watchdog correctness) |
+| smoke | file structure, permissions, systemd units, VERSION/CHANGELOG |
+| Claude Code Review | AI review reading CLAUDE.md conventions |
+| Claude Security Review | OWASP analysis (path-triggered on auth/wifi/api) |
+| actionlint | workflow file validation |
+| commitlint | conventional commit enforcement |
+| CodeQL | SAST (SQL injection, XSS, unsafe subprocess) |
+| gitleaks | secret scanning |
+
+**Release pipeline (on `v*` tag):**
+
+1. Full test suite gate
+2. pi-gen image build
+3. QEMU arm64 boot test (verifies kernel loads, systemd starts, no panic)
+4. SBOM generation (CycloneDX — Python + Node)
+5. cosign keyless signing (Sigstore OIDC)
+6. SLSA Build Level 2 attestation
+7. GitHub Release (image + checksums + signatures + SBOMs)
+8. Telegram notification
+
+**Automation:** [release-please](https://github.com/googleapis/release-please) (auto VERSION + CHANGELOG), [Dependabot](https://docs.github.com/en/code-security/dependabot) (weekly pip/npm, monthly Actions), branch protection (CI Pass required, enforce admins, linear history, squash-only).
+
+**Verify a release:**
+
+```bash
+# Verify cosign signature
+cosign verify-blob \
+  --certificate image.pem --signature image.sig \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  image.zip
+
+# Verify SLSA provenance
+gh attestation verify image.zip -R parthalon025/framecast
+```
 
 ---
 
