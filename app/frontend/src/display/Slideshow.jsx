@@ -356,7 +356,7 @@ export function Slideshow() {
     };
 
     if (ms > 0) {
-      setTimeout(finalize, ms);
+      s.transitionTimer = setTimeout(finalize, ms);
     } else {
       finalize();
     }
@@ -458,6 +458,7 @@ export function Slideshow() {
     }
 
     const sse = createSSE("/api/events", {
+      pauseOnHidden: false,
       listeners: {
         "photo:added": handlePhotoChange,
         "photo:deleted": handlePhotoChange,
@@ -515,6 +516,10 @@ export function Slideshow() {
       if (s.timer) {
         clearTimeout(s.timer);
         s.timer = null;
+      }
+      if (s.transitionTimer) {
+        clearTimeout(s.transitionTimer);
+        s.transitionTimer = null;
       }
     };
   }, [advance, resetTimer]);

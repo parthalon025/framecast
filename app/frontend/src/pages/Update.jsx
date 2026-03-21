@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 import { ShToast, ShPageBanner } from "superhot-ui/preact";
 import { bootSequence } from "superhot-ui";
 import { authedFetch } from "../components/PinGate.jsx";
+import { createSSE } from "../lib/sse.js";
 
 const STEPS = ["DOWNLOAD", "INSTALL", "VERIFY", "REBOOT"];
 
@@ -62,21 +63,22 @@ export function Update() {
 
   // SSE listener for reboot event
   useEffect(() => {
-    const evtSource = new EventSource("/api/events");
-    sseRef.current = evtSource;
-
-    evtSource.onerror = () => {
-      console.warn("Update: SSE connection lost");
-    };
-
-    evtSource.addEventListener("update:rebooting", (evt) => {
-      setActiveStep(3); // REBOOT
-      setProgress(100);
-      setRebooting(true);
+    const sse = createSSE("/api/events", {
+      listeners: {
+        "update:rebooting": () => {
+          setActiveStep(3); // REBOOT
+          setProgress(100);
+          setRebooting(true);
+        },
+        "update:progress": () => {
+          // Reserved for future granular progress events
+        },
+      },
     });
+    sseRef.current = sse;
 
     return () => {
-      evtSource.close();
+      sse.close();
     };
   }, []);
 
@@ -133,6 +135,21 @@ export function Update() {
       setChecking(false);
     }
   }, []);
+
+  /** Rollback to the previous version. */
+  const handleRollback = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/update/rollback", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (body.needs_pin) return;
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      setToast({ type: "info", message: `ROLLBACK TO v${updateInfo.previous_version} INITIATED` });
+    } catch (err) {
+      setToast({ type: "error", message: `ROLLBACK FAILED: ${err.message}` });
+    }
+  }, [updateInfo]);
 
   /** Install the update. */
   const handleInstall = useCallback(async () => {
@@ -291,6 +308,18 @@ export function Update() {
               `}
             >
               INSTALL UPDATE v{updateInfo.latest}
+            </button>
+          )}
+
+          {/* Rollback button — shown when a previous version is known */}
+          {updateInfo?.previous_version && (
+            <button
+              class="sh-btn"
+              onClick={handleRollback}
+              disabled={installing}
+              style="width: 100%; text-align: center; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;"
+            >
+              ROLLBACK TO {updateInfo.previous_version}
             </button>
           )}
 

@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -59,10 +60,12 @@ def check_for_update() -> dict[str, object]:
 
     Returns:
         {"available": bool, "current": str, "latest": str, "url": str,
-         "tag_name": str, "target_commitish": str}
+         "tag_name": str, "expected_sha": str}
 
-    The ``target_commitish`` field is the commit SHA from the GitHub API
-    response, used to verify the fetched tag matches expectations.
+    The ``expected_sha`` field is the commit SHA resolved via the GitHub
+    Tags API (with annotated-tag dereferencing).  The Releases API
+    ``target_commitish`` is a branch name, not a SHA, so we fetch the
+    real commit SHA separately.
     """
     current = get_current_version()
     result: dict[str, object] = {
@@ -71,7 +74,7 @@ def check_for_update() -> dict[str, object]:
         "latest": current,
         "url": "",
         "tag_name": "",
-        "target_commitish": "",
+        "expected_sha": "",
     }
 
     try:
@@ -87,7 +90,6 @@ def check_for_update() -> dict[str, object]:
 
         tag = data.get("tag_name", "")
         html_url = data.get("html_url", "")
-        target_commitish = data.get("target_commitish", "")
 
         if not tag:
             log.warning("GitHub release response missing tag_name")
@@ -96,7 +98,10 @@ def check_for_update() -> dict[str, object]:
         result["latest"] = tag.lstrip("v")
         result["url"] = html_url
         result["tag_name"] = tag
-        result["target_commitish"] = target_commitish
+
+        # Resolve actual commit SHA via Tags API (not target_commitish which is a branch name)
+        expected_sha = _fetch_tag_sha(tag)
+        result["expected_sha"] = expected_sha
 
         # Compare stripped semver strings (e.g. "1.0.0" vs "1.1.0")
         if _version_newer(tag.lstrip("v"), current):
@@ -181,14 +186,51 @@ def _verify_tag_sha(tag: str, expected_sha: str) -> tuple[bool, str]:
     return False, f"SHA mismatch: expected {expected_sha[:12]}, got {local_sha[:12]}"
 
 
+def _fetch_tag_sha(tag: str) -> str:
+    """Fetch the commit SHA for a tag via GitHub Tags API.
+
+    Dereferences annotated tags to get the underlying commit SHA.
+    Returns empty string on failure.
+    """
+    repo = f"{_GITHUB_OWNER}/{_GITHUB_REPO}"
+    url = f"https://api.github.com/repos/{repo}/git/refs/tags/{tag}"
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "FrameCast-Updater"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+
+        obj_type = data["object"]["type"]
+        sha = data["object"]["sha"]
+
+        # Dereference annotated tags
+        if obj_type == "tag":
+            tag_url = data["object"]["url"]
+            with urllib.request.urlopen(
+                urllib.request.Request(
+                    tag_url,
+                    headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "FrameCast-Updater"},
+                ),
+                timeout=30,
+            ) as resp2:
+                tag_data = json.loads(resp2.read())
+            sha = tag_data["object"]["sha"]
+
+        return str(sha)
+    except (urllib.error.HTTPError, urllib.error.URLError, KeyError, json.JSONDecodeError) as exc:
+        log.error("Failed to fetch tag SHA for %s: %s", tag, exc)
+        return ""
+
+
 def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
-    """Apply update: git fetch, verify SHA, git checkout <tag>.
+    """Apply update: git fetch, verify SHA, git checkout <tag>, run post-update.
 
     Saves current version tag to ``/var/lib/framecast/rollback-tag`` with
     an HMAC signature in ``rollback-sig`` before switching so the
     health-check script can validate and roll back on failure.
 
-    The expected_sha is the target_commitish from check_for_update().
+    The expected_sha is the commit SHA resolved via the Tags API.
     If provided, the fetched tag's commit SHA is verified before checkout.
 
     Returns:
@@ -196,6 +238,14 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     """
     if not _TAG_RE.match(tag):
         return False, f"Invalid tag format: {tag}"
+
+    # Pre-flight: disk space check (I20 — 100MB minimum)
+    try:
+        usage = shutil.disk_usage(str(INSTALL_DIR))
+        if usage.free < 100 * 1024 * 1024:
+            return False, "Insufficient disk space for update"
+    except OSError as exc:
+        log.warning("Disk space check failed: %s", exc)
 
     # Pre-flight: verify git repo is intact
     ok, msg = _git("rev-parse", "--git-dir")
@@ -231,8 +281,18 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     except OSError as exc:
         log.warning("Failed to write update-in-progress flag: %s", exc)
 
-    # Fetch latest tags
-    ok, msg = _git("fetch", "--tags")
+    # Preserve health check before checkout (C13 — new version might break it)
+    stable_health = Path("/var/lib/framecast/health-check-stable.sh")
+    current_health = Path(INSTALL_DIR) / "scripts" / "health-check.sh"
+    if current_health.exists():
+        try:
+            shutil.copy2(str(current_health), str(stable_health))
+            log.info("Copied health-check.sh to stable location: %s", stable_health)
+        except OSError as exc:
+            log.warning("Failed to copy health-check to stable location: %s", exc)
+
+    # Fetch latest tags (--force handles re-created tags, I18)
+    ok, msg = _git("fetch", "--tags", "--force")
     if not ok:
         _cleanup_update_flag()
         return False, f"git fetch failed: {msg}"
@@ -245,10 +305,36 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
             log.error("Update ABORTED for %s: %s", tag, sha_msg)
             return False, f"Update aborted — {sha_msg}"
 
+    # Stop Flask service before checkout to avoid serving mixed code (I19)
+    try:
+        subprocess.run(
+            ["sudo", "systemctl", "stop", "framecast"],
+            timeout=30,
+            check=False,
+        )
+    except Exception:
+        pass
+
     # Checkout the target tag
     ok, msg = _git("checkout", tag)
     if not ok:
+        _cleanup_update_flag()
         return False, f"git checkout {tag} failed: {msg}"
+
+    # Run post-update deps/rebuild (C7)
+    post_script = Path(INSTALL_DIR) / "scripts" / "post-update.sh"
+    if post_script.exists():
+        try:
+            subprocess.run(
+                ["bash", str(post_script)],
+                timeout=300,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            log.info("Post-update script completed successfully")
+        except Exception as exc:
+            log.warning("Post-update script failed: %s", exc)
 
     # Sync VERSION file with the new tag
     new_version = tag.lstrip("v")

@@ -3,6 +3,10 @@
 #
 # Runs on boot after an OTA update.  If the core services fail to start,
 # rolls back to the previous git tag and reboots.
+#
+# NOTE: The updater copies this script to /var/lib/framecast/health-check-stable.sh
+# before each OTA checkout.  The systemd health-check timer should point to the
+# stable copy so that a broken new version cannot break rollback.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -74,7 +78,7 @@ cd "$INSTALL_DIR" || {
     exit 1
 }
 
-if ! git tag -l "$PREV_TAG" | grep -q "$PREV_TAG"; then
+if ! git tag -l "$PREV_TAG" | grep -qF "$PREV_TAG"; then
     echo "INVALID: tag $PREV_TAG does not exist in git — aborting rollback"
     exit 1
 fi
@@ -126,4 +130,8 @@ if ! git checkout --force "$PREV_TAG" 2>&1; then
     fi
 fi
 git clean -fd 2>/dev/null || true
+
+# Reinstall Python deps for the rolled-back version (I15)
+pip3 install --break-system-packages -q -r /opt/framecast/requirements.txt 2>/dev/null || true
+
 sudo reboot

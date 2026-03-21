@@ -6,6 +6,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
@@ -14,9 +17,10 @@ jobs:
   lint-python:
     name: Lint Python
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
       - name: Install ruff
@@ -27,29 +31,26 @@ jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Check all shell scripts
         run: |
-          find . -name '*.sh' -not -path './pi-gen/pi-gen/*' -not -path './node_modules/*' | while read -r f; do
-            echo "Checking $f..."
-            shellcheck -x -S warning "$f" || FAIL=1
-          done
-          if [ "${FAIL:-0}" -eq 1 ]; then
-            echo "::error::ShellCheck found issues"
-            exit 1
-          fi
+          find . -name '*.sh' -not -path './pi-gen/pi-gen/*' -not -path './node_modules/*' -print0 \
+            | xargs -0 shellcheck -x -S warning
 
   typecheck:
     name: Type Check (mypy strict)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -60,11 +61,13 @@ jobs:
   pytest:
     name: Python Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -79,13 +82,15 @@ jobs:
   integration:
     name: Integration Test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [build-frontend]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+          cache: pip
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: "20"
           cache: npm
@@ -95,21 +100,14 @@ jobs:
       - name: Build frontend
         working-directory: app/frontend
         run: npm ci && npm run build
-      - name: Start Flask and verify endpoints
+      - name: Start gunicorn and verify endpoints
         env:
           FLASK_SECRET_KEY: test-secret-key
           MEDIA_DIR: /tmp/framecast-test-media
         run: |
           mkdir -p /tmp/framecast-test-media
-
-          # Start Flask in background
-          cd app && python3 -c "
-          from web_upload import app
-          app.run(host='127.0.0.1', port=8080, debug=False)
-          " &
+          cd app && gunicorn -c gunicorn.conf.py -b 127.0.0.1:8080 web_upload:app &
           SERVER_PID=$!
-
-          # Wait for server to start
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8080/api/status > /dev/null 2>&1; then
               echo "Server up after ${i}s"
@@ -117,33 +115,22 @@ jobs:
             fi
             sleep 1
           done
-
           FAIL=0
-
-          # Vertical trace: hit key endpoints
           echo "=== /api/status ==="
           STATUS=$(curl -sf http://127.0.0.1:8080/api/status)
           echo "$STATUS" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'photo_count' in d, 'missing photo_count'" || FAIL=1
-
           echo "=== / (phone SPA) ==="
           curl -sf http://127.0.0.1:8080/ | grep -q 'app.js' || { echo "::error::Phone SPA missing app.js"; FAIL=1; }
-
           echo "=== /display (TV) ==="
           curl -sf http://127.0.0.1:8080/display | grep -q 'app.js' || { echo "::error::TV display missing app.js"; FAIL=1; }
-
           echo "=== /api/settings ==="
           curl -sf http://127.0.0.1:8080/api/settings > /dev/null || { echo "::error::/api/settings failed"; FAIL=1; }
-
           echo "=== /api/photos ==="
           curl -sf http://127.0.0.1:8080/api/photos > /dev/null || { echo "::error::/api/photos failed"; FAIL=1; }
-
           echo "=== Static assets ==="
           curl -sf http://127.0.0.1:8080/static/js/app.js > /dev/null || { echo "::error::app.js not served"; FAIL=1; }
           curl -sf http://127.0.0.1:8080/static/css/superhot.css > /dev/null || { echo "::error::superhot.css not served"; FAIL=1; }
-
-          # Cleanup
           kill $SERVER_PID 2>/dev/null || true
-
           if [ "$FAIL" -eq 1 ]; then
             echo "::error::Integration test failed"
             exit 1
@@ -153,9 +140,10 @@ jobs:
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: "20"
           cache: npm
@@ -176,9 +164,10 @@ jobs:
   test-frontend:
     name: Frontend Tests (vitest)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: "20"
           cache: npm
@@ -193,8 +182,9 @@ jobs:
   test-shell:
     name: Shell Tests (bats)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats
       - name: Run bats tests
@@ -203,16 +193,17 @@ jobs:
   architecture:
     name: Architecture Fitness
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: No duplicate resource owners
         run: |
-          # Two files should never create the same NetworkManager connection
           NM_CREATES=$(grep -rl 'nmcli.*connection.*add\|nmcli.*dev.*wifi.*hotspot' app/ scripts/ --include='*.py' --include='*.sh' 2>/dev/null | sort -u)
           COUNT=$(echo "$NM_CREATES" | grep -c . || true)
           if [ "$COUNT" -gt 1 ]; then
@@ -221,7 +212,6 @@ jobs:
           fi
       - name: No v1/v2 naming conflicts
         run: |
-          # All user-facing names should be FrameCast, not PiPhotoFrame
           if grep -r 'PiPhotoFrame' app/ scripts/ systemd/ --include='*.py' --include='*.sh' --include='*.service' 2>/dev/null; then
             echo "::error::Found stale v1 naming (PiPhotoFrame) — should be FrameCast"
             exit 1
@@ -237,12 +227,11 @@ jobs:
           done
       - name: No hardcoded ports in kiosk
         run: |
-          if grep -n 'localhost:8080\|127.0.0.1:8080' kiosk/ -r 2>/dev/null | grep -v '\.bak'; then
+          if grep -n 'localhost:8080\|127.0.0.1:8080' kiosk/ -r 2>/dev/null | grep -v '.bak'; then
             echo "::warning::Hardcoded port 8080 in kiosk — should use WEB_PORT env var"
           fi
       - name: All Python except blocks log before fallback
         run: |
-          # AST-based check: except blocks that pass/return without logging
           python3 -c "
           import ast, sys, pathlib
           violations = []
@@ -272,8 +261,9 @@ jobs:
   smoke:
     name: Smoke Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Verify project structure
         run: |
           FAIL=0
@@ -338,7 +328,7 @@ jobs:
       - name: Verify VERSION matches CHANGELOG
         run: |
           VERSION=$(cat VERSION)
-          if grep -q "\[${VERSION}\]" CHANGELOG.md; then
+          if grep -q "\\[${VERSION}\\]" CHANGELOG.md; then
             echo "VERSION ${VERSION} found in CHANGELOG"
           else
             echo "::warning::VERSION ${VERSION} not found in CHANGELOG.md"
@@ -355,12 +345,12 @@ jobs:
             fi
           done
 
-  # Gate: all checks must pass before merge
   ci-pass:
     name: CI Pass
     needs: [lint-python, shellcheck, typecheck, pytest, integration, build-frontend, test-frontend, test-shell, architecture, smoke]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Check all jobs passed
         env:

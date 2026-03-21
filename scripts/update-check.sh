@@ -58,7 +58,6 @@ RESPONSE=$(curl -sf --max-time 30 \
 }
 
 TAG=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)
-COMMITISH=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('target_commitish',''))" 2>/dev/null)
 
 if [ -z "$TAG" ]; then
     log "ERROR: No tag_name in GitHub response"
@@ -93,8 +92,9 @@ cd "$INSTALL_DIR"
 python3 -c "
 import sys
 sys.path.insert(0, 'app')
-from modules import updater
-success, message = updater.apply_update('$TAG', expected_sha='$COMMITISH')
+from modules.updater import apply_update, _fetch_tag_sha
+expected_sha = _fetch_tag_sha('$TAG')
+success, message = apply_update('$TAG', expected_sha=expected_sha)
 print(message)
 sys.exit(0 if success else 1)
 " || {

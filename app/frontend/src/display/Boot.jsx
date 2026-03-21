@@ -80,11 +80,12 @@ export function Boot({ onComplete }) {
     setGreeting(msg);
     setPhase("greeting");
 
-    // Let the greeting type out, then complete
+    // Let the greeting type out, then complete — pass statusData to avoid
+    // a duplicate /api/status fetch in DisplayRouter (R: remove duplicate)
     const greetDuration = msg.length * 30 + 1500;
     setTimeout(() => {
       setPhase("done");
-      onComplete?.();
+      onComplete?.(statusData);
     }, greetDuration);
   }
 

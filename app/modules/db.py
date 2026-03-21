@@ -1147,10 +1147,12 @@ def restore_db(uploaded_path: str | Path) -> bool:
     with _write_lock:
         tmp_fd, tmp_path = tempfile.mkstemp(dir=str(current_path.parent), suffix=".db.tmp")
         try:
-            shutil.copy2(str(uploaded_path), tmp_path)
-            os.fsync(tmp_fd)
             os.close(tmp_fd)
             tmp_fd = -1
+            shutil.copy2(str(uploaded_path), tmp_path)
+            # fsync after copy2 — reopen the written file to flush its data
+            with open(tmp_path, "rb") as f:
+                os.fsync(f.fileno())
             os.replace(tmp_path, str(current_path))
         except Exception:
             if tmp_fd >= 0:

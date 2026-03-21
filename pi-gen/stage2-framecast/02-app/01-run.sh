@@ -3,6 +3,7 @@ set -u -o pipefail
 # Copy application files into rootfs.
 # Frontend is pre-built by wrapper build.sh (runs as user with npm on PATH).
 # Output lands in app/static/ which is included in the cp -r below.
+: "${ROOTFS_DIR:?ROOTFS_DIR must be set by pi-gen runner}"
 FRAMECAST_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 
 echo "=== FrameCast app: copying files ==="

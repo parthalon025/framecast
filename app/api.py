@@ -43,6 +43,7 @@ def _enrich_photos(photos):
         photo["size_human"] = media.format_size(photo.get("file_size") or 0)
     return photos
 
+
 # ---------------------------------------------------------------------------
 # API rate limiting — 60 requests/minute per IP
 # ---------------------------------------------------------------------------
@@ -65,12 +66,16 @@ def _api_rate_limit():
     if retry_after is not None:
         log.warning(
             "API rate limited: %s %s from %s",
-            request.method, request.path, client_ip,
+            request.method,
+            request.path,
+            client_ip,
         )
-        return jsonify({
-            "error": "RATE LIMITED",
-            "retry_after": retry_after,
-        }), 429
+        return jsonify(
+            {
+                "error": "RATE LIMITED",
+                "retry_after": retry_after,
+            }
+        ), 429
 
 
 def _do_reboot():
@@ -86,11 +91,14 @@ def _do_reboot():
 def _do_shutdown():
     """Execute a shutdown, logging any failures instead of swallowing them."""
     try:
-        result = subprocess.run(["sudo", "shutdown", "-h", "now"], capture_output=True, timeout=10)
+        result = subprocess.run(
+            ["sudo", "shutdown", "-h", "now"], capture_output=True, timeout=10
+        )
         if result.returncode != 0:
             log.error("shutdown failed (rc=%d): %s", result.returncode, result.stderr)
     except Exception:
         log.error("shutdown subprocess raised", exc_info=True)
+
 
 SCRIPT_DIR = Path(__file__).parent
 VERSION_FILE = SCRIPT_DIR.parent / "VERSION"
@@ -124,11 +132,14 @@ def _current_settings():
         "shuffle": config.get("SHUFFLE", "yes").lower() == "yes",
         "transition_type": config.get("TRANSITION_TYPE", "fade"),
         "transition_mode": config.get("TRANSITION_MODE", "single"),
-        "transition_duration_ms": _safe_int(config.get("TRANSITION_DURATION_MS", "1000"), 1000),
+        "transition_duration_ms": _safe_int(
+            config.get("TRANSITION_DURATION_MS", "1000"), 1000
+        ),
         "kenburns_intensity": config.get("KENBURNS_INTENSITY", "moderate"),
         "photo_order": config.get("PHOTO_ORDER", "shuffle"),
         "qr_display_seconds": _safe_int(config.get("QR_DISPLAY_SECONDS", "30"), 30),
-        "hdmi_schedule_enabled": config.get("HDMI_SCHEDULE_ENABLED", "no").lower() == "yes",
+        "hdmi_schedule_enabled": config.get("HDMI_SCHEDULE_ENABLED", "no").lower()
+        == "yes",
         "hdmi_off_time": config.get("HDMI_OFF_TIME", "22:00"),
         "hdmi_on_time": config.get("HDMI_ON_TIME", "08:00"),
         "schedule_days": config.get("DISPLAY_SCHEDULE_DAYS", "0,1,2,3,4,5,6"),
@@ -188,7 +199,9 @@ def list_photos():
         _enrich_photos(photos)
         return jsonify(photos)
     except Exception:
-        log.warning("DB query failed for /api/photos, falling back to filesystem", exc_info=True)
+        log.warning(
+            "DB query failed for /api/photos, falling back to filesystem", exc_info=True
+        )
         files = media.get_media_files()
         return jsonify(files)
 
@@ -244,14 +257,11 @@ def get_settings():
     return jsonify(_current_settings())
 
 
-@api.route("/settings", methods=["POST"])
-@require_pin
-def update_settings():
-    """Update settings from JSON body. Expects {"key": value, ...}."""
-    data = _require_json()
+def _validate_settings(data: dict) -> str | None:
+    """Validate settings values. Returns error message string or None if valid.
 
-    # --- Validate before touching config ---
-
+    Shared by update_settings and import_settings (I28).
+    """
     # Numeric fields must be positive integers (qr_display_seconds allows 0 = disable)
     for key in ("photo_duration", "max_upload_mb", "auto_resize_max"):
         if key in data:
@@ -260,7 +270,7 @@ def update_settings():
                 if val < 1:
                     raise ValueError
             except (TypeError, ValueError):
-                return jsonify({"error": f"Invalid value for {key}: must be a positive integer"}), 400
+                return f"Invalid value for {key}: must be a positive integer"
 
     # qr_display_seconds: 0 = disable, otherwise positive integer
     if "qr_display_seconds" in data:
@@ -269,34 +279,41 @@ def update_settings():
             if val < 0:
                 raise ValueError
         except (TypeError, ValueError):
-            return jsonify({"error": "Invalid value for qr_display_seconds: must be 0 or a positive integer"}), 400
+            return (
+                "Invalid value for qr_display_seconds: must be 0 or a positive integer"
+            )
 
-    # Time fields must be HH:MM (00:00–23:59)
+    # Time fields must be HH:MM (00:00-23:59)
     for key in ("hdmi_off_time", "hdmi_on_time"):
         if key in data:
             if not isinstance(data[key], str) or not _HH_MM_RE.match(data[key]):
-                return jsonify({"error": f"Invalid value for {key}: must be HH:MM (00:00–23:59)"}), 400
+                return f"Invalid value for {key}: must be HH:MM (00:00-23:59)"
 
     # Enum fields
-    if "transition_type" in data and data["transition_type"] not in _VALID_TRANSITION_TYPES:
-        return jsonify({
-            "error": f"Invalid transition_type: must be one of {sorted(_VALID_TRANSITION_TYPES)}",
-        }), 400
+    if (
+        "transition_type" in data
+        and data["transition_type"] not in _VALID_TRANSITION_TYPES
+    ):
+        return (
+            f"Invalid transition_type: must be one of {sorted(_VALID_TRANSITION_TYPES)}"
+        )
 
     if "photo_order" in data and data["photo_order"] not in _VALID_PHOTO_ORDERS:
-        return jsonify({
-            "error": f"Invalid photo_order: must be one of {sorted(_VALID_PHOTO_ORDERS)}",
-        }), 400
+        return f"Invalid photo_order: must be one of {sorted(_VALID_PHOTO_ORDERS)}"
 
-    if "transition_mode" in data and data["transition_mode"] not in _VALID_TRANSITION_MODES:
-        return jsonify({
-            "error": f"Invalid transition_mode: must be one of {sorted(_VALID_TRANSITION_MODES)}",
-        }), 400
+    if (
+        "transition_mode" in data
+        and data["transition_mode"] not in _VALID_TRANSITION_MODES
+    ):
+        return (
+            f"Invalid transition_mode: must be one of {sorted(_VALID_TRANSITION_MODES)}"
+        )
 
-    if "kenburns_intensity" in data and data["kenburns_intensity"] not in _VALID_KENBURNS_INTENSITIES:
-        return jsonify({
-            "error": f"Invalid kenburns_intensity: must be one of {sorted(_VALID_KENBURNS_INTENSITIES)}",
-        }), 400
+    if (
+        "kenburns_intensity" in data
+        and data["kenburns_intensity"] not in _VALID_KENBURNS_INTENSITIES
+    ):
+        return f"Invalid kenburns_intensity: must be one of {sorted(_VALID_KENBURNS_INTENSITIES)}"
 
     if "transition_duration_ms" in data:
         try:
@@ -304,7 +321,7 @@ def update_settings():
             if val < 500 or val > 3000:
                 raise ValueError
         except (TypeError, ValueError):
-            return jsonify({"error": "Invalid transition_duration_ms: must be 500-3000"}), 400
+            return "Invalid transition_duration_ms: must be 500-3000"
 
     if "max_video_duration" in data:
         try:
@@ -312,7 +329,7 @@ def update_settings():
             if not (5 <= val <= 300):
                 raise ValueError
         except (TypeError, ValueError):
-            return jsonify({"error": "Invalid max_video_duration: must be 5-300"}), 400
+            return "Invalid max_video_duration: must be 5-300"
 
     if "pin_length" in data:
         try:
@@ -320,17 +337,32 @@ def update_settings():
             if val not in _VALID_PIN_LENGTHS:
                 raise ValueError
         except (TypeError, ValueError):
-            return jsonify({"error": "Invalid pin_length: must be 4 or 6"}), 400
+            return "Invalid pin_length: must be 4 or 6"
 
     if "schedule_days" in data:
-        if not re.match(r'^[0-6](,[0-6])*$', str(data["schedule_days"])):
-            return jsonify({"error": f"Invalid schedule_days: {data['schedule_days']}"}), 400
+        if not re.match(r"^[0-6](,[0-6])*$", str(data["schedule_days"])):
+            return f"Invalid schedule_days: {data['schedule_days']}"
+
+    return None
+
+
+@api.route("/settings", methods=["POST"])
+@require_pin
+def update_settings():
+    """Update settings from JSON body. Expects {"key": value, ...}."""
+    data = _require_json()
+
+    # --- Validate before touching config ---
+    error = _validate_settings(data)
+    if error:
+        return jsonify({"error": error}), 400
 
     # --- Handle action keys (not persistent settings) ---
 
     # display_on is a toggle action, not a persistent setting
     if "display_on" in data:
         from modules import cec
+
         if data["display_on"]:
             cec.tv_power_on()
             cec.set_active_source()
@@ -342,6 +374,7 @@ def update_settings():
     # regenerate_pin is an action, not a setting
     if "regenerate_pin" in data:
         from modules.auth import generate_pin
+
         pin_length = int(data.get("pin_length", config.get("PIN_LENGTH", "4")))
         if pin_length not in (4, 6):
             pin_length = 4
@@ -389,6 +422,10 @@ def import_settings():
     filtered = {k: v for k, v in data.items() if k in allowed}
     if not filtered:
         return jsonify({"error": "No valid settings found"}), 400
+    # Validate imported values through shared helper (I28)
+    error = _validate_settings(filtered)
+    if error:
+        return jsonify({"error": error}), 400
     # Apply through normal settings update path
     env_updates = {}
     for key, val in filtered.items():
@@ -397,21 +434,42 @@ def import_settings():
     config.save(env_updates)
     config.reload()
     sse.notify("settings:changed", _current_settings())
-    return jsonify({"status": "ok", "imported": len(filtered), "keys": list(filtered.keys())})
+    return jsonify(
+        {"status": "ok", "imported": len(filtered), "keys": list(filtered.keys())}
+    )
 
 
 @api.route("/timezone", methods=["POST"])
 @require_pin
 def set_timezone():
-    """Set the system timezone via timedatectl."""
+    """Set the system timezone via timedatectl.
+
+    Validates against ``timedatectl list-timezones`` before applying (I28).
+    """
     data = _require_json()
     tz = data.get("timezone", "").strip()
     if not tz or "/" not in tz:
         return jsonify({"error": "Invalid timezone format"}), 400
+    # Validate against known timezones before applying
+    try:
+        tz_list_result = subprocess.run(
+            ["timedatectl", "list-timezones"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        valid_timezones = set(tz_list_result.stdout.strip().splitlines())
+        if tz not in valid_timezones:
+            return jsonify({"error": f"Unknown timezone: {tz}"}), 400
+    except Exception as exc:
+        log.warning("Could not list timezones for validation: %s", exc)
+        # Fall through to timedatectl set-timezone which will also reject invalid ones
     try:
         result = subprocess.run(
             ["timedatectl", "set-timezone", tz],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             log.error("timedatectl failed: %s", result.stderr)
@@ -429,7 +487,9 @@ def get_timezone():
     try:
         result = subprocess.run(
             ["timedatectl", "show", "--property=Timezone", "--value"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         tz = result.stdout.strip() or "UTC"
     except Exception:
@@ -464,7 +524,9 @@ def locations():
         ]
         return jsonify(locs)
     except Exception:
-        log.warning("DB query failed for /api/locations, falling back to cache", exc_info=True)
+        log.warning(
+            "DB query failed for /api/locations, falling back to cache", exc_info=True
+        )
         locs = media.get_photo_locations()
         return jsonify(locs)
 
@@ -612,15 +674,17 @@ def list_albums():
     for key, album_def in db.SMART_ALBUMS.items():
         photos = db.get_smart_album_photos(key)
         first = photos[0] if photos else None
-        result.append({
-            "id": f"smart:{key}",
-            "name": album_def["name"],
-            "description": None,
-            "cover_photo_id": first["id"] if first else None,
-            "cover_filename": first["filename"] if first else None,
-            "photo_count": len(photos),
-            "smart": True,
-        })
+        result.append(
+            {
+                "id": f"smart:{key}",
+                "name": album_def["name"],
+                "description": None,
+                "cover_photo_id": first["id"] if first else None,
+                "cover_filename": first["filename"] if first else None,
+                "photo_count": len(photos),
+                "smart": True,
+            }
+        )
 
     return jsonify(result)
 
@@ -748,13 +812,19 @@ def slideshow_now_playing():
     """Called by the TV display when the slideshow advances.
 
     Broadcasts the current photo to phone clients via SSE so the phone
-    can show a "now playing" indicator.
+    can show a "now playing" indicator.  Localhost-only — only the kiosk
+    browser on this device should call this endpoint (I28).
     """
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        abort(403)
     data = request.get_json(silent=True) or {}
-    sse.notify("slideshow:now_playing", {
-        "photo_id": data.get("photo_id"),
-        "filename": data.get("filename"),
-    })
+    sse.notify(
+        "slideshow:now_playing",
+        {
+            "photo_id": data.get("photo_id"),
+            "filename": data.get("filename"),
+        },
+    )
     return jsonify({"status": "ok"})
 
 
@@ -765,12 +835,15 @@ def slideshow_show_photo(photo_id):
     photo = db.get_photo_by_id(photo_id)
     if not photo:
         abort(404)
-    sse.notify("slideshow:show", {
-        "photo_id": photo["id"],
-        "filename": photo["filename"],
-        "filepath": photo["filepath"],
-        "is_video": bool(photo["is_video"]),
-    })
+    sse.notify(
+        "slideshow:show",
+        {
+            "photo_id": photo["id"],
+            "filename": photo["filename"],
+            "filepath": photo["filepath"],
+            "is_video": bool(photo["is_video"]),
+        },
+    )
     return jsonify({"status": "ok", "photo_id": photo_id})
 
 
@@ -781,6 +854,7 @@ def slideshow_playlist():
         count = _safe_int(request.args.get("count"), 50)
         count = max(1, min(count, 200))  # clamp to reasonable range
         from modules import rotation
+
         result = rotation.generate_playlist(count=count)
         return jsonify(result)
     except Exception:
@@ -933,10 +1007,12 @@ def restore_backup():
         # Validate and restore
         db.restore_db(tmp_path)
 
-        return jsonify({
-            "status": "ok",
-            "message": "Database restored. Restart recommended.",
-        })
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "Database restored. Restart recommended.",
+            }
+        )
     except ValueError as exc:
         log.warning("Restore validation failed: %s", exc)
         return jsonify({"error": str(exc)}), 400
@@ -1019,12 +1095,14 @@ def export_photos():
 @api.route("/wifi/status")
 def wifi_status():
     """Return WiFi connection status, current SSID, AP state, and AP SSID."""
-    return jsonify({
-        "connected": wifi.is_connected(),
-        "ssid": wifi.get_current_ssid(),
-        "ap_active": wifi.is_ap_active(),
-        "ap_ssid": wifi.get_ap_ssid(),
-    })
+    return jsonify(
+        {
+            "connected": wifi.is_connected(),
+            "ssid": wifi.get_current_ssid(),
+            "ap_active": wifi.is_ap_active(),
+            "ap_ssid": wifi.get_ap_ssid(),
+        }
+    )
 
 
 @api.route("/wifi/scan")
@@ -1040,7 +1118,8 @@ def wifi_test_connection():
     try:
         result = subprocess.run(
             ["ping", "-c", "1", "-W", "3", "8.8.8.8"],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
         online = result.returncode == 0
     except Exception:
@@ -1116,7 +1195,9 @@ def ssh_status():
     try:
         result = subprocess.run(
             ["systemctl", "is-active", "ssh"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         active = result.stdout.strip() == "active"
     except Exception:
@@ -1135,13 +1216,17 @@ def ssh_toggle():
         if enable:
             subprocess.run(
                 ["sudo", "systemctl", "enable", "--now", "ssh"],
-                capture_output=True, timeout=10, check=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
             )
             log.info("SSH enabled via web UI")
         else:
             subprocess.run(
                 ["sudo", "systemctl", "disable", "--now", "ssh"],
-                capture_output=True, timeout=10, check=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
             )
             log.info("SSH disabled via web UI")
     except subprocess.CalledProcessError as exc:
@@ -1181,20 +1266,30 @@ def https_toggle():
         if not (cert_dir / "server.crt").exists():
             try:
                 subprocess.run(
-                    [str(Path(__file__).parent.parent / "scripts" / "generate-cert.sh")],
+                    [
+                        str(
+                            Path(__file__).parent.parent
+                            / "scripts"
+                            / "generate-cert.sh"
+                        )
+                    ],
                     env={**os.environ, "MEDIA_DIR": media.get_media_dir()},
-                    capture_output=True, timeout=30, check=True,
+                    capture_output=True,
+                    timeout=30,
+                    check=True,
                 )
             except Exception as exc:
                 log.error("Cert generation failed: %s", exc)
                 return jsonify({"error": "Failed to generate certificate"}), 500
 
     config.save({"HTTPS_ENABLED": "yes" if enable else "no"})
-    return jsonify({
-        "status": "ok",
-        "enabled": enable,
-        "message": "Restart required for changes to take effect",
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "enabled": enable,
+            "message": "Restart required for changes to take effect",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1209,7 +1304,9 @@ def discover_frames():
     try:
         result = subprocess.run(
             ["avahi-browse", "-tprk", "_http._tcp"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         my_hostname = socket.gethostname()
         for line in result.stdout.splitlines():
@@ -1222,12 +1319,14 @@ def discover_frames():
             ip = parts[7]
             port = parts[8] if len(parts) > 8 else "8080"
             if hostname != my_hostname:
-                frames.append({
-                    "hostname": hostname,
-                    "ip": ip,
-                    "port": port,
-                    "url": f"http://{ip}:{port}",
-                })
+                frames.append(
+                    {
+                        "hostname": hostname,
+                        "ip": ip,
+                        "port": port,
+                        "url": f"http://{ip}:{port}",
+                    }
+                )
     except FileNotFoundError:
         log.info("avahi-browse not found — frame discovery disabled")
     except subprocess.TimeoutExpired:
@@ -1247,6 +1346,7 @@ def discover_frames():
 def restart_slideshow():
     """Restart the slideshow service."""
     from modules import services
+
     success, message = services.restart_slideshow()
     if success:
         return jsonify({"status": "ok", "message": message})
