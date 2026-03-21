@@ -83,35 +83,40 @@ class TestCheckForUpdate:
         mock_resp.__exit__ = MagicMock(return_value=False)
         return mock_resp
 
+    @patch.object(updater, "_fetch_tag_sha", return_value="a" * 40)
     @patch.object(updater, "get_current_version", return_value="1.0.0")
     @patch("urllib.request.urlopen")
-    def test_update_available(self, mock_urlopen, mock_ver):
+    def test_update_available(self, mock_urlopen, mock_ver, mock_fetch_sha):
         mock_urlopen.return_value = self._mock_api_response("v2.0.0")
         result = updater.check_for_update()
         assert result["available"] is True
         assert result["latest"] == "2.0.0"
         assert result["tag_name"] == "v2.0.0"
         assert result["current"] == "1.0.0"
+        assert result["expected_sha"] == "a" * 40
 
+    @patch.object(updater, "_fetch_tag_sha", return_value="a" * 40)
     @patch.object(updater, "get_current_version", return_value="2.0.0")
     @patch("urllib.request.urlopen")
-    def test_no_update(self, mock_urlopen, mock_ver):
+    def test_no_update(self, mock_urlopen, mock_ver, mock_fetch_sha):
         mock_urlopen.return_value = self._mock_api_response("v2.0.0")
         result = updater.check_for_update()
         assert result["available"] is False
 
+    @patch.object(updater, "_fetch_tag_sha", return_value="")
     @patch.object(updater, "get_current_version", return_value="1.0.0")
     @patch("urllib.request.urlopen")
-    def test_api_error(self, mock_urlopen, mock_ver):
+    def test_api_error(self, mock_urlopen, mock_ver, mock_fetch_sha):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.URLError("network down")
         result = updater.check_for_update()
         assert result["available"] is False
         assert result["current"] == "1.0.0"
 
+    @patch.object(updater, "_fetch_tag_sha", return_value="")
     @patch.object(updater, "get_current_version", return_value="1.0.0")
     @patch("urllib.request.urlopen")
-    def test_missing_tag_name(self, mock_urlopen, mock_ver):
+    def test_missing_tag_name(self, mock_urlopen, mock_ver, mock_fetch_sha):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"html_url": ""}).encode()
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -137,7 +142,7 @@ class TestApplyUpdate:
         assert "v2.0.0" in msg
         # Should have called git fetch and checkout
         calls = [c[0] for c in mock_git.call_args_list]
-        assert ("fetch", "--tags") in calls
+        assert ("fetch", "--tags", "--force") in calls
         assert ("checkout", "v2.0.0") in calls
 
     @patch.object(updater, "_git")
