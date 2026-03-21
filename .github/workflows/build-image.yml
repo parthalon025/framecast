@@ -86,129 +86,140 @@ jobs:
           path: pi-gen/pi-gen/deploy/*.info
           retention-days: 30
 
-  # Boot the image in QEMU and verify services start
-  qemu-boot-test:
-    name: QEMU Boot Test
+  # Validate image structure by mounting and inspecting partitions.
+  # Pi kernels lack virtio drivers so QEMU -M virt can't boot them.
+  # Structural validation is faster and more deterministic.
+  image-validation:
+    name: Image Validation
     needs: [build]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Install QEMU system
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-aarch64 qemu-efi-aarch64 unzip
-
       - name: Download image artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: framecast-image
 
-      - name: Extract and prepare image
+      - name: Extract image
         run: |
-          unzip *.zip
-          IMG=$(ls *.img)
+          unzip ./*.zip
+          IMG=$(ls ./*.img)
           echo "Image: $IMG ($(du -h "$IMG" | cut -f1))"
-
-          # Expand image to give room for boot (pi-gen images are tight)
-          qemu-img resize "$IMG" 8G
-
           echo "IMG_FILE=$IMG" >> "$GITHUB_ENV"
 
-      - name: Boot image in QEMU (60s)
+      - name: Validate boot partition
         run: |
-          # Boot arm64 image with kernel from the image's boot partition
-          # Extract kernel and dtb from the image
           LOOP=$(sudo losetup --find --show --partscan "$IMG_FILE")
           sudo mkdir -p /mnt/boot
           sudo mount "${LOOP}p1" /mnt/boot
 
-          # Copy kernel and dtb out for direct QEMU boot
-          cp /mnt/boot/kernel8.img /tmp/kernel8.img
-          cp /mnt/boot/bcm2710-rpi-3-b-plus.dtb /tmp/rpi3.dtb 2>/dev/null || true
-
-          sudo umount /mnt/boot
-          sudo losetup -d "$LOOP"
-
-          # Boot with QEMU — direct kernel boot (no UEFI needed)
-          # Timeout after 60s — enough for systemd to start services
-          timeout 90 qemu-system-aarch64 \
-            -M virt \
-            -cpu cortex-a53 \
-            -m 1024 \
-            -kernel /tmp/kernel8.img \
-            -append "root=/dev/vda2 rootfstype=ext4 rw console=ttyAMA0" \
-            -drive "file=$IMG_FILE,format=raw,if=virtio" \
-            -nographic \
-            -no-reboot \
-            2>&1 | tee /tmp/qemu-boot.log &
-          QEMU_PID=$!
-
-          # Wait for systemd to reach a target or timeout
-          for i in $(seq 1 60); do
-            if grep -q "Reached target\|Started FrameCast\|login:" /tmp/qemu-boot.log 2>/dev/null; then
-              echo "System booted after ${i}s"
-              break
+          FAIL=0
+          for f in kernel8.img cmdline.txt config.txt; do
+            if [ -f "/mnt/boot/$f" ]; then
+              echo "  OK  boot/$f ($(du -h "/mnt/boot/$f" | cut -f1))"
+            else
+              echo "  FAIL  boot/$f missing"
+              FAIL=1
             fi
-            sleep 1
           done
 
-          kill $QEMU_PID 2>/dev/null || true
-          wait $QEMU_PID 2>/dev/null || true
+          sudo umount /mnt/boot
+          echo "LOOP=$LOOP" >> "$GITHUB_ENV"
+          if [ "$FAIL" -eq 1 ]; then
+            sudo losetup -d "$LOOP"
+            echo "::error::Boot partition validation failed"
+            exit 1
+          fi
 
-      - name: Verify boot log
+      - name: Validate root filesystem
         run: |
-          echo "=== Boot log (last 50 lines) ==="
-          tail -50 /tmp/qemu-boot.log
+          sudo mkdir -p /mnt/root
+          sudo mount "${LOOP}p2" /mnt/root
 
           FAIL=0
 
-          # Check kernel loaded
-          if grep -q "Linux version" /tmp/qemu-boot.log; then
-            echo "  OK  Kernel loaded"
+          echo "=== FrameCast app ==="
+          for f in \
+            /opt/framecast/app/web_upload.py \
+            /opt/framecast/app/api.py \
+            /opt/framecast/app/sse.py \
+            /opt/framecast/app/gunicorn.conf.py \
+            /opt/framecast/app/modules/db.py \
+            /opt/framecast/app/modules/wifi.py \
+            /opt/framecast/app/modules/auth.py \
+            /opt/framecast/app/modules/updater.py \
+            /opt/framecast/app/static/js/app.js \
+            /opt/framecast/app/static/css/superhot.css \
+            /opt/framecast/kiosk/kiosk.sh \
+            /opt/framecast/kiosk/browser.js \
+            /opt/framecast/scripts/health-check.sh \
+            /opt/framecast/scripts/hdmi-control.sh \
+            /opt/framecast/requirements.txt; do
+            if [ -f "/mnt/root$f" ]; then
+              echo "  OK  $f"
+            else
+              echo "  FAIL  $f missing"
+              FAIL=1
+            fi
+          done
+
+          echo "=== systemd units ==="
+          for svc in \
+            framecast.service \
+            framecast-kiosk.service \
+            wifi-manager.service \
+            framecast-update.timer \
+            framecast-health.timer \
+            framecast-schedule.timer; do
+            if [ -f "/mnt/root/etc/systemd/system/$svc" ] || \
+               [ -L "/mnt/root/etc/systemd/system/multi-user.target.wants/$svc" ] || \
+               [ -L "/mnt/root/etc/systemd/system/timers.target.wants/$svc" ]; then
+              echo "  OK  $svc"
+            else
+              echo "  FAIL  $svc not installed or enabled"
+              FAIL=1
+            fi
+          done
+
+          echo "=== System config ==="
+          if [ -f "/mnt/root/etc/sudoers.d/framecast" ]; then
+            echo "  OK  sudoers"
           else
-            echo "  FAIL  Kernel did not load"
+            echo "  FAIL  sudoers not configured"
             FAIL=1
           fi
 
-          # Check systemd started
-          if grep -q "systemd" /tmp/qemu-boot.log; then
-            echo "  OK  systemd initialized"
+          if [ -d "/mnt/root/home/pi/media" ]; then
+            echo "  OK  media directory"
           else
-            echo "  FAIL  systemd did not start"
+            echo "  FAIL  media directory missing"
             FAIL=1
           fi
 
-          # Check for kernel panic
-          if grep -qi "kernel panic\|Oops\|BUG:" /tmp/qemu-boot.log; then
-            echo "  FAIL  Kernel panic detected"
+          if [ -f "/mnt/root/opt/framecast/app/.env" ]; then
+            echo "  OK  .env generated"
+          else
+            echo "  FAIL  .env not generated"
             FAIL=1
           fi
 
-          # Check for critical service failures
-          if grep -qi "Failed to start.*framecast" /tmp/qemu-boot.log; then
-            echo "  WARN  FrameCast service failed to start (may be expected without hardware)"
-          fi
+          echo "=== Image size ==="
+          du -h "$IMG_FILE"
+          df -h /mnt/root | tail -1
+
+          sudo umount /mnt/root
+          sudo losetup -d "$LOOP"
 
           if [ "$FAIL" -eq 1 ]; then
-            echo "::error::QEMU boot test failed"
+            echo "::error::Root filesystem validation failed"
             exit 1
           fi
-          echo "QEMU boot test passed"
-
-      - name: Upload boot log
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-        with:
-          name: qemu-boot-log
-          path: /tmp/qemu-boot.log
-          retention-days: 7
+          echo "Image validation passed"
 
   # Sign artifacts with cosign (keyless, uses GitHub OIDC)
   sign:
     name: Sign Artifacts
-    needs: [build, qemu-boot-test]
+    needs: [build, image-validation]
     runs-on: ubuntu-latest
     steps:
       - name: Install cosign
@@ -272,7 +283,7 @@ jobs:
   # SLSA Build Level 2 provenance attestation
   attest:
     name: Attest Provenance
-    needs: [build, qemu-boot-test]
+    needs: [build, image-validation]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
