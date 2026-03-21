@@ -9,6 +9,7 @@ vi.mock("superhot-ui", () => ({
 
 vi.mock("superhot-ui/preact", () => ({
   ShAnnouncement: () => null,
+  ShPageBanner: () => null,
 }));
 
 // --- Mock child display components ---
