@@ -206,7 +206,7 @@ Output: `pi-gen/pi-gen/deploy/image_*-FrameCast-v*.zip`. Frontend builds on the 
 framecast/
 |-- app/
 |   |-- web_upload.py            # Flask web server (entry point)
-|   |-- api.py                   # REST API (30+ endpoints) + rate limiting
+|   |-- api.py                   # REST API (~80 routes) + rate limiting
 |   |-- sse.py                   # Server-Sent Events with reconnection
 |   |-- gunicorn.conf.py         # Gunicorn (workers=1, gthread)
 |   |-- modules/
@@ -220,6 +220,8 @@ framecast/
 |   |   |-- media.py             # Image/video processing + GPS extraction
 |   |   |-- updater.py           # OTA updates with SHA256 verification
 |   |   |-- wifi.py              # WiFi provisioning (nmcli, AP mode)
+|   |   |-- services.py          # System service management (restart, reboot)
+|   |   |-- boot_config.py       # Boot config + SSH toggle
 |   |-- frontend/
 |   |   |-- src/
 |   |   |   |-- styles/          # CSS architecture (8 files)
@@ -229,11 +231,11 @@ framecast/
 |   |   |   |-- display/         # TV display (Slideshow, Boot, Setup, Welcome)
 |   |   |-- esbuild.config.js    # Build configuration
 |   |-- static/                  # Built CSS/JS assets
-|   |-- templates/               # HTML templates (SPA shell, legacy pages)
+|   |-- templates/               # HTML template (spa.html — SPA shell for phone + TV)
 |-- pi-gen/                      # OS image build (Docker-based)
-|-- scripts/                     # Health check, HDMI control, smoke tests
-|-- systemd/                     # 6 service/timer definitions
-|-- tests/                       # 160 tests (db, rotation, users, cec, albums, auth, rate_limiter, config)
+|-- scripts/                     # Health check, HDMI control, OTA post-update, WiFi check, smoke test, cert generation
+|-- systemd/                     # 10 service/timer definitions
+|-- tests/                       # 391 tests (Python + frontend + shell: db, rotation, users, cec, albums, auth, rate_limiter, config, API integration, SSE, rollback)
 |-- API.md                       # Full endpoint documentation
 |-- CONTRIBUTING.md              # Dev setup + PR guidelines
 |-- VERSION                      # Current version (semver)
@@ -241,14 +243,14 @@ framecast/
 
 ### CI/CD
 
-**PR gate (10+ parallel jobs):**
+**PR gate (16 parallel jobs):**
 
 | Job | What |
 |-----|------|
 | lint-python | ruff |
 | shellcheck | all `.sh` files |
 | typecheck | mypy strict |
-| pytest | 330+ tests (unit, property, concurrency, fault injection, benchmarks) |
+| pytest | 363 tests (unit, property, concurrency, fault injection, benchmarks) |
 | integration | starts gunicorn, hits real endpoints end-to-end |
 | build-frontend | esbuild + asset verification |
 | test-frontend | vitest (SSE client tests) |
