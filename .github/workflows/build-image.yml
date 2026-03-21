@@ -228,10 +228,56 @@ jobs:
             *.pem
           retention-days: 90
 
+  # Generate Software Bill of Materials
+  sbom:
+    name: SBOM
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "20"
+      - name: Install cdxgen
+        run: npm install -g @cyclonedx/cdxgen
+      - name: Generate Python SBOM
+        run: cdxgen -t python -o sbom-python.json .
+      - name: Generate Node SBOM
+        run: cdxgen -t javascript -o sbom-node.json app/frontend/
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: framecast-sbom
+          path: sbom-*.json
+          retention-days: 90
+
+  # SLSA Build Level 2 provenance attestation
+  attest:
+    name: Attest Provenance
+    needs: [build, qemu-boot-test]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: framecast-image
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: '*.zip'
+
   # Create GitHub Release with signed artifacts
   release:
     name: Create Release
-    needs: [sign]
+    needs: [sign, sbom, attest]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -257,6 +303,7 @@ jobs:
             release-assets/*.info
             release-assets/*.sig
             release-assets/*.pem
+            release-assets/*.json
             release-assets/SHA256SUMS
           generate_release_notes: true
 

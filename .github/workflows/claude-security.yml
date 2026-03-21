@@ -1,0 +1,37 @@
+name: Claude Security Review
+
+on:
+  pull_request:
+    paths:
+      - 'app/modules/auth.py'
+      - 'app/modules/wifi.py'
+      - 'app/modules/updater.py'
+      - 'app/api.py'
+      - 'app/web_upload.py'
+      - 'scripts/**'
+      - 'pi-gen/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  security:
+    name: Claude Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: anthropics/claude-code-action@d59651bd82c48d81756854675ce4fa4d69722200 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-20250514
+          timeout_minutes: 5
+          direct_prompt: |
+            Security review of changed files. Check for:
+            - OWASP Top 10 (injection, broken auth, XSS, SSRF)
+            - Unsafe subprocess/shell execution
+            - Hardcoded secrets or credentials
+            - Auth bypass patterns (especially WiFi API auth)
+            - Non-atomic file operations that risk data loss
+            - Unsafe deserialization or eval
+            This is a LAN-only Pi appliance. Focus on real risks, not theoretical.
