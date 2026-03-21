@@ -88,11 +88,11 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Type check: `make typecheck` (mypy strict on modules + sse)
 - Benchmarks: `make benchmark` (Pi 3 regression thresholds)
 - Mutation: `make mutate` (on-demand test quality audit)
-- Image (full): `cd pi-gen && ./build.sh` (native, ~30-40min first time)
-- Image (base only): `cd pi-gen && ./build.sh --base-only` (OS without app)
-- Image (add app): `cd pi-gen && ./build.sh --continue` (~5min, reuses cached rootfs)
-- Image (iterate): `cd pi-gen && ./build.sh --app-only` (~3min, fastest — rebuilds only 02-app)
-- Image (Docker): `cd pi-gen && ./build.sh --docker`
+- Image build decision tree:
+  - First time? → `cd pi-gen && ./build.sh` (native, ~30-40min)
+  - Iterating app only? → `cd pi-gen && ./build.sh --app-only` (~3min, fastest)
+  - No Docker? OS first, then app: `./build.sh --base-only` then `./build.sh --continue`
+  - On Windows? → `cd pi-gen && ./build.sh --docker`
 - Pi-gen branch: `bookworm-arm64`. Frontend builds on host (native x86), not QEMU chroot.
 
 ## CI/CD Pipeline
