@@ -92,6 +92,20 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Image (Docker): `cd pi-gen && ./build.sh --docker`
 - Pi-gen branch: `bookworm-arm64`. Frontend builds on host (native x86), not QEMU chroot.
 
+## CI/CD Pipeline
+
+**PR gate (10 jobs):** lint-python, shellcheck, typecheck, pytest, integration (Flask + endpoints), build-frontend, vitest, bats, architecture fitness, smoke. All gated through `CI Pass` required status check.
+
+**Architecture fitness checks:** no duplicate NM connection owners, no stale v1 naming (PiPhotoFrame), WatchdogSec requires Type=notify, bare except blocks must log.
+
+**Release pipeline (v* tag):** test gate → pi-gen build → QEMU arm64 boot test → cosign keyless signing → GitHub Release → Telegram notification.
+
+**Automation:** release-please (auto VERSION + CHANGELOG from conventional commits), Dependabot (weekly pip/npm, monthly Actions), branch protection (CI Pass required, enforce admins, linear history, squash-only).
+
+**Repo secrets:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (for release notifications).
+
+**Config files:** `.release-please-manifest.json`, `release-please-config.json`, `.github/dependabot.yml`, `.github/CODEOWNERS`.
+
 ## Conventions
 
 - Target: Raspberry Pi 3/4/5 (arm64, Bookworm)

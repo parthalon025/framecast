@@ -241,9 +241,45 @@ framecast/
 
 ### CI/CD
 
-- **Pull requests** trigger lint (ruff) and frontend build checks
-- **Tag pushes** (`v*`) build the OS image via pi-gen Docker
-- **Releases** are created automatically with the image and SHA256 checksum
+**Pull request gate** — 10 parallel jobs, all must pass:
+
+| Job | What it checks |
+|-----|----------------|
+| lint-python | ruff linting |
+| shellcheck | bash bugs in all `.sh` files |
+| typecheck | mypy strict on modules |
+| pytest | 330+ tests (unit, property, concurrency, fault injection, contracts, benchmarks) |
+| integration | starts Flask, builds frontend, hits real endpoints end-to-end |
+| build-frontend | esbuild + asset verification |
+| test-frontend | vitest (SSE client tests) |
+| test-shell | bats (health-check rollback tests) |
+| architecture | structural invariants (no duplicate resource owners, no stale naming, watchdog correctness) |
+| smoke | file structure, executable bits, systemd units, VERSION matches CHANGELOG |
+
+**Release pipeline** (triggered by `v*` tag):
+
+1. Full test suite gate
+2. pi-gen image build
+3. QEMU arm64 boot test (verifies kernel loads, systemd starts, no panic)
+4. cosign keyless signing (Sigstore OIDC)
+5. GitHub Release with image, checksums, and signatures
+6. Telegram notification
+
+**Automation:**
+
+- [release-please](https://github.com/googleapis/release-please) — auto VERSION bump + CHANGELOG from conventional commits
+- [Dependabot](https://docs.github.com/en/code-security/dependabot) — weekly pip/npm scans, monthly Actions updates
+- Branch protection — CI Pass required, enforce admins, linear history, squash-only
+
+**Verify a release signature:**
+
+```bash
+cosign verify-blob \
+  --certificate image_FrameCast-v2.0.1.zip.pem \
+  --signature image_FrameCast-v2.0.1.zip.sig \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  image_FrameCast-v2.0.1.zip
+```
 
 ---
 
