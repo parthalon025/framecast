@@ -137,6 +137,8 @@ CREATE INDEX IF NOT EXISTS idx_photos_dhash ON photos(dhash);
 
 # --- Smart albums (computed queries) ---
 
+# WARNING: Values are interpolated into SQL queries — must NEVER come from user input.
+# These are constants defining smart album filter clauses.
 SMART_ALBUMS: dict[str, dict[str, Any]] = {
     "recent": {
         "name": "RECENT",
@@ -1148,10 +1150,10 @@ def restore_db(uploaded_path: str | Path) -> bool:
             shutil.copy2(str(uploaded_path), tmp_path)
             os.fsync(tmp_fd)
             os.close(tmp_fd)
-            tmp_fd = None
+            tmp_fd = -1
             os.replace(tmp_path, str(current_path))
         except Exception:
-            if tmp_fd is not None:
+            if tmp_fd >= 0:
                 os.close(tmp_fd)
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
