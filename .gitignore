@@ -31,9 +31,10 @@ node_modules/
 
 # Generated files
 app/static/welcome.png
-app/static/js/
-app/static/css/
 thumbnails/
+# NOTE: app/static/js/ and app/static/css/ are intentionally tracked.
+# The Pi has no npm/nodejs — OTA updates (git checkout) must include
+# pre-built frontend assets. Rebuild with: cd app/frontend && npm run build
 
 # Environment
 .env
