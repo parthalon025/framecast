@@ -217,7 +217,7 @@ def _fetch_tag_sha(tag: str) -> str:
                 tag_data = json.loads(resp2.read())
             sha = tag_data["object"]["sha"]
 
-        return sha
+        return str(sha)
     except (urllib.error.HTTPError, urllib.error.URLError, KeyError, json.JSONDecodeError) as exc:
         log.error("Failed to fetch tag SHA for %s: %s", tag, exc)
         return ""
