@@ -59,7 +59,6 @@ VLC_RESTART_INTERVAL=21600  # 6 hours in seconds - proactive restart to prevent 
 LAST_SELFTEST_TIME=0
 SELFTEST_INTERVAL=3600  # 1 hour
 QUARANTINE_DIR="${MEDIA_DIR}/quarantine"
-LAST_CRASH_FILE=""
 MIN_AVAILABLE_MB=100  # Restart VLC if available memory drops below this
 
 # Check available memory from /proc/meminfo (returns available MB)
