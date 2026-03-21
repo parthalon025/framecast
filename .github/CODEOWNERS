@@ -1,0 +1,10 @@
+# Default owner for everything
+* @parthalon025
+
+# Critical paths — explicit ownership for visibility
+pi-gen/ @parthalon025
+systemd/ @parthalon025
+scripts/health-check.sh @parthalon025
+app/modules/auth.py @parthalon025
+app/modules/updater.py @parthalon025
+.github/workflows/ @parthalon025
