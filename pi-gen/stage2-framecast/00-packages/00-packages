@@ -11,8 +11,7 @@ avahi-daemon
 network-manager
 python3-pil
 python3-pip
-nodejs
-npm
+dphys-swapfile
 git
 ufw
 v4l-utils

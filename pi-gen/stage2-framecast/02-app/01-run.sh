@@ -1,7 +1,8 @@
 #!/bin/bash -e
 set -u -o pipefail
-# Copy application files and build frontend ON THE HOST (not in chroot).
-# This avoids running npm/esbuild under QEMU arm64 emulation.
+# Copy application files into rootfs.
+# Frontend is pre-built by wrapper build.sh (runs as user with npm on PATH).
+# Output lands in app/static/ which is included in the cp -r below.
 FRAMECAST_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 
 echo "=== FrameCast app: copying files ==="
@@ -15,32 +16,22 @@ cp "${FRAMECAST_SRC}/VERSION" "${ROOTFS_DIR}/opt/framecast/"
 cp "${FRAMECAST_SRC}/Makefile" "${ROOTFS_DIR}/opt/framecast/"
 cp "${FRAMECAST_SRC}/.gitignore" "${ROOTFS_DIR}/opt/framecast/"
 
-# --- Build frontend on HOST (native speed, not QEMU) ---
-# esbuild produces platform-independent JS/CSS — safe to cross-build.
-echo "=== FrameCast app: building frontend (host-native) ==="
-FRONTEND_DIR="${FRAMECAST_SRC}/app/frontend"
-if [ -f "${FRONTEND_DIR}/package.json" ]; then
-    (
-        cd "${FRONTEND_DIR}"
-        npm install --production 2>&1 | tail -3
-        npm run build 2>&1 | tail -3
-    )
-    # Copy built dist/ into rootfs (overwrite the source copy)
-    if [ -d "${FRONTEND_DIR}/dist" ]; then
-        mkdir -p "${ROOTFS_DIR}/opt/framecast/app/frontend/dist"
-        cp -r "${FRONTEND_DIR}/dist/"* "${ROOTFS_DIR}/opt/framecast/app/frontend/dist/"
-        echo "Frontend dist/ copied ($(du -sh "${FRONTEND_DIR}/dist" | cut -f1))"
-    else
-        echo "WARNING: frontend dist/ not found after build"
-    fi
-    # Remove node_modules from rootfs copy (save ~100MB image space)
-    rm -rf "${ROOTFS_DIR}/opt/framecast/app/frontend/node_modules"
+# Verify pre-built frontend assets exist
+if [ -f "${ROOTFS_DIR}/opt/framecast/app/static/js/app.js" ]; then
+    echo "Frontend assets: $(du -sh "${ROOTFS_DIR}/opt/framecast/app/static" | cut -f1)"
 else
-    echo "WARNING: no package.json — skipping frontend build"
+    echo "ERROR: frontend not pre-built — run 'cd app/frontend && npm install && npm run build' first"
+    exit 1
 fi
 
+# Remove node_modules + frontend source from rootfs (save ~100MB image space)
+rm -rf "${ROOTFS_DIR}/opt/framecast/app/frontend/node_modules"
+rm -rf "${ROOTFS_DIR}/opt/framecast/app/frontend/src"
+
+# Remove any __pycache__ dirs copied in with app source (R)
+find "${ROOTFS_DIR}/opt/framecast" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
 # --- Pre-download arm64 Python wheels on HOST ---
-# Avoids pip compile under QEMU. Falls back to chroot pip if wheels fail.
 echo "=== FrameCast app: downloading arm64 Python wheels ==="
 WHEEL_DIR="${ROOTFS_DIR}/opt/framecast/.wheels"
 mkdir -p "${WHEEL_DIR}"
@@ -51,8 +42,7 @@ pip3 download \
     --python-version 311 \
     --only-binary=:all: \
     -r "${FRAMECAST_SRC}/requirements.txt" 2>&1 | tail -5 || {
-    echo "WARNING: wheel pre-download failed — chroot pip will handle it"
-    rm -rf "${WHEEL_DIR}"
+    echo "NOTE: wheel pre-download incomplete — chroot pip will handle remaining"
 }
 
 # --- Initialize git repo for OTA updates ---
@@ -63,13 +53,15 @@ GITHUB_OWNER="${GITHUB_OWNER:-parthalon025}"
 GITHUB_REPO="${GITHUB_REPO:-framecast}"
 
 cd "${ROOTFS_DIR}/opt/framecast"
-git init
+if [ ! -d .git ]; then
+    git init
+    git remote add origin "https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git"
+fi
 git config user.email "framecast@local"
 git config user.name "FrameCast"
 git add -A
-git commit -m "FrameCast v${VERSION}"
-git tag "v${VERSION}"
-git remote add origin "https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git"
+git diff --cached --quiet || git commit -m "FrameCast v${VERSION}"
+git tag -f "v${VERSION}"
 cd -
 
 # --- Install systemd services ---

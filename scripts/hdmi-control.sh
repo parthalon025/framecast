@@ -8,6 +8,9 @@
 set -euo pipefail
 
 ACTION="${1:-}"
+if [ -f /run/user/1000/framecast-wayland-display ]; then
+    export WAYLAND_DISPLAY=$(cat /run/user/1000/framecast-wayland-display)
+fi
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 

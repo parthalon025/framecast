@@ -1,4 +1,11 @@
 #!/bin/bash
+# DEPRECATED (I8): install.sh is the v1 manual installer for "Pi Photo Display".
+# FrameCast v2+ uses pi-gen to produce a pre-built OS image — flash and boot, no installer needed.
+# Build a fresh image: cd pi-gen && ./build.sh
+# This file is retained for reference only and will be removed in a future release.
+echo "WARNING: install.sh is deprecated. Use pi-gen/build.sh to build a FrameCast OS image instead." >&2
+exit 1
+
 # install.sh - Pi Photo Display installer for Raspberry Pi OS
 # Run as: sudo bash install.sh
 set -euo pipefail

@@ -9,6 +9,7 @@ vi.mock("superhot-ui", () => ({
 
 vi.mock("superhot-ui/preact", () => ({
   ShAnnouncement: () => null,
+  ShPageBanner: () => null,
 }));
 
 // --- Mock child display components ---
@@ -72,7 +73,7 @@ describe("DisplayRouter routing logic", () => {
     expect(displayState.value).toBe("boot");
   });
 
-  it("transitions to slideshow when photos exist regardless of wifi field", async () => {
+  it("transitions to setup when wifi_connected is missing", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -85,7 +86,7 @@ describe("DisplayRouter routing logic", () => {
     );
 
     await renderAndBoot();
-    expect(displayState.value).toBe("slideshow");
+    expect(displayState.value).toBe("setup");
   });
 
   it("transitions to slideshow when wifi connected and photos exist", async () => {
@@ -139,14 +140,14 @@ describe("DisplayRouter routing logic", () => {
     expect(displayState.value).toBe("welcome");
   });
 
-  it("transitions to welcome on fetch error", async () => {
+  it("transitions to setup on fetch error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new Error("network down")),
     );
 
     await renderAndBoot();
-    expect(displayState.value).toBe("welcome");
+    expect(displayState.value).toBe("setup");
   });
 
   it("stores access_pin from status response", async () => {

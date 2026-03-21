@@ -208,7 +208,15 @@ def fix_orientation(image_path: str | Path) -> bool:
             corrected_exif = corrected.getexif()
             corrected_exif[0x0112] = 1  # Orientation = Normal
             save_kwargs["exif"] = corrected_exif.tobytes()
-            corrected.save(str(image_path), **save_kwargs)
+            # Atomic write: save to tmp, then rename (I21 — prevents corrupt on power loss)
+            tmp_path = str(image_path) + ".tmp"
+            try:
+                corrected.save(tmp_path, **save_kwargs)
+                os.replace(tmp_path, str(image_path))
+            except Exception:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
             log.info("Fixed EXIF orientation for %s (was %d)", Path(image_path).name, orientation)
             return True
     except Exception:

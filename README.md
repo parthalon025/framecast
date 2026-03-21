@@ -164,7 +164,7 @@ All settings are in `/opt/framecast/app/.env` and can be changed from the web UI
 
 - Node.js 18+ (frontend build)
 - Python 3.11+ with pip (backend)
-- Docker (OS image build only)
+- Linux x86_64 with sudo (native image build) or Docker
 
 ### Frontend
 
@@ -186,14 +186,19 @@ Open `http://localhost:8080` for the phone UI. The kiosk display (`/display`) re
 
 ### Build the OS Image
 
-The flashable `.img.xz` is built with [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker:
+Built with [pi-gen](https://github.com/RPi-Distro/pi-gen) (bookworm-arm64 branch):
 
 ```bash
 cd pi-gen
-bash build.sh
+./build.sh                 # Full build (~30 min first time)
+./build.sh --app-only      # Rebuild app only (~7 min, reuses cached rootfs)
+./build.sh --base-only     # OS layer without app (for validation)
+./build.sh --continue      # Add app layer to existing base
+./build.sh --docker        # Build via Docker instead of native
+./build.sh --clean         # Wipe work/ and deploy/ first
 ```
 
-Output lands in `pi-gen/deploy/`. Takes 20-60 minutes depending on your machine.
+Output: `pi-gen/pi-gen/deploy/image_*-FrameCast-v*.zip`. Frontend builds on the host (native speed), not under QEMU emulation.
 
 ### Project Structure
 

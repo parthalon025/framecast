@@ -17,6 +17,33 @@ systemctl enable watchdog.service
 
 # getty@tty1 is masked in 03-system — kiosk service owns the VT directly
 
+# --- Disable ALL first-boot interactive prompts ---
+# userconfig.service: prompts for username/password on first boot
+systemctl disable userconfig.service 2>/dev/null || true
+systemctl mask userconfig.service
+
+# Pre-seed keyboard configuration (suppress debconf prompt)
+debconf-set-selections <<KBEOF
+keyboard-configuration keyboard-configuration/layoutcode string us
+keyboard-configuration keyboard-configuration/variant string
+keyboard-configuration keyboard-configuration/model string pc105
+keyboard-configuration keyboard-configuration/xkb-keymap select us
+KBEOF
+
+# Mark keyboard config as non-interactive
+if [ -f /etc/default/keyboard ]; then
+    cat > /etc/default/keyboard << 'KBFILE'
+XKBMODEL="pc105"
+XKBLAYOUT="us"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+KBFILE
+fi
+
+# Disable raspi-config first-boot wizard if present
+systemctl disable raspi-config 2>/dev/null || true
+
 # Create media directory
 mkdir -p /home/pi/media
 chown -R 1000:1000 /home/pi/media
@@ -74,6 +101,9 @@ sed -i "s|^MEDIA_DIR=.*|MEDIA_DIR=/home/pi/media|" /opt/framecast/app/.env
 chmod 600 /opt/framecast/app/.env
 chown 1000:1000 /opt/framecast/app/.env
 
-# Configure and enable firewall (ufw)
+# Firewall: write RFC1918-only rules and enable ufw (C12)
 /usr/local/bin/ufw-setup.sh
 systemctl enable ufw
+
+# Purge pip after install — reduces image size (I35)
+apt-get purge -y python3-pip && apt-get autoremove -y

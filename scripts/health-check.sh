@@ -15,6 +15,15 @@ ROLLBACK_SIG="/var/lib/framecast/rollback-sig"
 INSTALL_DIR="/opt/framecast"
 ENV_FILE="$INSTALL_DIR/app/.env"
 
+# If update-in-progress flag exists, power was lost mid-update — force rollback
+UPDATE_FLAG="/var/lib/framecast/update-in-progress"
+if [ -f "$UPDATE_FLAG" ]; then
+    echo "WARNING: update-in-progress flag found — power loss during update"
+    echo "Contents: $(cat "$UPDATE_FLAG" 2>/dev/null)"
+    rm -f "$UPDATE_FLAG"
+    # Fall through to rollback logic below
+fi
+
 # Only run if a rollback tag exists (meaning we just updated)
 if [ ! -f "$ROLLBACK_FILE" ]; then
     exit 0

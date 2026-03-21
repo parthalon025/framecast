@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-python:
     name: Lint Python
@@ -20,6 +24,40 @@ jobs:
       - name: Lint app/
         run: ruff check app/
 
+  typecheck:
+    name: Type Check (mypy strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Run mypy
+        run: python3 -m mypy --config-file mypy.ini app/modules/ app/sse.py
+
+  pytest:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install pytest pytest-timeout
+      - name: Run pytest
+        run: python3 -m pytest tests/ -v --timeout=120 -x
+        env:
+          FLASK_SECRET_KEY: test-secret-key
+          MEDIA_DIR: /tmp/framecast-test-media
+
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
@@ -28,6 +66,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
       - name: Install dependencies
         working-directory: app/frontend
         run: npm ci
@@ -40,6 +80,33 @@ jobs:
           test -f app/static/css/superhot.css || { echo "::error::superhot.css not copied"; exit 1; }
           test -f app/static/css/app.css || { echo "::error::app.css not copied"; exit 1; }
           echo "Build artifacts verified"
+
+  test-frontend:
+    name: Frontend Tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: app/frontend
+        run: npm ci
+      - name: Run vitest
+        working-directory: app/frontend
+        run: npx vitest run
+
+  test-shell:
+    name: Shell Tests (bats)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: Run bats tests
+        run: bats tests/shell/
 
   smoke:
     name: Smoke Test
@@ -94,13 +161,19 @@ jobs:
           echo "All required files present."
       - name: Verify shell scripts are executable
         run: |
-          for f in kiosk/kiosk.sh scripts/health-check.sh scripts/hdmi-control.sh pi-gen/build.sh; do
+          FAIL=0
+          for f in kiosk/kiosk.sh scripts/health-check.sh scripts/hdmi-control.sh pi-gen/build.sh install.sh; do
             if [ -x "$f" ]; then
               echo "  OK  $f (executable)"
             else
-              echo "  WARN  $f (not executable)"
+              echo "  FAIL  $f (not executable)"
+              FAIL=1
             fi
           done
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::Shell scripts must be executable"
+            exit 1
+          fi
       - name: Verify VERSION matches CHANGELOG
         run: |
           VERSION=$(cat VERSION)
@@ -109,3 +182,32 @@ jobs:
           else
             echo "::warning::VERSION ${VERSION} not found in CHANGELOG.md"
           fi
+      - name: Verify systemd units parse
+        run: |
+          for f in systemd/*.service systemd/*.timer; do
+            [ -f "$f" ] || continue
+            if grep -q '^\[Unit\]' "$f" && grep -q '^\[Service\]\|^\[Timer\]' "$f"; then
+              echo "  OK  $f"
+            else
+              echo "  FAIL  $f (missing required sections)"
+              exit 1
+            fi
+          done
+
+  # Gate: all checks must pass before merge
+  ci-pass:
+    name: CI Pass
+    needs: [lint-python, typecheck, pytest, build-frontend, test-frontend, test-shell, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        env:
+          JOB_RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "Job results: $JOB_RESULTS"
+          if echo "$JOB_RESULTS" | grep -qE '"failure"|"cancelled"'; then
+            echo "::error::One or more required jobs failed"
+            exit 1
+          fi
+          echo "All checks passed"

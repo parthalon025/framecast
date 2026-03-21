@@ -28,6 +28,7 @@ INSTALL_DIR = VERSION_FILE.parent
 ROLLBACK_FILE = Path("/var/lib/framecast/rollback-tag")
 ROLLBACK_SIG_FILE = Path("/var/lib/framecast/rollback-sig")
 EXPECTED_SHA_FILE = Path("/var/lib/framecast/expected-sha")
+UPDATE_IN_PROGRESS_FILE = Path("/var/lib/framecast/update-in-progress")
 # Configurable via .env for forks. Default: official FrameCast repo.
 _GITHUB_OWNER = config.get("GITHUB_OWNER", "parthalon025")
 _GITHUB_REPO = config.get("GITHUB_REPO", "framecast")
@@ -112,12 +113,17 @@ def check_for_update() -> dict[str, object]:
 
 
 def _hmac_sign(data: str) -> str:
-    """Compute HMAC-SHA256 of *data* using FLASK_SECRET_KEY."""
+    """Compute HMAC-SHA256 of *data* using FLASK_SECRET_KEY.
+
+    Raises RuntimeError if the secret key is not configured — an ephemeral
+    key would produce signatures the health-check can never validate.
+    """
     secret = config.get("FLASK_SECRET_KEY", "")
     if not secret:
-        log.error("FLASK_SECRET_KEY not set — generating ephemeral key for rollback signature")
-        import secrets as _secrets
-        secret = _secrets.token_hex(24)
+        raise RuntimeError(
+            "FLASK_SECRET_KEY not set in .env — cannot sign rollback tag. "
+            "OTA updates require a stable secret key."
+        )
     return hmac.new(
         secret.encode(), data.encode(), hashlib.sha256
     ).hexdigest()
@@ -191,6 +197,14 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     if not _TAG_RE.match(tag):
         return False, f"Invalid tag format: {tag}"
 
+    # Pre-flight: verify git repo is intact
+    ok, msg = _git("rev-parse", "--git-dir")
+    if not ok:
+        return False, f"Git repo missing or corrupt at {INSTALL_DIR}: {msg}"
+    ok, remote_url = _git("remote", "get-url", "origin")
+    if not ok:
+        return False, f"Git remote 'origin' not configured: {remote_url}"
+
     current = get_current_version()
     rollback_tag = f"v{current}"
 
@@ -211,15 +225,23 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
         except OSError as exc:
             log.warning("Failed to write expected SHA file: %s", exc)
 
+    # Mark update in progress (health-check forces rollback if found on boot)
+    try:
+        _atomic_write(UPDATE_IN_PROGRESS_FILE, f"{rollback_tag} -> {tag}")
+    except OSError as exc:
+        log.warning("Failed to write update-in-progress flag: %s", exc)
+
     # Fetch latest tags
     ok, msg = _git("fetch", "--tags")
     if not ok:
+        _cleanup_update_flag()
         return False, f"git fetch failed: {msg}"
 
     # Verify tag SHA matches what GitHub API reported
     if expected_sha:
         sha_ok, sha_msg = _verify_tag_sha(tag, expected_sha)
         if not sha_ok:
+            _cleanup_update_flag()
             log.error("Update ABORTED for %s: %s", tag, sha_msg)
             return False, f"Update aborted — {sha_msg}"
 
@@ -228,6 +250,14 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     if not ok:
         return False, f"git checkout {tag} failed: {msg}"
 
+    # Sync VERSION file with the new tag
+    new_version = tag.lstrip("v")
+    try:
+        _atomic_write(VERSION_FILE, new_version)
+        log.info("VERSION file updated to %s", new_version)
+    except OSError as exc:
+        log.warning("Failed to update VERSION file: %s", exc)
+
     log.info("Update applied: v%s -> %s", current, tag)
     return True, f"Updated from v{current} to {tag}"
 
@@ -235,6 +265,14 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _cleanup_update_flag() -> None:
+    """Remove the update-in-progress flag (called on success or abort)."""
+    try:
+        UPDATE_IN_PROGRESS_FILE.unlink(missing_ok=True)
+    except OSError as exc:
+        log.warning("Failed to remove update-in-progress flag: %s", exc)
 
 
 def _git(*args: str) -> tuple[bool, str]:

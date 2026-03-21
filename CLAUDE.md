@@ -2,6 +2,10 @@
 
 Turn any TV into a family photo frame — flash an SD card, boot the Pi, done. Browser-based slideshow with CSS transitions, superhot-ui terminal interface, WiFi captive portal, OTA updates.
 
+## Project Status: FEATURE FREEZE (v2.0.0)
+
+**No new features.** Only bug fixes, security patches, build fixes, and documentation updates. If a change adds new user-facing behavior, it requires explicit approval. This includes new API endpoints, UI pages, config options, and pi-gen stages.
+
 ## Stack
 
 - Python (Flask + gunicorn), SSE for real-time updates

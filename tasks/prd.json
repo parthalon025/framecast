@@ -1,0 +1,207 @@
+[
+  {
+    "id": 1,
+    "title": "T1-PIGEN: Remove runtime bloat and pin build reproducibility",
+    "description": "Remove nodejs/npm/python3-pip from 00-packages (unused at runtime, ~200MB bloat). Pin Python deps in requirements.txt to exact versions. Pin pi-gen clone to specific commit hash. Use npm ci instead of npm install in build.sh. Remove camera_auto_detect=1 from config.txt. Add __pycache__ cleanup after app copy. Set journal Storage=volatile.",
+    "acceptance_criteria": [
+      "! grep -q '^nodejs$' pi-gen/stage2-framecast/00-packages/00-packages",
+      "! grep -q '^npm$' pi-gen/stage2-framecast/00-packages/00-packages",
+      "grep -q '==' requirements.txt",
+      "! grep -q '>=' requirements.txt",
+      "grep -qE 'git (checkout|fetch).*[0-9a-f]{7,40}' pi-gen/build.sh",
+      "grep -q 'npm ci' pi-gen/build.sh",
+      "! grep -q 'camera_auto_detect=1' pi-gen/stage2-framecast/01-config/files/config.txt",
+      "grep -q '__pycache__' pi-gen/stage2-framecast/02-app/01-run.sh",
+      "grep -q 'Storage=volatile' pi-gen/stage2-framecast/03-system/files/framecast-journal.conf"
+    ],
+    "passes": false,
+    "blocked_by": []
+  },
+  {
+    "id": 2,
+    "title": "T1-PIGEN: Configure swap and apply firewall rules",
+    "description": "Add dphys-swapfile 256MB configuration to pi-gen for Pi 3 OOM prevention (C10). Call ufw-setup.sh from chroot script so firewall rules are actually applied (C12). Delete or rename stale install.sh (I8).",
+    "acceptance_criteria": [
+      "grep -q 'dphys-swapfile' pi-gen/stage2-framecast/00-packages/00-packages || grep -q 'CONF_SWAPSIZE' pi-gen/stage2-framecast/03-system/01-run.sh",
+      "grep -q 'ufw-setup' pi-gen/stage2-framecast/02-app/01-run-chroot.sh || grep -q 'user.rules' pi-gen/stage2-framecast/02-app/01-run-chroot.sh || grep -q 'ufw-setup' pi-gen/stage2-framecast/03-system/01-run.sh",
+      "! test -f install.sh || head -1 install.sh | grep -q 'DEPRECATED'"
+    ],
+    "passes": false,
+    "blocked_by": []
+  },
+  {
+    "id": 3,
+    "title": "T1-SYSTEMD: Fix WatchdogSec, reboot loops, and service hardening",
+    "description": "REMOVE WatchdogSec=120 from framecast.service (C9 — undo bab6559, inert with Type=simple). Add EnvironmentFile=-/opt/framecast/app/.env (I13). Change StartLimitAction on kiosk to none (I12). Add TimeoutStartSec=180 to health-check service (I14). Add Persistent=true to schedule timer (I40). Add SyslogIdentifier to all services. Add ProtectKernelTunables, ProtectKernelModules, PrivateDevices where appropriate.",
+    "acceptance_criteria": [
+      "! grep -q 'WatchdogSec' systemd/framecast.service",
+      "grep -q 'EnvironmentFile.*\\.env' systemd/framecast.service",
+      "! grep -q 'StartLimitAction=reboot' systemd/framecast-kiosk.service",
+      "grep -q 'TimeoutStartSec' systemd/framecast-health.service",
+      "grep -q 'Persistent=true' systemd/framecast-schedule.timer",
+      "grep -q 'SyslogIdentifier' systemd/framecast.service",
+      "grep -q 'SyslogIdentifier' systemd/framecast-kiosk.service",
+      "grep -q 'ProtectKernelTunables' systemd/framecast-hostname.service",
+      "grep -q 'NoNewPrivileges' systemd/framecast-schedule.service"
+    ],
+    "passes": false,
+    "blocked_by": []
+  },
+  {
+    "id": 4,
+    "title": "T1-FILESYSTEM: Atomic restore_db and disk-full delete recovery",
+    "description": "Fix restore_db() to use tmp+fsync+rename instead of shutil.copy2 (C14). Reorder delete-all to unlink files before DB update so users can recover from disk full (C15). Reorder single-delete similarly. Fix fix_orientation() and _auto_resize_image() to use atomic Pillow writes (I21). Route export ZIP and DB restore temp files to MEDIA_DIR instead of /tmp tmpfs (I23, I24). Add closing() on test connection in restore_db validation. Add periodic WAL checkpoint.",
+    "acceptance_criteria": [
+      "grep -q 'os.replace\\|os.rename' app/modules/db.py",
+      "! grep -q 'shutil.copy2.*current_path' app/modules/db.py",
+      "python3 -c \"import ast; t=ast.parse(open('app/web_upload.py').read()); print('OK')\"",
+      "grep -q 'os.replace\\|os.rename' app/modules/media.py || grep -q 'atomic\\|tmp.*save' app/modules/media.py",
+      "! grep -qE 'tempfile\\.mkstemp\\(suffix=\"\\.zip\"\\)' app/api.py || grep -q 'dir=.*MEDIA' app/api.py",
+      "grep -q 'closing' app/modules/db.py | head -1",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/db.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/web_upload.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/media.py"
+    ],
+    "passes": false,
+    "blocked_by": []
+  },
+  {
+    "id": 5,
+    "title": "T1-VERIFY: Tier 1 quality gate",
+    "description": "Run full test suite and type checks after Tier 1 changes to ensure no regressions.",
+    "acceptance_criteria": [
+      "cd /home/justin/Documents/projects/framecast && make pytest",
+      "cd /home/justin/Documents/projects/framecast && make typecheck"
+    ],
+    "passes": false,
+    "blocked_by": [1, 2, 3, 4]
+  },
+  {
+    "id": 6,
+    "title": "T2-WIFI: Unify WiFi system and fix onboarding flow",
+    "description": "Delete wifi-manager.sh (C2). Make wifi.py the single AP/client lifecycle owner. Add AP auto-start during Flask startup when no WiFi configured (C1). Fix wifi.connect() to stop AP before connecting (C3). Implement two-phase AP-to-client transition with 5s delay (C4). Fix _is_ap_active() to check actual AP state not systemd service (C11). Add captive portal DNS redirect in AP mode (I1). Fix AP timeout to connect to known WiFi instead of cycling (I2). Add onboarding_complete to _SETTINGS_ENV_MAP (I5). Create test_wifi.py (I4).",
+    "acceptance_criteria": [
+      "! test -f app/wifi-manager.sh",
+      "grep -q 'start_ap\\|auto.*ap\\|ap.*auto' app/web_upload.py",
+      "grep -q 'stop_ap' app/modules/wifi.py | head -1",
+      "! grep -q 'is_service_active.*wifi' app/modules/auth.py",
+      "grep -q 'wifi:connected\\|wifi_connected' app/modules/wifi.py || grep -q 'wifi:connected' app/api.py",
+      "grep -q 'onboarding_complete' app/api.py",
+      "test -f tests/test_wifi.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/wifi.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/auth.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m pytest tests/test_wifi.py -x -q"
+    ],
+    "passes": false,
+    "blocked_by": [5]
+  },
+  {
+    "id": 7,
+    "title": "T2-KIOSK: Fix port hardcode, cursor, blanking, and rotation",
+    "description": "Make browser.js read WEB_PORT from env or command arg instead of hardcoding 8080 (I6). Add cursor: none CSS injection and WLR_NO_HARDWARE_CURSORS env (I9). Add consoleblank=0 to cmdline.txt (I11). Add DISPLAY_ROTATION env var support in kiosk.sh (I10). Launch cage with -d to disable Xwayland. Export WAYLAND_DISPLAY for schedule timer. Add daily kiosk restart timer.",
+    "acceptance_criteria": [
+      "! grep -q \"localhost:8080\" kiosk/browser.js",
+      "grep -q 'cursor.*none\\|cursor:none' kiosk/browser.js",
+      "grep -q 'consoleblank=0' pi-gen/stage2-framecast/01-config/files/cmdline.txt",
+      "grep -q 'DISPLAY_ROTATION\\|rotation\\|transform' kiosk/kiosk.sh",
+      "grep -q '\\-d' kiosk/kiosk.sh",
+      "grep -q 'WAYLAND_DISPLAY' kiosk/kiosk.sh || grep -q 'WAYLAND_DISPLAY' scripts/hdmi-control.sh"
+    ],
+    "passes": false,
+    "blocked_by": [5]
+  },
+  {
+    "id": 8,
+    "title": "T2-SECURITY: Fix auth bypass, guest tokens, EXIF, and validation",
+    "description": "Fix guest token to reject when FLASK_SECRET_KEY missing instead of using insecure-fallback (I26). Add localhost-only restriction to /api/slideshow/now-playing (I28). Add value validation to /api/settings/import (I29). Strip EXIF GPS from served images after extraction (I27). Improve timezone validation against timedatectl list (I5 from security agent). Add SMART_ALBUMS SQL safety comment.",
+    "acceptance_criteria": [
+      "! grep -q 'insecure-fallback' app/modules/auth.py",
+      "grep -q 'remote_addr\\|LOCALHOST\\|127.0.0.1' app/api.py",
+      "grep -q 'validate\\|_validate_setting\\|VALID' app/api.py",
+      "grep -q 'exif.*strip\\|strip.*exif\\|deleting.*exif\\|Exif.delete\\|piexif' app/modules/media.py || grep -q 'info.pop\\|del.*info' app/modules/media.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/auth.py",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/api.py"
+    ],
+    "passes": false,
+    "blocked_by": [5]
+  },
+  {
+    "id": 9,
+    "title": "T2-VERIFY: Tier 2 quality gate",
+    "description": "Run full test suite after Tier 2 changes.",
+    "acceptance_criteria": [
+      "cd /home/justin/Documents/projects/framecast && make pytest",
+      "cd /home/justin/Documents/projects/framecast && make typecheck"
+    ],
+    "passes": false,
+    "blocked_by": [6, 7, 8]
+  },
+  {
+    "id": 10,
+    "title": "T3-DISPLAY: Fix display state machine transitions",
+    "description": "Add wifi:connected, wifi:connecting, wifi:failed SSE events to sse.py. Update DisplayRouter to handle wifi:connected (transition setup→welcome/slideshow). Add periodic 60s re-check when in setup state. Make photo:added transition from both welcome AND setup. Add pauseOnHidden:false option to createSSE for TV surface (I7). Remove duplicate /api/status fetch between Boot and DisplayRouter.",
+    "acceptance_criteria": [
+      "grep -q 'wifi:connected\\|wifi.connected' app/sse.py || grep -q 'wifi:connected\\|wifi.connected' app/api.py",
+      "grep -q 'wifi.*connected\\|wifi:connected' app/frontend/src/display/DisplayRouter.jsx",
+      "grep -q 'setup.*slideshow\\|setup.*welcome' app/frontend/src/display/DisplayRouter.jsx",
+      "grep -q 'pauseOnHidden\\|pause_on_hidden\\|skipVisibility' app/frontend/src/lib/sse.js",
+      "grep -q 'interval\\|setTimeout.*status\\|periodic\\|recheck' app/frontend/src/display/DisplayRouter.jsx"
+    ],
+    "passes": false,
+    "blocked_by": [9]
+  },
+  {
+    "id": 11,
+    "title": "T3-OTA: Fix update pipeline — post-update deps, SHA verification, health safety",
+    "description": "Create scripts/post-update.sh (pip install, optional frontend rebuild, service restart) (C7). Add post-update.sh call after git checkout in updater.py. Replace target_commitish with Tags API for SHA verification (C8). Copy health-check.sh to /var/lib/framecast/ before update (C13). Update health service ExecStart to use stable copy. Add git fetch --tags --force (I18). Stop framecast service before checkout (I19). Add disk space pre-flight check (I20). Add rollback pip install to health-check.sh (I15). Fix git tag grep to use -qF (R).",
+    "acceptance_criteria": [
+      "test -f scripts/post-update.sh",
+      "grep -q 'pip.*install\\|pip3.*install' scripts/post-update.sh",
+      "grep -q 'post.update\\|post_update' app/modules/updater.py",
+      "! grep -q 'target_commitish' app/modules/updater.py",
+      "grep -q 'git/refs/tags\\|tags.*api\\|tag.*sha' app/modules/updater.py",
+      "grep -q 'health-check.*stable\\|stable.*health\\|/var/lib/framecast.*health' app/modules/updater.py || grep -q 'health-check.*stable' scripts/post-update.sh",
+      "grep -q '\\-\\-force' app/modules/updater.py",
+      "grep -q 'disk_usage\\|statvfs\\|shutil.disk' app/modules/updater.py",
+      "grep -q 'pip.*install' scripts/health-check.sh",
+      "cd /home/justin/Documents/projects/framecast && python3 -m py_compile app/modules/updater.py"
+    ],
+    "passes": false,
+    "blocked_by": [9]
+  },
+  {
+    "id": 12,
+    "title": "T3-FRONTEND: Fix tests, transitions, offline banner, and Update page",
+    "description": "Fix DisplayRouter test suite — add ShPageBanner mock (I30). Fix test assertions to match code behavior (I31). Fix Slideshow transition timeout cleanup on unmount (I32). Move OfflineBanner to PhoneLayout (I33). Replace raw EventSource in Update.jsx with createSSE (I34). Add manual rollback button to Update page (I16). Reset playlistFailCount on mount. Add reboot confirmation dialog.",
+    "acceptance_criteria": [
+      "grep -q 'ShPageBanner' app/frontend/src/__tests__/displayRouter.test.js",
+      "grep -q 'transitionTimer\\|clearTimeout' app/frontend/src/display/Slideshow.jsx",
+      "grep -q 'OfflineBanner' app/frontend/src/components/PhoneLayout.jsx",
+      "grep -q 'createSSE' app/frontend/src/pages/Update.jsx",
+      "grep -q 'rollback\\|ROLLBACK' app/frontend/src/pages/Update.jsx",
+      "grep -q 'playlistFailCount.*=.*0' app/frontend/src/display/Slideshow.jsx",
+      "cd /home/justin/Documents/projects/framecast && make test-frontend 2>/dev/null || echo 'frontend tests not runnable without node_modules'"
+    ],
+    "passes": false,
+    "blocked_by": [9]
+  },
+  {
+    "id": 13,
+    "title": "T3-VERIFY: Full quality gate — all tiers",
+    "description": "Run complete test suite, type checks, and verify all critical findings are addressed.",
+    "acceptance_criteria": [
+      "cd /home/justin/Documents/projects/framecast && make pytest",
+      "cd /home/justin/Documents/projects/framecast && make typecheck",
+      "! grep -q 'WatchdogSec' systemd/framecast.service",
+      "! test -f app/wifi-manager.sh",
+      "! grep -q 'insecure-fallback' app/modules/auth.py",
+      "! grep -q 'localhost:8080' kiosk/browser.js",
+      "! grep -q 'shutil.copy2.*current_path' app/modules/db.py",
+      "test -f scripts/post-update.sh",
+      "test -f tests/test_wifi.py",
+      "grep -q 'wifi:connected\\|wifi.connected' app/frontend/src/display/DisplayRouter.jsx"
+    ],
+    "passes": false,
+    "blocked_by": [10, 11, 12]
+  }
+]

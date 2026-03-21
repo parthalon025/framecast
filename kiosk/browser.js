@@ -8,7 +8,8 @@ imports.gi.versions.Gtk = '3.0';
 imports.gi.versions.WebKit2 = '4.1';
 const { Gtk, WebKit2, GLib, Gdk } = imports.gi;
 
-const TARGET_URI = 'http://localhost:8080/display';
+const WEB_PORT = ARGV[0] || '8080';
+const TARGET_URI = `http://localhost:${WEB_PORT}/display`;
 const RETRY_INTERVAL_MS = 5000;
 
 Gtk.init(null);
@@ -46,7 +47,8 @@ webview.set_background_color(bgColor);
 webview.connect('load-changed', (_wv, event) => {
     if (event === WebKit2.LoadEvent.FINISHED) {
         const css = '::-webkit-scrollbar { display: none !important; } '
-                  + 'html, body { overflow: hidden !important; }';
+                  + 'html, body { overflow: hidden !important; } '
+                  + '* { cursor: none !important; }';
         webview.run_javascript(
             `(function() {
                 var s = document.createElement('style');
@@ -58,11 +60,21 @@ webview.connect('load-changed', (_wv, event) => {
     }
 });
 
-// --- Retry on load failure ---
+// --- Retry on load failure (with limit to avoid infinite black screen) ---
 let retrySourceId = 0;
+let failureCount = 0;
+const MAX_RETRIES = 12; // 12 × 5s = 60s before giving up (systemd restarts)
 
 webview.connect('load-failed', (_wv, _event, _uri, error) => {
-    log(`FrameCast: load failed (${error.message}), retrying in ${RETRY_INTERVAL_MS / 1000}s`);
+    failureCount++;
+    log(`FrameCast: load failed (attempt ${failureCount}/${MAX_RETRIES}: ${error.message})`);
+
+    if (failureCount > MAX_RETRIES) {
+        log('FrameCast: max retries exceeded, exiting (systemd will restart)');
+        Gtk.main_quit();
+        return true;
+    }
+
     if (retrySourceId === 0) {
         retrySourceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, RETRY_INTERVAL_MS, () => {
             retrySourceId = 0;
@@ -71,6 +83,13 @@ webview.connect('load-failed', (_wv, _event, _uri, error) => {
         });
     }
     return true; // handled
+});
+
+// Reset failure count on successful load
+webview.connect('load-changed', (_wv, event) => {
+    if (event === WebKit2.LoadEvent.FINISHED) {
+        failureCount = 0;
+    }
 });
 
 // --- Assemble and launch ---

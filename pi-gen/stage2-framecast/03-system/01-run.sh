@@ -32,6 +32,13 @@ install -m 755 files/framecast-hostname.sh "${ROOTFS_DIR}/usr/local/bin/framecas
 mkdir -p "${ROOTFS_DIR}/etc/avahi/services"
 install -m 644 files/framecast.service "${ROOTFS_DIR}/etc/avahi/services/framecast.service"
 
+# Configure swap for Pi 3 (1GB RAM) — prevent OOM kills (C10)
+cat > "${ROOTFS_DIR}/etc/dphys-swapfile" << 'EOF'
+CONF_SWAPSIZE=256
+CONF_SWAPFACTOR=
+CONF_MAXSWAP=256
+EOF
+
 # Create /var/lib/framecast for rollback tags and update state
 mkdir -p "${ROOTFS_DIR}/var/lib/framecast"
 chown 1000:1000 "${ROOTFS_DIR}/var/lib/framecast"

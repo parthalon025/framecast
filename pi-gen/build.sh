@@ -44,10 +44,16 @@ if [ ! -d "$PIGEN_DIR" ]; then
     echo "Cloning pi-gen (bookworm-arm64)..."
     git clone --depth 1 --branch bookworm-arm64 \
         https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
+    # Pin to specific commit for reproducible builds (I37)
+    cd "$PIGEN_DIR" && git fetch --depth 1 origin 67262a4 && git checkout 67262a4
+    cd "$SCRIPT_DIR"
 fi
 
-# Copy config and custom stage into pi-gen (cp, not symlink — Docker-safe)
+# Copy config into pi-gen (IMG_NAME stays "FrameCast" for work dir consistency)
+FRAMECAST_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+FC_VERSION=$(cat "${FRAMECAST_ROOT}/VERSION" 2>/dev/null || echo "dev")
 cp "${SCRIPT_DIR}/config" "${PIGEN_DIR}/config"
+echo "Building FrameCast v${FC_VERSION}"
 rm -rf "${PIGEN_DIR}/stage2-framecast"
 cp -r "${SCRIPT_DIR}/stage2-framecast" "${PIGEN_DIR}/stage2-framecast"
 
@@ -63,16 +69,23 @@ if [ "$BASE_ONLY" -eq 1 ]; then
     touch "${PIGEN_DIR}/stage2-framecast/02-app/SKIP"
 fi
 
+# Find existing rootfs (work dir name matches IMG_NAME from config)
+find_rootfs() {
+    local found
+    found=$(find "${PIGEN_DIR}/work" -maxdepth 3 -type d -name rootfs -path "*/stage2-framecast/*" 2>/dev/null | head -1)
+    echo "${found:-}"
+}
+
 # --- Mode: --app-only (fastest iteration) ---
 # Skip stages 0-2 entirely + our 00-packages, 01-config, 03-system.
 # Only runs 02-app on the existing rootfs.
 if [ "$APP_ONLY" -eq 1 ]; then
-    ROOTFS="${PIGEN_DIR}/work/FrameCast/stage2-framecast/rootfs"
-    if [ ! -d "$ROOTFS" ]; then
+    ROOTFS="$(find_rootfs)"
+    if [ -z "$ROOTFS" ]; then
         echo "ERROR: No rootfs found. Run a full build first."
         exit 1
     fi
-    echo "APP_ONLY: skipping stages 0-2 + base sub-stages, rebuilding app only"
+    echo "APP_ONLY: reusing $(dirname "$(dirname "$ROOTFS")")"
     for stage in stage0 stage1 stage2; do
         touch "${PIGEN_DIR}/${stage}/SKIP"
     done
@@ -85,14 +98,28 @@ fi
 
 # --- Mode: --continue ---
 if [ "$CONTINUE" -eq 1 ] && [ "$APP_ONLY" -eq 0 ]; then
-    ROOTFS="${PIGEN_DIR}/work/FrameCast/stage2-framecast/rootfs"
-    if [ ! -d "$ROOTFS" ]; then
-        echo "ERROR: No existing rootfs at ${ROOTFS}"
+    ROOTFS="$(find_rootfs)"
+    if [ -z "$ROOTFS" ]; then
+        echo "ERROR: No existing rootfs found."
         echo "Run './build.sh --base-only' first."
         exit 1
     fi
-    echo "CONTINUE: resuming build (reusing cached rootfs)"
+    echo "CONTINUE: resuming from $(dirname "$(dirname "$ROOTFS")")"
     rm -f "${PIGEN_DIR}/stage2-framecast/02-app/SKIP"
+fi
+
+# --- Pre-build frontend on host (runs as user, not sudo) ---
+# sudo resets PATH so npm/node are unreachable inside pi-gen.
+# Build here where user's PATH works, stage 01-run.sh copies the output.
+FRONTEND_DIR="${FRAMECAST_ROOT}/app/frontend"
+if [ "$BASE_ONLY" -eq 0 ] && [ -f "${FRONTEND_DIR}/package.json" ]; then
+    echo "=== Pre-building frontend (host-native, npm $(npm --version)) ==="
+    (
+        cd "${FRONTEND_DIR}"
+        npm ci 2>&1 | tail -3
+        npm run build
+    )
+    echo "Frontend dist/ ready ($(du -sh "${FRONTEND_DIR}/dist" 2>/dev/null | cut -f1 || echo '?'))"
 fi
 
 cd "$PIGEN_DIR" || {
@@ -123,4 +150,18 @@ if [ "$APP_ONLY" -eq 1 ]; then
     rm -f "${PIGEN_DIR}/stage2-framecast/00-packages/SKIP"
     rm -f "${PIGEN_DIR}/stage2-framecast/01-config/SKIP"
     rm -f "${PIGEN_DIR}/stage2-framecast/03-system/SKIP"
+fi
+
+# --- Rename output with version (skip if already versioned) ---
+DEPLOY="${PIGEN_DIR}/deploy"
+if [ -d "$DEPLOY" ]; then
+    for f in "${DEPLOY}"/*FrameCast*; do
+        [ -f "$f" ] || continue
+        # Skip if already contains version string
+        case "$f" in *"-v${FC_VERSION}"*) continue ;; esac
+        versioned="${f/FrameCast/FrameCast-v${FC_VERSION}}"
+        sudo mv "$f" "$versioned"
+    done
+    echo "=== Output ==="
+    ls -lh "${DEPLOY}/"
 fi
