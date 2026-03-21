@@ -5,6 +5,7 @@ import { uploadProgress } from "../pages/Upload.jsx";
 import { SearchModal, openSearch } from "./SearchModal.jsx";
 import { openLightbox } from "./Lightbox.jsx";
 import { ConnectionBanner, tvConnected } from "./ConnectionBanner.jsx";
+import { OfflineBanner } from "./OfflineBanner.jsx";
 import { toast, clearToast } from "../lib/toast.js";
 import { incident, clearIncident } from "../lib/incident.js";
 
@@ -107,6 +108,7 @@ export function PhoneLayout({ children }) {
           onAcknowledge={clearIncident}
         />
         <ConnectionBanner />
+        <OfflineBanner />
         {/* Header bar with search */}
         <div
           class="fc-header"
