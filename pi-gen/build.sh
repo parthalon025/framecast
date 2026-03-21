@@ -44,6 +44,9 @@ if [ ! -d "$PIGEN_DIR" ]; then
     echo "Cloning pi-gen (bookworm-arm64)..."
     git clone --depth 1 --branch bookworm-arm64 \
         https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
+    # Pin to specific commit for reproducible builds (I37)
+    cd "$PIGEN_DIR" && git fetch --depth 1 origin 67262a4 && git checkout 67262a4
+    cd "$SCRIPT_DIR"
 fi
 
 # Copy config into pi-gen (IMG_NAME stays "FrameCast" for work dir consistency)
@@ -113,7 +116,7 @@ if [ "$BASE_ONLY" -eq 0 ] && [ -f "${FRONTEND_DIR}/package.json" ]; then
     echo "=== Pre-building frontend (host-native, npm $(npm --version)) ==="
     (
         cd "${FRONTEND_DIR}"
-        npm install 2>&1 | tail -3
+        npm ci 2>&1 | tail -3
         npm run build
     )
     echo "Frontend dist/ ready ($(du -sh "${FRONTEND_DIR}/dist" 2>/dev/null | cut -f1 || echo '?'))"

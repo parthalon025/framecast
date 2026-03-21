@@ -1,6 +1,6 @@
 # FrameCast boot config
 dtparam=audio=on
-camera_auto_detect=1
+# camera_auto_detect=1  # removed — unused, saves boot time
 display_auto_detect=1
 auto_initramfs=1
 dtoverlay=vc4-kms-v3d

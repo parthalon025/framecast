@@ -28,6 +28,9 @@ fi
 rm -rf "${ROOTFS_DIR}/opt/framecast/app/frontend/node_modules"
 rm -rf "${ROOTFS_DIR}/opt/framecast/app/frontend/src"
 
+# Remove any __pycache__ dirs copied in with app source (R)
+find "${ROOTFS_DIR}/opt/framecast" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
 # --- Pre-download arm64 Python wheels on HOST ---
 echo "=== FrameCast app: downloading arm64 Python wheels ==="
 WHEEL_DIR="${ROOTFS_DIR}/opt/framecast/.wheels"
