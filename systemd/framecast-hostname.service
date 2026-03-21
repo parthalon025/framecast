@@ -8,6 +8,14 @@ ConditionPathExists=!/var/lib/framecast/.hostname-set
 Type=oneshot
 ExecStart=/usr/local/bin/framecast-hostname.sh
 RemainAfterExit=yes
+NoNewPrivileges=true
+ProtectHome=yes
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+SyslogIdentifier=framecast-hostname
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

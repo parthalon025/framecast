@@ -4,7 +4,7 @@ After=framecast.service local-fs.target
 BindsTo=framecast.service
 StartLimitIntervalSec=600
 StartLimitBurst=10
-StartLimitAction=reboot
+StartLimitAction=none
 
 [Service]
 Type=simple
@@ -13,6 +13,7 @@ PAMName=login
 TTYPath=/dev/tty1
 StandardInput=tty
 StandardOutput=journal
+StandardError=journal
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=no
@@ -23,7 +24,10 @@ RestartSec=10
 MemoryMax=512M
 NoNewPrivileges=true
 ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
 ReadWritePaths=/home/pi/framecast
+SyslogIdentifier=framecast-kiosk
 
 [Install]
 WantedBy=multi-user.target

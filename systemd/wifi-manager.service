@@ -9,7 +9,12 @@ RemainAfterExit=yes
 ExecStart=/opt/framecast/scripts/wifi-check.sh
 ProtectSystem=strict
 NoNewPrivileges=true
+ProtectHome=yes
+PrivateTmp=true
 ReadWritePaths=/var/lib/framecast
+SyslogIdentifier=wifi-manager
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
