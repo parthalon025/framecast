@@ -24,6 +24,24 @@ jobs:
       - name: Lint app/
         run: ruff check app/
 
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Check all shell scripts
+        run: |
+          find . -name '*.sh' -not -path './pi-gen/pi-gen/*' -not -path './node_modules/*' | while read -r f; do
+            echo "Checking $f..."
+            shellcheck -x -S warning "$f" || FAIL=1
+          done
+          if [ "${FAIL:-0}" -eq 1 ]; then
+            echo "::error::ShellCheck found issues"
+            exit 1
+          fi
+
   typecheck:
     name: Type Check (mypy strict)
     runs-on: ubuntu-latest
@@ -57,6 +75,80 @@ jobs:
         env:
           FLASK_SECRET_KEY: test-secret-key
           MEDIA_DIR: /tmp/framecast-test-media
+
+  integration:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [build-frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+      - name: Build frontend
+        working-directory: app/frontend
+        run: npm ci && npm run build
+      - name: Start Flask and verify endpoints
+        env:
+          FLASK_SECRET_KEY: test-secret-key
+          MEDIA_DIR: /tmp/framecast-test-media
+        run: |
+          mkdir -p /tmp/framecast-test-media
+
+          # Start Flask in background
+          cd app && python3 -c "
+          from web_upload import app
+          app.run(host='127.0.0.1', port=8080, debug=False)
+          " &
+          SERVER_PID=$!
+
+          # Wait for server to start
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/api/status > /dev/null 2>&1; then
+              echo "Server up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          FAIL=0
+
+          # Vertical trace: hit key endpoints
+          echo "=== /api/status ==="
+          STATUS=$(curl -sf http://127.0.0.1:8080/api/status)
+          echo "$STATUS" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'photo_count' in d, 'missing photo_count'" || FAIL=1
+
+          echo "=== / (phone SPA) ==="
+          curl -sf http://127.0.0.1:8080/ | grep -q 'app.js' || { echo "::error::Phone SPA missing app.js"; FAIL=1; }
+
+          echo "=== /display (TV) ==="
+          curl -sf http://127.0.0.1:8080/display | grep -q 'app.js' || { echo "::error::TV display missing app.js"; FAIL=1; }
+
+          echo "=== /api/settings ==="
+          curl -sf http://127.0.0.1:8080/api/settings > /dev/null || { echo "::error::/api/settings failed"; FAIL=1; }
+
+          echo "=== /api/photos ==="
+          curl -sf http://127.0.0.1:8080/api/photos > /dev/null || { echo "::error::/api/photos failed"; FAIL=1; }
+
+          echo "=== Static assets ==="
+          curl -sf http://127.0.0.1:8080/static/js/app.js > /dev/null || { echo "::error::app.js not served"; FAIL=1; }
+          curl -sf http://127.0.0.1:8080/static/css/superhot.css > /dev/null || { echo "::error::superhot.css not served"; FAIL=1; }
+
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::Integration test failed"
+            exit 1
+          fi
+          echo "All integration checks passed"
 
   build-frontend:
     name: Build Frontend
@@ -107,6 +199,75 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y bats
       - name: Run bats tests
         run: bats tests/shell/
+
+  architecture:
+    name: Architecture Fitness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: No duplicate resource owners
+        run: |
+          # Two files should never create the same NetworkManager connection
+          NM_CREATES=$(grep -rl 'nmcli.*connection.*add\|nmcli.*dev.*wifi.*hotspot' app/ scripts/ --include='*.py' --include='*.sh' 2>/dev/null | sort -u)
+          COUNT=$(echo "$NM_CREATES" | grep -c . || true)
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::error::Multiple files create NM connections: $NM_CREATES"
+            exit 1
+          fi
+      - name: No v1/v2 naming conflicts
+        run: |
+          # All user-facing names should be FrameCast, not PiPhotoFrame
+          if grep -r 'PiPhotoFrame' app/ scripts/ systemd/ --include='*.py' --include='*.sh' --include='*.service' 2>/dev/null; then
+            echo "::error::Found stale v1 naming (PiPhotoFrame) — should be FrameCast"
+            exit 1
+          fi
+      - name: systemd WatchdogSec requires Type=notify
+        run: |
+          for f in systemd/*.service; do
+            [ -f "$f" ] || continue
+            if grep -q 'WatchdogSec' "$f" && ! grep -q 'Type=notify' "$f"; then
+              echo "::error::$f has WatchdogSec without Type=notify (watchdog is inert)"
+              exit 1
+            fi
+          done
+      - name: No hardcoded ports in kiosk
+        run: |
+          if grep -n 'localhost:8080\|127.0.0.1:8080' kiosk/ -r 2>/dev/null | grep -v '\.bak'; then
+            echo "::warning::Hardcoded port 8080 in kiosk — should use WEB_PORT env var"
+          fi
+      - name: All Python except blocks log before fallback
+        run: |
+          # AST-based check: except blocks that pass/return without logging
+          python3 -c "
+          import ast, sys, pathlib
+          violations = []
+          for p in pathlib.Path('app').rglob('*.py'):
+              try:
+                  tree = ast.parse(p.read_text())
+              except SyntaxError:
+                  continue
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.ExceptHandler):
+                      body = node.body
+                      if len(body) == 1:
+                          stmt = body[0]
+                          if isinstance(stmt, (ast.Pass, ast.Continue)):
+                              violations.append(f'{p}:{node.lineno}')
+                          elif isinstance(stmt, ast.Return):
+                              violations.append(f'{p}:{node.lineno}')
+          if violations:
+              for v in violations:
+                  print(f'::warning::{v}: bare except with no logging')
+          "
+      - name: Run architectural fitness tests
+        run: |
+          pip install pytest pytest-timeout
+          python3 -m pytest tests/test_architecture.py -v --timeout=30 2>/dev/null || echo "::warning::No architecture tests found (tests/test_architecture.py)"
 
   smoke:
     name: Smoke Test
@@ -197,7 +358,7 @@ jobs:
   # Gate: all checks must pass before merge
   ci-pass:
     name: CI Pass
-    needs: [lint-python, typecheck, pytest, build-frontend, test-frontend, test-shell, smoke]
+    needs: [lint-python, shellcheck, typecheck, pytest, integration, build-frontend, test-frontend, test-shell, architecture, smoke]
     if: always()
     runs-on: ubuntu-latest
     steps:

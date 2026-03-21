@@ -12,6 +12,7 @@ import re
 import socket
 import subprocess
 import threading
+import time
 from contextlib import closing
 from pathlib import Path
 
@@ -164,6 +165,7 @@ _SETTINGS_ENV_MAP = {
     "auto_update_enabled": ("AUTO_UPDATE_ENABLED", lambda v: "yes" if v else "no"),
     "pin_length": ("PIN_LENGTH", str),
     "max_video_duration": ("MAX_VIDEO_DURATION", str),
+    "onboarding_complete": ("ONBOARDING_COMPLETE", str),
 }
 
 
@@ -1050,7 +1052,12 @@ def wifi_test_connection():
 @api.route("/wifi/connect", methods=["POST"])
 @require_pin
 def wifi_connect():
-    """Connect to a WiFi network. Body: {"ssid": "...", "password": "..."}."""
+    """Connect to a WiFi network with two-phase AP-to-client transition.
+
+    Responds immediately so the HTTP response reaches the phone before
+    the AP stops (phone loses connection when AP goes down).
+    Body: {"ssid": "...", "password": "..."}.
+    """
     data = _require_json()
 
     ssid = data.get("ssid", "").strip()
@@ -1059,9 +1066,24 @@ def wifi_connect():
     if not ssid:
         return jsonify({"error": "SSID is required"}), 400
 
-    success, message = wifi.connect(ssid, password)
-    status_code = 200 if success else 502
-    return jsonify({"success": success, "message": message}), status_code
+    # Respond immediately — phone will lose connection when AP stops
+    def _delayed_connect():
+        time.sleep(5)  # Let HTTP response reach the phone
+        result = wifi.connect(ssid, password)
+        if result[0]:
+            sse.notify("wifi:connected", {"ssid": ssid})
+        else:
+            # Restart AP on failure so user can retry
+            wifi.start_ap()
+            sse.notify("wifi:failed", {"error": result[1]})
+
+    t = threading.Thread(target=_delayed_connect, daemon=True)
+    t.start()
+
+    # Notify TV display of pending transition
+    sse.notify("wifi:connecting", {"ssid": ssid})
+
+    return jsonify({"status": "connecting", "ssid": ssid})
 
 
 @api.route("/wifi/ap/start", methods=["POST"])

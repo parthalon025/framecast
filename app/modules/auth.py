@@ -94,11 +94,11 @@ def _make_auth_token(pin: str) -> str:
 
 
 def _is_ap_active() -> bool:
-    """Return True when the WiFi hotspot is active (user is physically present)."""
+    """Check if AP hotspot is actually running (not just service state)."""
     try:
-        from modules.services import is_service_active
+        from modules import wifi
 
-        return is_service_active("wifi")
+        return wifi.is_ap_active()
     except Exception:
         log.warning("Failed to check AP status", exc_info=True)
         return False
