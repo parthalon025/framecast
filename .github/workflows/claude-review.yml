@@ -1,0 +1,35 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    name: Claude Review
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: anthropics/claude-code-action@d59651bd82c48d81756854675ce4fa4d69722200 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-20250514
+          timeout_minutes: 5
+          trigger_phrase: "@claude"
+          direct_prompt: |
+            Review this PR for:
+            1. Security issues (auth bypass, injection, unsafe subprocess)
+            2. Integration seam bugs (component boundaries, state machine transitions)
+            3. Consistency with CLAUDE.md conventions
+            4. Silent failure patterns (bare except, missing logging)
+            Focus on what matters. Skip cosmetic suggestions.
