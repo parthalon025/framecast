@@ -2,7 +2,7 @@
 
 Turn any TV into a family photo frame — flash an SD card, boot the Pi, done. Browser-based slideshow with CSS transitions, superhot-ui terminal interface, WiFi captive portal, OTA updates.
 
-## Project Status: FEATURE FREEZE (v2.0.0)
+## Project Status: FEATURE FREEZE (v2.1.0)
 
 **No new features.** Only bug fixes, security patches, build fixes, and documentation updates. If a change adds new user-facing behavior, it requires explicit approval. This includes new API endpoints, UI pages, config options, and pi-gen stages.
 
@@ -39,11 +39,11 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 | `app/frontend/src/components/` | Reusable components (PhotoCard, Lightbox, PinGate, ShDropzone, PhoneLayout, OfflineBanner) |
 | `app/frontend/src/pages/` | Page components (Upload, Albums, Settings, Map, Stats, Users, Onboard, Update) |
 | `app/frontend/src/display/` | TV display components (Slideshow, DisplayRouter, Boot, Setup, Welcome) |
-| `app/modules/` | Python modules (db, rotation, users, cec, auth, config, media, wifi, updater, services, rate_limiter, boot_config) |
+| `app/modules/` | Python modules (db, rotation, users, cec, auth, config, media, wifi, updater, services, rate_limiter, boot_config — 12 modules) |
 | `kiosk/` | GJS/WebKit browser + cage launcher |
 | `pi-gen/` | Custom pi-gen stage for OS image build |
 | `systemd/` | Service and timer definitions |
-| `scripts/` | Health check, HDMI control, smoke tests |
+| `scripts/` | Health check, HDMI control, OTA post-update, WiFi check, smoke test, cert generation, lib/ |
 | `app/templates/` | Single template: `spa.html` (SPA shell for both phone + TV) |
 | `tests/` | pytest suites (test_db, test_rotation, test_users, test_cec, test_albums, test_auth, test_rate_limiter, test_config, test_api_integration) |
 | `docs/plans/` | Design docs, implementation plans, research |
@@ -62,23 +62,26 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 | `media.py` | Image/video processing. EXIF, GPS, thumbnails, format_size. |
 | `wifi.py` | WiFi provisioning via nmcli. Scan, connect, AP mode with 30-min auto-timeout. |
 | `updater.py` | OTA updates. GitHub Releases API, SHA256 verification, HMAC-signed rollback tags. |
+| `services.py` | System service management (restart, reboot, shutdown via sudo). |
+| `boot_config.py` | Boot configuration (SSH toggle, boot config.txt settings). |
 
 ## Services
 
 | Service | Purpose |
 |---------|---------|
-| `framecast` | gunicorn + Flask (WatchdogSec=120, MemoryMax=512M, ProtectSystem=strict) |
-| `framecast-kiosk` | cage + GTK-WebKit (Requires=framecast, WatchdogSec=60) |
-| `wifi-manager` | NetworkManager WiFi provisioning |
+| `framecast` | gunicorn + Flask (MemoryMax=512M, ProtectSystem=strict) |
+| `framecast-kiosk` | cage + GTK-WebKit (BindsTo=framecast, MemoryMax=512M) |
+| `wifi-manager` | Boot-time WiFi connectivity check (oneshot) |
+| `framecast-hostname` | First-boot unique hostname from MAC address (oneshot, runs once) |
 | `framecast-update.timer` | OTA update checker (daily, opt-in) |
-| `framecast-health.timer` | Health-check rollback (90s after boot) |
+| `framecast-health.timer` | Post-update health check with HMAC-validated rollback (90s after boot) |
 | `framecast-schedule.timer` | HDMI-CEC display schedule (every minute) |
 
 ## Build
 
 - Frontend: `cd app/frontend && npm install && npm run build`
 - Dev: `cd app && gunicorn -c gunicorn.conf.py web_upload:app`
-- Tests (Python): `make pytest` (~330 tests — unit, property, concurrency, fault injection, contracts, benchmarks)
+- Tests (Python): `make pytest` (363 tests — unit, property, concurrency, fault injection, contracts, benchmarks)
 - Tests (Frontend): `make test-frontend` (vitest — SSE client tests)
 - Tests (Shell): `make test-shell` (bats — health-check rollback logic)
 - Tests (All): `make test-all` (runs Python + frontend + shell)
@@ -136,7 +139,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - **Centralized toast:** `lib/toast.js` — signal-based, single stack rendered in PhoneLayout. Import `showToast(message, type, duration)` from any page.
 - **Incident state:** `lib/incident.js` — signal-based device-level alerts. `raiseIncident(message, severity)` / `clearIncident()`.
 - **Heartbeat:** `app.jsx` — 30s polling to `/api/status`. After 3 failures: raises incident, sets facility `alert`. On recovery: clears incident, triggers `recoverySequence`.
-- **superhot-ui components used (19/28):** ShNav, ShModal, ShToast, ShFrozen, ShSkeleton, ShCollapsible, ShStatsGrid, ShDataTable, ShPageBanner, ShStatusBadge, ShErrorState, ShEmptyState, ShMantra, ShIncidentHUD, ShHeroCard, ShTimeChart, ShThreatPulse, ShDropzone (custom), ShAnnouncement.
+- **superhot-ui components used (19):** ShNav, ShModal, ShToast, ShFrozen, ShSkeleton, ShCollapsible, ShDataTable, ShPageBanner, ShStatusBadge, ShErrorState, ShEmptyState, ShMantra, ShIncidentHUD, ShHeroCard, ShTimeChart, ShThreatPulse, ShDropzone (custom), ShAnnouncement, ShNarrator.
 
 ## Design Docs
 
