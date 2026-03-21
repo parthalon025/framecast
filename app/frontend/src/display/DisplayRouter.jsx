@@ -57,13 +57,21 @@ function PinDisplay() {
 }
 
 /**
- * After boot animation completes, check /api/status to determine
- * which screen to show next.
+ * After boot animation completes, determine which screen to show next.
+ * Accepts statusData from Boot (already fetched) to avoid a duplicate
+ * /api/status round-trip. Falls back to a fresh fetch if not provided.
  */
-async function handleBootComplete() {
+async function handleBootComplete(statusData) {
   try {
-    const res = await fetch("/api/status");
-    const data = await res.json();
+    const data =
+      statusData ||
+      (await fetch("/api/status").then((r) => r.json()).catch(() => null));
+
+    if (!data) {
+      // Can't reach API — likely no network
+      displayState.value = "setup";
+      return;
+    }
 
     if (data.access_pin) {
       accessPin.value = data.access_pin;
@@ -110,16 +118,17 @@ function renderState(stateName) {
 }
 
 export function DisplayRouter() {
-  // SSE: react to photo changes after initial boot
+  // SSE: react to photo and wifi changes after initial boot
   useEffect(() => {
     let cancelled = false;
 
     const sse = createSSE("/api/events", {
+      pauseOnHidden: false,
       listeners: {
         "photo:added": () => {
           if (cancelled) return;
-          // If we were on welcome, switch to slideshow
-          if (displayState.value === "welcome") {
+          // Transition from welcome or setup to slideshow
+          if (displayState.value === "welcome" || displayState.value === "setup") {
             displayState.value = "slideshow";
           }
         },
@@ -138,6 +147,28 @@ export function DisplayRouter() {
             .catch((err) => {
               console.warn("DisplayRouter: status refetch after delete failed", err);
             });
+        },
+        "wifi:connecting": () => {
+          // No state change — Setup component shows its own connecting UI
+        },
+        "wifi:connected": () => {
+          if (cancelled) return;
+          // WiFi just connected — re-check status to determine next state
+          fetch("/api/status")
+            .then((res) => res.json())
+            .then((data) => {
+              if (cancelled) return;
+              const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+              displayState.value = totalMedia > 0 ? "slideshow" : "welcome";
+            })
+            .catch((err) => {
+              console.warn("DisplayRouter: wifi:connected refetch failed", err);
+            });
+        },
+        "wifi:failed": () => {
+          if (cancelled) return;
+          // Stay in setup — AP will have restarted server-side
+          displayState.value = "setup";
         },
         "sync": () => {
           if (cancelled) return;
@@ -165,6 +196,23 @@ export function DisplayRouter() {
       sse.close();
     };
   }, []);
+
+  // Fallback: periodic re-check when stuck in setup (in case SSE missed)
+  useEffect(() => {
+    if (displayState.value !== "setup") return;
+    const interval = setInterval(() => {
+      fetch("/api/status")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.wifi_connected) {
+            const totalMedia = (data.photo_count || 0) + (data.video_count || 0);
+            displayState.value = totalMedia > 0 ? "slideshow" : "welcome";
+          }
+        })
+        .catch(() => {});
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [displayState.value]);
 
   const state = displayState.value;
   const showPin = state === "setup" || state === "welcome";
