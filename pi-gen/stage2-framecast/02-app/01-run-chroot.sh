@@ -101,9 +101,5 @@ sed -i "s|^MEDIA_DIR=.*|MEDIA_DIR=/home/pi/media|" /opt/framecast/app/.env
 chmod 600 /opt/framecast/app/.env
 chown 1000:1000 /opt/framecast/app/.env
 
-# Firewall: write RFC1918-only rules and enable ufw (C12)
-/usr/local/bin/ufw-setup.sh
-systemctl enable ufw
-
 # Purge pip after install — reduces image size (I35)
 apt-get purge -y python3-pip && apt-get autoremove -y
