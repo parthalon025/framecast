@@ -10,7 +10,6 @@ import { ShToast, ShFrozen, ShPageBanner, ShEmptyState, ShErrorState, ShThreatPu
 import { applyThreshold } from "superhot-ui";
 import { ShDropzone } from "../components/ShDropzone.jsx";
 import { PhotoGrid } from "../components/PhotoGrid.jsx";
-import { OfflineBanner } from "../components/OfflineBanner.jsx";
 import { NowPlaying, nowPlaying } from "../components/NowPlaying.jsx";
 import { onHeartbeat } from "../components/ConnectionBanner.jsx";
 import { ContextMenu } from "../components/PhotoCard.jsx";
@@ -528,8 +527,6 @@ export function Upload() {
           {pullDistance >= 80 ? "RELEASE TO REFRESH" : "PULL TO REFRESH"}
         </div>
       )}
-      <OfflineBanner />
-
       {/* Search modal */}
       <SearchModal onSelect={handlePhotoSelect} />
 

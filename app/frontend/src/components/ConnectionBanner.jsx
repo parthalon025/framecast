@@ -34,9 +34,11 @@ export function ConnectionBanner() {
       <button
         type="button"
         onClick={() => {
-          fetch("/api/reboot", { method: "POST" }).catch((err) => {
-            console.warn("ConnectionBanner: reboot request failed", err);
-          });
+          if (confirm("Restart the device? The display will be unavailable briefly.")) {
+            fetch("/api/reboot", { method: "POST" }).catch((err) => {
+              console.warn("ConnectionBanner: reboot request failed", err);
+            });
+          }
         }}
         style="background: #000; color: var(--sh-threat, #ff3333); border: 1px solid #000; font-family: var(--font-mono, monospace); font-size: 0.75rem; padding: 4px 12px; cursor: pointer; letter-spacing: 0.1em;"
       >
