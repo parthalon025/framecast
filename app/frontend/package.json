@@ -20,7 +20,7 @@
     "superhot-ui": "^0.4.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.27.4",
     "happy-dom": "^20.0.0",
     "vitest": "^3.0.0"
   }
