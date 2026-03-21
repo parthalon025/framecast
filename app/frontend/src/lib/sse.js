@@ -20,7 +20,7 @@
 const BACKOFF_INITIAL = 1000;
 const BACKOFF_MAX = 60000;
 
-export function createSSE(url, { listeners = {}, onOpen } = {}) {
+export function createSSE(url, { listeners = {}, onOpen, pauseOnHidden = true } = {}) {
   let source = null;
   let backoff = BACKOFF_INITIAL;
   let reconnectTimer = null;
@@ -61,6 +61,7 @@ export function createSSE(url, { listeners = {}, onOpen } = {}) {
   }
 
   // Pause SSE when page is backgrounded to reduce battery drain
+  // (skipped when pauseOnHidden: false — e.g. TV kiosk display)
   function handleVisibility() {
     if (closed) return;
     if (document.hidden) {
@@ -75,7 +76,9 @@ export function createSSE(url, { listeners = {}, onOpen } = {}) {
       connect();
     }
   }
-  document.addEventListener("visibilitychange", handleVisibility);
+  if (pauseOnHidden) {
+    document.addEventListener("visibilitychange", handleVisibility);
+  }
 
   connect();
   return { close };
