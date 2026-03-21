@@ -327,16 +327,9 @@ jobs:
           fi
 
           if [ "$RELEASE_STATUS" = "success" ]; then
-            MSG="✅ *FrameCast ${TAG}* released
-
-[GitHub Release](https://github.com/parthalon025/framecast/releases/tag/${TAG})
-
-Image built, QEMU boot tested, cosign signed."
+            printf -v MSG '✅ *FrameCast %s* released\n\n[GitHub Release](https://github.com/parthalon025/framecast/releases/tag/%s)\n\nImage built, QEMU boot tested, cosign signed.' "$TAG" "$TAG"
           else
-            MSG="❌ *FrameCast ${TAG}* release failed
-
-Status: ${RELEASE_STATUS}
-[Check Actions](https://github.com/parthalon025/framecast/actions)"
+            printf -v MSG '❌ *FrameCast %s* release failed\n\nStatus: %s\n[Check Actions](https://github.com/parthalon025/framecast/actions)' "$TAG" "$RELEASE_STATUS"
           fi
 
           curl -sf -X POST \
