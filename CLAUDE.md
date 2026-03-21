@@ -92,6 +92,24 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Image (Docker): `cd pi-gen && ./build.sh --docker`
 - Pi-gen branch: `bookworm-arm64`. Frontend builds on host (native x86), not QEMU chroot.
 
+## CI/CD Pipeline
+
+**PR gate (16 jobs):** lint-python, shellcheck, typecheck, pytest, integration (gunicorn + real endpoints), build-frontend, vitest, bats, architecture fitness, smoke, Claude Code Review, Claude Security Review (path-triggered), actionlint, commitlint, CodeQL (SAST), gitleaks. All gated through `CI Pass` required status check.
+
+**Architecture fitness checks:** no duplicate NM connection owners, no stale v1 naming (PiPhotoFrame), WatchdogSec requires Type=notify, bare except blocks must log.
+
+**Release pipeline (v* tag):** test gate → pi-gen build → QEMU arm64 boot test → SBOM (CycloneDX) → cosign keyless signing → SLSA attestation → GitHub Release → Telegram notification.
+
+**Automation:** release-please (auto VERSION + CHANGELOG from conventional commits), Dependabot (weekly pip/npm, monthly Actions), branch protection (CI Pass required, enforce admins, linear history, squash-only), commitlint (conventional commit enforcement).
+
+**AI review:** `anthropics/claude-code-action@v1` reads CLAUDE.md conventions. Security review path-triggered on auth.py, wifi.py, updater.py, api.py, web_upload.py, scripts/, pi-gen/.
+
+**Repo secrets:** `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+
+**Supply chain:** SHA-pinned actions, cosign signatures, SLSA provenance attestations, CycloneDX SBOMs, pip-audit + npm audit, gitleaks, CodeQL.
+
+**Config files:** `.release-please-manifest.json`, `release-please-config.json`, `.github/dependabot.yml`, `.github/CODEOWNERS`, `.commitlintrc.yml`, `.pre-commit-config.yaml`.
+
 ## Conventions
 
 - Target: Raspberry Pi 3/4/5 (arm64, Bookworm)
