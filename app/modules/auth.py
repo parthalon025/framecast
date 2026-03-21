@@ -174,8 +174,7 @@ def generate_guest_token(ttl_hours: int = 24) -> str:
     """
     secret = config.get("FLASK_SECRET_KEY", "")
     if not secret:
-        log.error("FLASK_SECRET_KEY not set — guest token will be insecure")
-        secret = "insecure-fallback"
+        raise ValueError("FLASK_SECRET_KEY not set — cannot generate secure guest token")
     expires = int(time.time()) + (ttl_hours * 3600)
     payload = f"guest:{expires}"
     sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
@@ -195,8 +194,8 @@ def validate_guest_token(token: str | None) -> bool:
         return False
     secret = config.get("FLASK_SECRET_KEY", "")
     if not secret:
-        log.error("FLASK_SECRET_KEY not set — guest token validation unreliable")
-        secret = "insecure-fallback"
+        log.error("FLASK_SECRET_KEY not set — guest token validation rejected")
+        return False
     payload = f"guest:{expires}"
     expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
     return hmac.compare_digest(sig, expected)

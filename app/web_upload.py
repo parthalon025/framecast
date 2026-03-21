@@ -76,7 +76,11 @@ def _heal_env_file():
     if not env_file.exists():
         log.critical(".env file missing at %s", env_file)
     else:
-        log.critical(".env file is empty or corrupt at %s (size: %d bytes)", env_file, env_file.stat().st_size)
+        log.critical(
+            ".env file is empty or corrupt at %s (size: %d bytes)",
+            env_file,
+            env_file.stat().st_size,
+        )
 
     if env_example.exists():
         log.warning("Self-healing: Restoring .env from .env.example")
@@ -87,7 +91,9 @@ def _heal_env_file():
         config.reload()
         log.warning("Self-healing: .env restored with new secret key. Review settings.")
     else:
-        log.critical("No .env.example found - cannot self-heal. Using built-in defaults.")
+        log.critical(
+            "No .env.example found - cannot self-heal. Using built-in defaults."
+        )
 
     _ensure_access_pin()
 
@@ -120,6 +126,7 @@ _heal_env_file()
 
 # Rotate PIN on boot if configured
 from modules.auth import rotate_pin_on_boot  # noqa: E402 — must run after _heal_env_file()
+
 rotate_pin_on_boot()
 
 
@@ -149,13 +156,17 @@ _upload_semaphore = threading.Semaphore(2)
 
 # --- MEDIA_DIR validation ---
 
+
 def _validate_media_dir(media_dir):
     """Verify MEDIA_DIR is under a safe parent directory."""
     try:
         resolved = Path(media_dir).resolve()
         home_dir = Path.home().resolve()
         safe_prefixes = (home_dir, Path("/media").resolve(), Path("/mnt").resolve())
-        if not any(resolved == prefix or str(resolved).startswith(str(prefix) + os.sep) for prefix in safe_prefixes):
+        if not any(
+            resolved == prefix or str(resolved).startswith(str(prefix) + os.sep)
+            for prefix in safe_prefixes
+        ):
             log.warning(
                 "SECURITY: MEDIA_DIR '%s' is outside safe directories "
                 "(home, /media/, /mnt/). This may be a misconfiguration.",
@@ -163,6 +174,7 @@ def _validate_media_dir(media_dir):
             )
     except Exception as exc:
         log.warning("SECURITY: Failed to validate MEDIA_DIR: %s", exc)
+
 
 _validate_media_dir(MEDIA_DIR)
 
@@ -174,7 +186,10 @@ def _validate_upload_path(filepath, media_dir):
     """
     resolved = Path(filepath).resolve()
     media_resolved = Path(media_dir).resolve()
-    if not str(resolved).startswith(str(media_resolved) + os.sep) and resolved != media_resolved:
+    if (
+        not str(resolved).startswith(str(media_resolved) + os.sep)
+        and resolved != media_resolved
+    ):
         log.error("Path traversal blocked: %s is outside %s", resolved, media_resolved)
         raise ValueError(f"Upload path outside media directory: {resolved}")
 
@@ -199,7 +214,10 @@ def _cleanup_tmp_files():
         except OSError as exc:
             log.warning("Failed to clean up temp file %s: %s", tmp_file, exc)
     if cleaned:
-        log.info("Startup cleanup: removed %d leftover .tmp file(s) from interrupted uploads", cleaned)
+        log.info(
+            "Startup cleanup: removed %d leftover .tmp file(s) from interrupted uploads",
+            cleaned,
+        )
 
 
 _cleanup_tmp_files()
@@ -238,6 +256,7 @@ def request_timeout(timeout_seconds):
     Prevents hung connections from consuming the thread forever.
     Uses SIGALRM on Unix systems; on Windows this is a no-op.
     """
+
     def decorator(f):
         @functools.wraps(f)
         def decorated(*args, **kwargs):
@@ -259,12 +278,18 @@ def request_timeout(timeout_seconds):
             try:
                 return f(*args, **kwargs)
             except TimeoutError:
-                log.error("Upload request timed out after %ds from %s", timeout_seconds, request.remote_addr)
+                log.error(
+                    "Upload request timed out after %ds from %s",
+                    timeout_seconds,
+                    request.remote_addr,
+                )
                 abort(408)  # Request Timeout
             finally:
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, old_handler)
+
         return decorated
+
     return decorator
 
 
@@ -310,6 +335,7 @@ def security_headers(response):
 
 def log_post_request(f):
     """Decorator to log POST requests with client IP and route."""
+
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         log.info(
@@ -318,6 +344,7 @@ def log_post_request(f):
             request.remote_addr,
         )
         return f(*args, **kwargs)
+
     return decorated
 
 
@@ -336,12 +363,18 @@ def _generate_video_thumbnail(video_path, filename):
         thumb_path = Path(THUMBNAIL_DIR) / thumb_name
         subprocess.run(
             [
-                "ffmpeg", "-y",
-                "-ss", "1",
-                "-i", str(video_path),
-                "-vframes", "1",
-                "-vf", "scale=320:-1",
-                "-q:v", "5",
+                "ffmpeg",
+                "-y",
+                "-ss",
+                "1",
+                "-i",
+                str(video_path),
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=320:-1",
+                "-q:v",
+                "5",
                 str(thumb_path),
             ],
             stdout=subprocess.DEVNULL,
@@ -427,7 +460,9 @@ def _require_pin_or_guest(func):
         # Check guest token first (query param on upload URL)
         guest_token = request.args.get("guest_token", "")
         if guest_token and validate_guest_token(guest_token):
-            log.info("Guest upload authorized (token valid) from %s", request.remote_addr)
+            log.info(
+                "Guest upload authorized (token valid) from %s", request.remote_addr
+            )
             return func(*args, **kwargs)
         # Fall through to normal PIN auth
         return require_pin(func)(*args, **kwargs)
@@ -481,7 +516,10 @@ def _do_upload():
         # Re-check disk space before each file to prevent filling disk
         # during multi-file uploads
         current_disk = media.get_disk_usage()
-        if current_disk["percent"] >= 95 or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024:
+        if (
+            current_disk["percent"] >= 95
+            or current_disk.get("free_bytes", 0) < 50 * 1024 * 1024
+        ):
             break
 
         dest = Path(MEDIA_DIR) / filename
@@ -535,7 +573,9 @@ def _do_upload():
             try:
                 tmp_dest.unlink(missing_ok=True)
             except OSError as cleanup_exc:
-                log.warning("Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc)
+                log.warning(
+                    "Failed to clean up temp file %s: %s", tmp_dest, cleanup_exc
+                )
             # Mark DB record as quarantined with reason
             db.update_photo_quarantine(photo_id, True, "file write failed")
             skipped += 1
@@ -546,6 +586,7 @@ def _do_upload():
         if not is_vid:
             try:
                 from PIL import Image as PILImage
+
                 with PILImage.open(str(dest)) as check_img:
                     check_img.verify()
             except Exception as verify_exc:
@@ -577,9 +618,12 @@ def _do_upload():
             coords = media.extract_gps(dest)
             if coords:
                 gps_lat, gps_lon = coords
+            # Strip EXIF metadata for privacy (GPS already extracted above) (I27)
+            media.strip_exif(dest)
             # Get dimensions
             try:
                 from PIL import Image as PILImage
+
                 with PILImage.open(str(dest)) as img:
                     width, height = img.size
             except Exception as exc:
@@ -602,17 +646,21 @@ def _do_upload():
                     log.info("Near-duplicate detected for %s: %s", filename, dupe_names)
 
         # Unquarantine and update metadata in DB
-        db.unquarantine_photo(photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=dhash)
+        db.unquarantine_photo(
+            photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=dhash
+        )
 
         uploaded += 1
         uploaded_names.append(filename)
         sse.notify("photo:added", {"filename": filename, "photo_id": photo_id})
 
-    return jsonify({
-        "uploaded": uploaded_names,
-        "uploaded_count": uploaded,
-        "skipped": skipped,
-    }), 200 if uploaded > 0 else 400
+    return jsonify(
+        {
+            "uploaded": uploaded_names,
+            "uploaded_count": uploaded,
+            "skipped": skipped,
+        }
+    ), 200 if uploaded > 0 else 400
 
 
 @app.route("/delete", methods=["POST"])
@@ -647,7 +695,11 @@ def delete():
         try:
             filepath.unlink()
         except OSError as exc:
-            log.error("Failed to delete file %s: %s — un-quarantining in DB", filepath.name, exc)
+            log.error(
+                "Failed to delete file %s: %s — un-quarantining in DB",
+                filepath.name,
+                exc,
+            )
             if photo_row:
                 db.update_photo_quarantine(photo_row["id"], False, None)
             return jsonify({"error": "File deletion failed"}), 500
@@ -687,7 +739,10 @@ def delete_all():
     if deleted_filenames:
         try:
             db.bulk_quarantine_all(reason="bulk delete")
-            log.info("Bulk-quarantined %d photos in DB after delete-all", len(deleted_filenames))
+            log.info(
+                "Bulk-quarantined %d photos in DB after delete-all",
+                len(deleted_filenames),
+            )
         except Exception as db_exc:
             log.error("Failed to clean up DB records after delete-all: %s", db_exc)
     # Clean up all thumbnails
@@ -698,7 +753,11 @@ def delete_all():
                 try:
                     t.unlink()
                 except OSError as exc:
-                    log.warning("Failed to delete thumbnail %s during delete-all: %s", t.name, exc)
+                    log.warning(
+                        "Failed to delete thumbnail %s during delete-all: %s",
+                        t.name,
+                        exc,
+                    )
     # Clear GPS locations cache
     cache_path = Path(MEDIA_DIR) / ".locations.json"
     if cache_path.exists():
@@ -714,9 +773,7 @@ def delete_all():
 def serve_media(filename):
     if filename.startswith(("quarantine/", "quarantine\\")):
         abort(404)
-    return send_from_directory(
-        MEDIA_DIR, filename, mimetype=None
-    )
+    return send_from_directory(MEDIA_DIR, filename, mimetype=None)
 
 
 @app.route("/thumbnail/<filename>")
@@ -731,8 +788,6 @@ def serve_thumbnail(filename):
         return send_from_directory(THUMBNAIL_DIR, thumb_name)
     # No thumbnail available - return 404
     abort(404)
-
-
 
 
 # --- Periodic thumbnail cleanup ---

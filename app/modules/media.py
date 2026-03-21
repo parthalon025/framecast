@@ -1,4 +1,5 @@
 """Media file operations - listing, disk usage, allowed extensions."""
+
 from __future__ import annotations
 
 import json
@@ -77,7 +78,12 @@ def get_media_files() -> list[dict[str, Any]]:
     quarantine_dir = media_path / "quarantine"
     skip_dirs = {thumbnails_dir, quarantine_dir}
     for f in media_path.rglob("*"):
-        if f.is_file() and f.suffix.lower() in all_ext and not any(d in f.parents for d in skip_dirs) and not f.name.endswith(".tmp"):
+        if (
+            f.is_file()
+            and f.suffix.lower() in all_ext
+            and not any(d in f.parents for d in skip_dirs)
+            and not f.name.endswith(".tmp")
+        ):
             stat = f.stat()
             files.append(
                 {
@@ -99,7 +105,13 @@ def get_disk_usage() -> dict[str, Any]:
     """Get disk usage stats for the media directory."""
     media_dir = get_media_dir()
     if not Path(media_dir).exists():
-        return {"total": "N/A", "used": "N/A", "free": "N/A", "percent": 0, "free_bytes": 0}
+        return {
+            "total": "N/A",
+            "used": "N/A",
+            "free": "N/A",
+            "percent": 0,
+            "free_bytes": 0,
+        }
     total, used, free = shutil.disk_usage(media_dir)
     return {
         "total": format_size(total),
@@ -217,7 +229,11 @@ def fix_orientation(image_path: str | Path) -> bool:
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
                 raise
-            log.info("Fixed EXIF orientation for %s (was %d)", Path(image_path).name, orientation)
+            log.info(
+                "Fixed EXIF orientation for %s (was %d)",
+                Path(image_path).name,
+                orientation,
+            )
             return True
     except Exception:
         log.warning("EXIF orientation fix failed for %s", image_path, exc_info=True)
@@ -287,6 +303,42 @@ def extract_gps(image_path: str | Path) -> tuple[float, float] | None:
         return None
 
 
+def strip_exif(image_path: str | Path) -> bool:
+    """Strip all EXIF metadata from an image (privacy: removes GPS, camera info).
+
+    Re-saves pixel data only, discarding all EXIF tags. Must be called AFTER
+    extract_gps() so GPS coordinates are already captured in the database.
+    Uses atomic write (tmp + os.replace) to prevent corruption on power loss.
+
+    Returns True if EXIF was stripped, False otherwise.
+    """
+    try:
+        from PIL import Image as PILImage
+    except ImportError:
+        return False
+
+    try:
+        with PILImage.open(str(image_path)) as img:
+            if not img.info.get("exif"):
+                return False  # No EXIF to strip
+            # Re-save pixel data without EXIF
+            data = img.copy()
+        # Atomic write
+        tmp_path = str(image_path) + ".tmp"
+        try:
+            data.save(tmp_path, quality=95)
+            os.replace(tmp_path, str(image_path))
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+        log.info("Stripped EXIF metadata from %s", Path(image_path).name)
+        return True
+    except Exception:
+        log.warning("EXIF strip failed for %s", image_path, exc_info=True)
+        return False
+
+
 def _locations_cache_path() -> Path:
     """Return the path to the locations cache file."""
     return Path(get_media_dir()) / ".locations.json"
@@ -321,9 +373,7 @@ def _save_locations_cache(cache: dict[str, dict[str, float]]) -> None:
     cache_path = _locations_cache_path()
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(cache_path.parent), suffix=".tmp"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=str(cache_path.parent), suffix=".tmp")
         try:
             with open(fd, "w", encoding="utf-8") as f:
                 json.dump(cache, f, indent=2)
@@ -453,9 +503,7 @@ def compute_dhash(filepath: str | Path, hash_size: int = 8) -> str | None:
     try:
         with Image.open(str(filepath)) as img:
             # Resize to (hash_size + 1) x hash_size, grayscale
-            resized = img.convert("L").resize(
-                (hash_size + 1, hash_size), Image.LANCZOS
-            )
+            resized = img.convert("L").resize((hash_size + 1, hash_size), Image.LANCZOS)
             pixels = list(resized.getdata())
             # Compare adjacent pixels: left < right = 1 bit
             bits = 0
