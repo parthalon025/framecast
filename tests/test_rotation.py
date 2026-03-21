@@ -187,7 +187,14 @@ class TestDiversity:
     """Tests for the diversity penalty mechanism."""
 
     def test_no_immediate_repeat(self, initialized_db, rotation_mod, db_mod):
-        """No photo should repeat within 30% of library size when diversity is active."""
+        """No photo should repeat within 30% of library size when diversity is active.
+
+        Seed the RNG for determinism — the 0.1x penalty makes repeats
+        unlikely (~3.5%) but not impossible, which caused CI flakes.
+        """
+        import random
+        random.seed(42)
+
         # Create 10 photos
         ids = []
         for i in range(10):
