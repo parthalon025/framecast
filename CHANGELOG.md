@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0](https://github.com/parthalon025/framecast/compare/v2.1.0...v2.2.0) (2026-03-21)
+
+
+### Features
+
+* API consolidation + superhot-ui maximization ([#91](https://github.com/parthalon025/framecast/issues/91)) ([5a72a96](https://github.com/parthalon025/framecast/commit/5a72a96871b720df149577115acb4f5935148802))
+* Phase 3 — 9 phone UX polish improvements ([#82](https://github.com/parthalon025/framecast/issues/82)) ([ba613d8](https://github.com/parthalon025/framecast/commit/ba613d8aacf63b4468841dc32d7c98bce858a488))
+* Phase 4 — TV display improvements ([#52](https://github.com/parthalon025/framecast/issues/52), [#66](https://github.com/parthalon025/framecast/issues/66), [#60](https://github.com/parthalon025/framecast/issues/60), [#62](https://github.com/parthalon025/framecast/issues/62), [#48](https://github.com/parthalon025/framecast/issues/48)) ([#83](https://github.com/parthalon025/framecast/issues/83)) ([dea60d0](https://github.com/parthalon025/framecast/commit/dea60d095c2caee28fe8975ad6ea7886c9fbdf04))
+* Phase 5 — media pipeline improvements ([#47](https://github.com/parthalon025/framecast/issues/47), [#42](https://github.com/parthalon025/framecast/issues/42), [#29](https://github.com/parthalon025/framecast/issues/29), [#46](https://github.com/parthalon025/framecast/issues/46)) ([2af5609](https://github.com/parthalon025/framecast/commit/2af560960c095a018f75b1dbb44f4438af751710))
+* Phase 6 — real-time features ([#39](https://github.com/parthalon025/framecast/issues/39), [#74](https://github.com/parthalon025/framecast/issues/74), [#63](https://github.com/parthalon025/framecast/issues/63), [#73](https://github.com/parthalon025/framecast/issues/73), [#51](https://github.com/parthalon025/framecast/issues/51)) ([#87](https://github.com/parthalon025/framecast/issues/87)) ([a9ae38c](https://github.com/parthalon025/framecast/commit/a9ae38ca130bc308fd441804779e35b4de7fd3cb))
+* Phase 7 — network & setup improvements ([#88](https://github.com/parthalon025/framecast/issues/88)) ([d10691c](https://github.com/parthalon025/framecast/commit/d10691ca57f42099a29ffb6b37a2683f6a336e0f))
+* Phase 8 — advanced features ([#44](https://github.com/parthalon025/framecast/issues/44), [#45](https://github.com/parthalon025/framecast/issues/45), [#57](https://github.com/parthalon025/framecast/issues/57), [#58](https://github.com/parthalon025/framecast/issues/58), [#68](https://github.com/parthalon025/framecast/issues/68), [#61](https://github.com/parthalon025/framecast/issues/61)) ([#89](https://github.com/parthalon025/framecast/issues/89)) ([102a606](https://github.com/parthalon025/framecast/commit/102a6065e5dfe9f24c9da4c27770414ff3b419a5))
+* superhot-ui atmosphere system for TV display surface ([#93](https://github.com/parthalon025/framecast/issues/93)) ([3988dae](https://github.com/parthalon025/framecast/commit/3988dae543f940b7d258982bc656fac63d85fe80))
+
+
+### Bug Fixes
+
+* build-image workflow YAML parse error and missing workflow_call ([#114](https://github.com/parthalon025/framecast/issues/114)) ([2b3e28a](https://github.com/parthalon025/framecast/commit/2b3e28a886828f55dd935256757a95d9429e0ae7))
+* comprehensive audit fixes — 41 tasks across 11 batches ([#79](https://github.com/parthalon025/framecast/issues/79)) ([80730f6](https://github.com/parthalon025/framecast/commit/80730f64feb1ad47cd041a390ad64ebef0c9db90))
+* downgrade media directory check to warning in image validation ([#121](https://github.com/parthalon025/framecast/issues/121)) ([dc75f23](https://github.com/parthalon025/framecast/commit/dc75f2376cb09f692c5bc88af89d44d162c72606))
+* move firewall setup from 02-app to 03-system stage ([#118](https://github.com/parthalon025/framecast/issues/118)) ([e898512](https://github.com/parthalon025/framecast/commit/e8985128d2ffa1c346b4b450ccd5336149ef5388))
+* OTA update pipeline — init git repo in pi-gen, create update-check.sh, pass SHA to apply ([8c61d1e](https://github.com/parthalon025/framecast/commit/8c61d1e20a8d2445045e28e3fa30eafe0a417fa9))
+* Phase 1 hardening — 9 security and reliability fixes ([e84a399](https://github.com/parthalon025/framecast/commit/e84a3996371cf183048fbf6d508dd26a0ecf3474))
+* Phase 1 hardening — 9 security and reliability fixes ([2c6b4fd](https://github.com/parthalon025/framecast/commit/2c6b4fd7a0d733c366de94aa7755a1f594e0eb49))
+* Phase 2 — API integration tests + cache-bust on OTA update ([#81](https://github.com/parthalon025/framecast/issues/81)) ([0516cea](https://github.com/parthalon025/framecast/commit/0516cea1b78a0e2e0e29ac7dbbd2e5d239104146))
+* polish PhoneLayout search — header bar, SVG icon, lightbox integration ([3100e90](https://github.com/parthalon025/framecast/commit/3100e90f3e76748fd12bcbd0c23278a55eabbd0e))
+* production hardening — OTA safety, pi-gen build, kiosk reliability, firewall ([#95](https://github.com/parthalon025/framecast/issues/95)) ([bd0355f](https://github.com/parthalon025/framecast/commit/bd0355f8f6ff0320a751f9517657ec717938a4e4))
+* Production Hardening v2.1 — 90 findings from 12-agent review ([#110](https://github.com/parthalon025/framecast/issues/110)) ([b1fade0](https://github.com/parthalon025/framecast/commit/b1fade031e9f1032ad9949bb42b46336ff9a521c))
+* reliability hardening — 19 fixes across systemd, shell, Python, security ([#85](https://github.com/parthalon025/framecast/issues/85)) ([97fb85c](https://github.com/parthalon025/framecast/commit/97fb85c74b8eeeb9ccdca70c185431cc67a1b72f))
+* replace QEMU boot test with structural image validation ([#120](https://github.com/parthalon025/framecast/issues/120)) ([0b9cf2e](https://github.com/parthalon025/framecast/commit/0b9cf2e997abfe6004eaf14db671a2aab1b528d0))
+* resolve ruff lint errors — remove unused imports, noqa late import ([24b2d62](https://github.com/parthalon025/framecast/commit/24b2d6238326d6fb9a8f6ac51a5cdac42e55ec94))
+* seed RNG in diversity test to prevent CI flakes ([#123](https://github.com/parthalon025/framecast/issues/123)) ([76ad3c5](https://github.com/parthalon025/framecast/commit/76ad3c5353ebeaaf9f2e9ed41759d51079f00181))
+* sync VERSION and release-please manifest to v2.1.0 ([#115](https://github.com/parthalon025/framecast/issues/115)) ([3675802](https://github.com/parthalon025/framecast/commit/367580222b71ef9039b40208ed97f4e3f9e212eb))
+
+
+### Performance Improvements
+
+* cache pi-gen base rootfs between CI builds ([#119](https://github.com/parthalon025/framecast/issues/119)) ([e1e3814](https://github.com/parthalon025/framecast/commit/e1e3814ac97d2e0a58c46017cf40a0623bea1467))
+
 ## [2.0.1] - 2026-03-20
 
 ### Fixed
