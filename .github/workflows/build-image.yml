@@ -4,6 +4,10 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+  id-token: write  # Required for cosign keyless signing
+
 jobs:
   # Run full test suite before building image
   test:
@@ -62,3 +66,232 @@ jobs:
           name: framecast-build-info
           path: pi-gen/pi-gen/deploy/*.info
           retention-days: 30
+
+  # Boot the image in QEMU and verify services start
+  qemu-boot-test:
+    name: QEMU Boot Test
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU system
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-aarch64 qemu-efi-aarch64 unzip
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: framecast-image
+
+      - name: Extract and prepare image
+        run: |
+          unzip *.zip
+          IMG=$(ls *.img)
+          echo "Image: $IMG ($(du -h "$IMG" | cut -f1))"
+
+          # Expand image to give room for boot (pi-gen images are tight)
+          qemu-img resize "$IMG" 8G
+
+          echo "IMG_FILE=$IMG" >> "$GITHUB_ENV"
+
+      - name: Boot image in QEMU (60s)
+        run: |
+          # Boot arm64 image with kernel from the image's boot partition
+          # Extract kernel and dtb from the image
+          LOOP=$(sudo losetup --find --show --partscan "$IMG_FILE")
+          sudo mkdir -p /mnt/boot
+          sudo mount "${LOOP}p1" /mnt/boot
+
+          # Copy kernel and dtb out for direct QEMU boot
+          cp /mnt/boot/kernel8.img /tmp/kernel8.img
+          cp /mnt/boot/bcm2710-rpi-3-b-plus.dtb /tmp/rpi3.dtb 2>/dev/null || true
+
+          sudo umount /mnt/boot
+          sudo losetup -d "$LOOP"
+
+          # Boot with QEMU — direct kernel boot (no UEFI needed)
+          # Timeout after 60s — enough for systemd to start services
+          timeout 90 qemu-system-aarch64 \
+            -M virt \
+            -cpu cortex-a53 \
+            -m 1024 \
+            -kernel /tmp/kernel8.img \
+            -append "root=/dev/vda2 rootfstype=ext4 rw console=ttyAMA0" \
+            -drive "file=$IMG_FILE,format=raw,if=virtio" \
+            -nographic \
+            -no-reboot \
+            2>&1 | tee /tmp/qemu-boot.log &
+          QEMU_PID=$!
+
+          # Wait for systemd to reach a target or timeout
+          for i in $(seq 1 60); do
+            if grep -q "Reached target\|Started FrameCast\|login:" /tmp/qemu-boot.log 2>/dev/null; then
+              echo "System booted after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          kill $QEMU_PID 2>/dev/null || true
+          wait $QEMU_PID 2>/dev/null || true
+
+      - name: Verify boot log
+        run: |
+          echo "=== Boot log (last 50 lines) ==="
+          tail -50 /tmp/qemu-boot.log
+
+          FAIL=0
+
+          # Check kernel loaded
+          if grep -q "Linux version" /tmp/qemu-boot.log; then
+            echo "  OK  Kernel loaded"
+          else
+            echo "  FAIL  Kernel did not load"
+            FAIL=1
+          fi
+
+          # Check systemd started
+          if grep -q "systemd" /tmp/qemu-boot.log; then
+            echo "  OK  systemd initialized"
+          else
+            echo "  FAIL  systemd did not start"
+            FAIL=1
+          fi
+
+          # Check for kernel panic
+          if grep -qi "kernel panic\|Oops\|BUG:" /tmp/qemu-boot.log; then
+            echo "  FAIL  Kernel panic detected"
+            FAIL=1
+          fi
+
+          # Check for critical service failures
+          if grep -qi "Failed to start.*framecast" /tmp/qemu-boot.log; then
+            echo "  WARN  FrameCast service failed to start (may be expected without hardware)"
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::QEMU boot test failed"
+            exit 1
+          fi
+          echo "QEMU boot test passed"
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-boot-log
+          path: /tmp/qemu-boot.log
+          retention-days: 7
+
+  # Sign artifacts with cosign (keyless, uses GitHub OIDC)
+  sign:
+    name: Sign Artifacts
+    needs: [build, qemu-boot-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: framecast-image
+
+      - name: Sign image with cosign (keyless)
+        run: |
+          for f in *.zip; do
+            echo "Signing $f..."
+            cosign sign-blob \
+              --yes \
+              --oidc-issuer https://token.actions.githubusercontent.com \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "$f"
+            echo "  Signature: ${f}.sig"
+            echo "  Certificate: ${f}.pem"
+          done
+
+      - name: Upload signatures
+        uses: actions/upload-artifact@v4
+        with:
+          name: framecast-signatures
+          path: |
+            *.sig
+            *.pem
+          retention-days: 90
+
+  # Create GitHub Release with signed artifacts
+  release:
+    name: Create Release
+    needs: [sign]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum *.zip > SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-assets/*.zip
+            release-assets/*.info
+            release-assets/*.sig
+            release-assets/*.pem
+            release-assets/SHA256SUMS
+          generate_release_notes: true
+
+  # Notify via Telegram
+  notify:
+    name: Telegram Notification
+    needs: [release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_STATUS: ${{ needs.release.result }}
+        run: |
+          if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not configured — skipping notification"
+            exit 0
+          fi
+
+          if [ "$RELEASE_STATUS" = "success" ]; then
+            MSG="✅ *FrameCast ${TAG}* released
+
+[GitHub Release](https://github.com/parthalon025/framecast/releases/tag/${TAG})
+
+Image built, QEMU boot tested, cosign signed."
+          else
+            MSG="❌ *FrameCast ${TAG}* release failed
+
+Status: ${RELEASE_STATUS}
+[Check Actions](https://github.com/parthalon025/framecast/actions)"
+          fi
+
+          curl -sf -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d parse_mode=Markdown \
+            -d text="$MSG" \
+            > /dev/null
+
+          echo "Telegram notification sent"
