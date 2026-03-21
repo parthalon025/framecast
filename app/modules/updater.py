@@ -318,6 +318,7 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
     # Checkout the target tag
     ok, msg = _git("checkout", tag)
     if not ok:
+        _cleanup_update_flag()
         return False, f"git checkout {tag} failed: {msg}"
 
     # Run post-update deps/rebuild (C7)
