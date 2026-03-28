@@ -516,6 +516,23 @@ def bulk_quarantine_all(reason: str = "bulk delete") -> None:
             conn.commit()
 
 
+def bulk_quarantine_by_filenames(
+    filenames: list[str], reason: str = "bulk delete"
+) -> None:
+    """Mark specific photos as quarantined by filename list."""
+    if not filenames:
+        return
+    with _write_lock:
+        with closing(get_db()) as conn:
+            placeholders = ",".join("?" for _ in filenames)
+            conn.execute(
+                f"UPDATE photos SET quarantined = 1, quarantine_reason = ? "
+                f"WHERE filename IN ({placeholders}) AND quarantined = 0",
+                [reason] + filenames,
+            )
+            conn.commit()
+
+
 def delete_photo(photo_id: int) -> None:
     """Mark a photo as quarantined (soft delete)."""
     update_photo_quarantine(photo_id, True, reason="deleted by user")
@@ -862,20 +879,20 @@ def _start_flush_timer() -> None:
 
 
 def register_shutdown_flush() -> None:
-    """Register signal handlers to flush stats buffer on graceful shutdown.
+    """Register atexit handler to flush stats buffer on graceful shutdown.
 
     Prevents stat loss when systemd sends SIGTERM (up to 5min of buffered data).
+    Uses atexit instead of signal handlers to avoid deadlock when SIGTERM
+    arrives while _write_lock is held by a request thread.
     """
-    import signal
-    import types
+    import atexit
 
-    def _shutdown_flush(signum: int, frame: types.FrameType | None) -> None:
+    def _shutdown_flush() -> None:
         if _stats_buffer:
-            log.info("Flushing %d buffered stats on signal %d", len(_stats_buffer), signum)
+            log.info("Flushing %d buffered stats on shutdown", len(_stats_buffer))
             _flush_stats()
 
-    signal.signal(signal.SIGTERM, _shutdown_flush)
-    signal.signal(signal.SIGINT, _shutdown_flush)
+    atexit.register(_shutdown_flush)
 
 
 def _prune_old_stats() -> None:
@@ -1083,17 +1100,16 @@ def backup_db() -> str:
 
     backup_path = src.parent / "framecast.db.backup"
 
-    # WAL checkpoint before backup to ensure all data is in main DB file
-    with closing(get_db()) as conn:
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-
-    # Atomic: copy to tmp, fsync, rename (Lesson #1234)
+    # WAL checkpoint + copy under write lock to prevent racing with concurrent writes
     fd, tmp_path = tempfile.mkstemp(
         dir=str(src.parent), suffix=".db.tmp"
     )
     try:
         os.close(fd)
-        shutil.copy2(str(src), tmp_path)
+        with _write_lock:
+            with closing(get_db()) as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            shutil.copy2(str(src), tmp_path)
         # fsync the copy
         with open(tmp_path, "rb") as f:
             os.fsync(f.fileno())

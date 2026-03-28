@@ -9,7 +9,7 @@ bind = f"0.0.0.0:{os.environ.get('WEB_PORT', '8080')}"
 # MANDATORY: workers=1. SSE, stats buffer, CEC are process-singletons.
 # See issue #34 and Lesson #1356.
 # Also guarded at Flask init time in web_upload.py (_check_single_worker).
-_requested_workers = int(os.environ.get("GUNICORN_WORKERS", 1))
+_requested_workers = int(os.environ.get("GUNICORN_WORKERS") or 1)
 if _requested_workers != 1:
     print(
         f"FATAL: GUNICORN_WORKERS={_requested_workers} is not supported. "
@@ -48,7 +48,7 @@ loglevel = os.environ.get("LOG_LEVEL", "info")
 # When HTTPS_ENABLED=yes and certs exist under MEDIA_DIR/certs/, gunicorn
 # serves TLS directly. Generate certs with scripts/generate-cert.sh.
 _cert_dir = os.path.join(
-    os.environ.get("MEDIA_DIR", "/home/pi/framecast-data"), "certs"
+    os.environ.get("MEDIA_DIR", "/home/pi/media"), "certs"
 )
 _cert = os.path.join(_cert_dir, "server.crt")
 _key = os.path.join(_cert_dir, "server.key")

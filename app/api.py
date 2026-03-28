@@ -209,7 +209,7 @@ def list_photos():
 @api.route("/search")
 def search_photos_endpoint():
     """Search photos by filename, tags, or album names."""
-    q = request.args.get("q", "").strip()
+    q = request.args.get("q", "").strip()[:200]
     if not q:
         return jsonify({"photos": [], "query": ""})
     photos = db.search_photos(q)
@@ -240,7 +240,7 @@ def status():
         "settings": _current_settings(),
     }
     # Only expose PIN to localhost (TV display needs it to show on-screen)
-    if request.remote_addr in ("127.0.0.1", "::1"):
+    if request.remote_addr in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
         result["access_pin"] = config.get("ACCESS_PIN", "").strip()
     return jsonify(result)
 
@@ -589,7 +589,7 @@ def toggle_photo_favorite(photo_id):
 @api.route("/photos/<int:photo_id>/quarantine", methods=["POST"])
 def quarantine_photo(photo_id):
     """Quarantine a photo (localhost only — called from TV display)."""
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if request.remote_addr not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
         return jsonify({"error": "LOCALHOST ONLY"}), 403
 
     photo = db.get_photo_by_id(photo_id)
@@ -695,7 +695,7 @@ def create_album():
     """Create a new album. Body: {"name": "...", "description": "..."}."""
     data = _require_json()
 
-    name = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()[:100]
     if not name:
         return jsonify({"error": "Album name is required"}), 400
 
@@ -786,7 +786,7 @@ def add_photo_tag(photo_id):
     """Add a tag to a photo. Body: {"name": "..."}."""
     data = _require_json()
 
-    name = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()[:100]
     if not name:
         return jsonify({"error": "Tag name is required"}), 400
 
@@ -815,7 +815,7 @@ def slideshow_now_playing():
     can show a "now playing" indicator.  Localhost-only — only the kiosk
     browser on this device should call this endpoint (I28).
     """
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+    if request.remote_addr not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
         abort(403)
     data = request.get_json(silent=True) or {}
     sse.notify(
@@ -926,7 +926,7 @@ def create_user():
     """Create a new user. Body: {"name": "..."}."""
     data = _require_json()
 
-    name = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()[:100]
     if not name:
         return jsonify({"error": "User name is required"}), 400
 
@@ -1015,7 +1015,7 @@ def restore_backup():
         )
     except ValueError as exc:
         log.warning("Restore validation failed: %s", exc)
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": "Invalid backup file"}), 400
     except Exception as exc:
         log.error("Restore failed: %s", exc)
         return jsonify({"error": "Restore failed"}), 500
@@ -1084,6 +1084,7 @@ def export_photos():
         )
     except Exception as exc:
         log.error("Export failed: %s", exc)
+        Path(tmp_path).unlink(missing_ok=True)
         return jsonify({"error": "Export failed"}), 500
 
 
@@ -1154,7 +1155,8 @@ def wifi_connect():
         else:
             # Restart AP on failure so user can retry
             wifi.start_ap()
-            sse.notify("wifi:failed", {"error": result[1]})
+            log.warning("WiFi connect failed: %s", result[1])
+            sse.notify("wifi:failed", {"error": "Connection failed"})
 
     t = threading.Thread(target=_delayed_connect, daemon=True)
     t.start()
@@ -1313,11 +1315,11 @@ def discover_frames():
             if not line.startswith("=") or "model=framecast" not in line:
                 continue
             parts = line.split(";")
-            if len(parts) < 8:
+            if len(parts) < 9:
                 continue
             hostname = parts[3]
             ip = parts[7]
-            port = parts[8] if len(parts) > 8 else "8080"
+            port = parts[8]
             if hostname != my_hostname:
                 frames.append(
                     {

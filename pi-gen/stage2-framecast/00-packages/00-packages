@@ -2,14 +2,11 @@ cage
 gjs
 gir1.2-webkit2-4.1
 wlr-randr
-python3-flask
-gunicorn
 ffmpeg
 watchdog
 qrencode
 avahi-daemon
 network-manager
-python3-pil
 python3-pip
 dphys-swapfile
 git
