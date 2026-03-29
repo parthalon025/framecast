@@ -316,7 +316,7 @@ jobs:
 
       - name: Generate checksums
         working-directory: release-assets
-        run: sha256sum *.zip > SHA256SUMS
+        run: sha256sum ./*.zip > SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
