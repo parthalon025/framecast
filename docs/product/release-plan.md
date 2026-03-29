@@ -2,11 +2,13 @@
 **Target date:** 2026-03-29
 **Release type:** Patch
 **Release method:** release-please (PR #130) → GitHub Release → pi-gen image build
+**Status:** RELEASED (2026-03-29)
 
 ## Scope
 
-Single patch release containing 7 bug fixes from the SD card audit (PR #129, merged):
+Patch release containing 9 fixes across two PRs:
 
+### PR #129 — SD card audit (7 fixes)
 1. **cmdline.txt boot params** — fixed `rootfstype=ext4` and `fsck.repair=yes`
 2. **pi-gen config.txt** — corrected `dtoverlay=vc4-kms-v3d` (was `fkms`), proper `arm_64bit=1`
 3. **pi-gen build.sh** — fixed stage directory detection and cleanup logic
@@ -15,25 +17,26 @@ Single patch release containing 7 bug fixes from the SD card audit (PR #129, mer
 6. **HDMI script** — fixed `cec-ctl` command syntax for Bookworm
 7. **Gunicorn config** — secured bind address and timeout settings
 
-### Known Issue (deferred to v2.2.2)
-- **cmdline.txt missing `init_resize.sh`** (#131) — `--app-only` builds skip `01-config` stage. Fix in PR #132 (CI failures pending resolution). Workaround: use full `./build.sh` instead of `--app-only`.
+### PR #132 — CI fixes + cmdline.txt (closes #131)
+8. **cmdline.txt `init_resize.sh`** — `--app-only` builds no longer skip `01-config` stage
+9. **CI pipeline** — updated claude-code-action to v1.0.81, fixed ShellCheck SC2154/SC2035, added OIDC permissions
 
 ## Release Checklist
 
 ### Pre-Release
-- [x] All bug fixes merged to main (PR #129)
-- [x] No open P0 bugs (remaining issues are P1/P2: #106, #105, #131)
+- [x] All bug fixes merged to main (PR #129 + PR #132)
+- [x] No open P0 bugs (remaining issues are P1/P2: #106, #105)
 - [x] CHANGELOG.md auto-updated by release-please
 - [x] VERSION auto-bumped to 2.2.1 by release-please
 - [x] 363 Python tests passing (`make pytest`)
 - [x] Frontend tests passing (`make test-frontend`)
 - [x] Shell tests passing (`make test-shell`)
-- [x] CI pipeline: 16 jobs green on main
-- [ ] Security review: no new auth/crypto/network changes in this patch
+- [x] CI pipeline: 16 jobs green on main (CI Pass required check)
+- [x] Security review: no new auth/crypto/network changes in this patch
 
 ### Release
-- [ ] Merge release-please PR #130 (creates tag `v2.2.1` automatically)
-- [ ] Verify GitHub Release created with changelog notes
+- [x] Merge release-please PR #130 (created tag `v2.2.1` automatically)
+- [x] GitHub Release created with changelog notes (2026-03-29)
 - [ ] Trigger pi-gen image build: `cd pi-gen && ./build.sh`
 - [ ] Verify built image boots in QEMU: `make test-image` (or structural validation)
 - [ ] Upload `.img.xz` to GitHub Release assets
@@ -75,7 +78,7 @@ N/A — personal project, no public users yet.
 - [ ] SD card filesystem shows `ext4` with `fsck.repair` enabled
 
 ## Dependencies on Next Release (v2.2.2)
-- PR #132: `--app-only` cmdline.txt fix (blocked on ShellCheck CI)
 - Dependabot: picomatch 4.0.4, vitest 4.1.1, happy-dom 20.8.8, gunicorn 25.2.0
 - Issue #106: OTA pipeline (delivers source only, no deps/frontend/migrations)
 - Issue #105: WiFi provisioning (dual system conflict, no first-boot flow)
+- Production readiness plan: `docs/plans/2026-03-28-production-readiness-plan.md` (32 tasks, 7 phases)
