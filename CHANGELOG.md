@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1](https://github.com/parthalon025/framecast/compare/v2.2.0...v2.2.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* resolve CI failures and include 01-config in --app-only builds ([5031cfc](https://github.com/parthalon025/framecast/commit/5031cfc51a9d9e6e32071305191bf0a345f628a1)), closes [#131](https://github.com/parthalon025/framecast/issues/131)
+* SD card audit — 7 fixes for boot failures and image issues ([#129](https://github.com/parthalon025/framecast/issues/129)) ([268e56f](https://github.com/parthalon025/framecast/commit/268e56f153e0a0fab692e199b6a02fb791c90203))
+
 ## [2.2.0](https://github.com/parthalon025/framecast/compare/v2.1.0...v2.2.0) (2026-03-21)
 
 
