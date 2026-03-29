@@ -253,4 +253,3 @@ Please include:
 - Relevant logs:
   - `journalctl -u framecast` (web server)
   - `journalctl -u framecast-kiosk` (display)
-  - `journalctl -u wifi-manager` (WiFi provisioning)

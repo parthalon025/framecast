@@ -290,7 +290,6 @@ jobs:
             pi-gen/config \
             systemd/framecast.service \
             systemd/framecast-kiosk.service \
-            systemd/wifi-manager.service \
             systemd/framecast-update.service \
             systemd/framecast-update.timer \
             scripts/health-check.sh \

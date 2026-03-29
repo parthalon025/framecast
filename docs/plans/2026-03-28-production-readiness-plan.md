@@ -117,7 +117,7 @@ All items below are **bug fixes, reliability hardening, or security patches** �
 | # | Fix | File |
 |---|-----|------|
 | 22 | Make `restore_db()` safety backup atomic (tmp + fsync + rename, same pattern as `_atomic_write`) | `app/modules/db.py` |
-| 23 | Guard `wifi-manager.service` — if `framecast.service` fails, start AP independently | `scripts/wifi-check.sh` |
+| 23 | ~~Guard `wifi-manager.service`~~ — resolved: wifi-manager removed, watchdog in wifi.py (#105) | — |
 
 ### Batch 5B: Pi 3 Memory Safety
 **Effort:** 30m | **Files:** 1

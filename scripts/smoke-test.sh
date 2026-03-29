@@ -210,7 +210,7 @@ echo ""
 # -----------------------------------------------------------------------
 echo "--- Systemd Services ---"
 
-for SVC in framecast framecast-kiosk wifi-manager; do
+for SVC in framecast framecast-kiosk; do
     if systemctl is-enabled "$SVC" &>/dev/null; then
         pass "$SVC service is enabled"
     else
