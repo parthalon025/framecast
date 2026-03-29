@@ -7,7 +7,6 @@ set -u -o pipefail
 # Enable services
 systemctl enable framecast.service
 systemctl enable framecast-kiosk.service
-systemctl enable wifi-manager.service
 systemctl enable framecast-update.timer
 systemctl enable framecast-health.timer
 systemctl enable framecast-schedule.timer

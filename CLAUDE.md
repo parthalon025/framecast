@@ -71,7 +71,6 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 |---------|---------|
 | `framecast` | gunicorn + Flask (MemoryMax=512M, ProtectSystem=strict) |
 | `framecast-kiosk` | cage + GTK-WebKit (BindsTo=framecast, MemoryMax=512M) |
-| `wifi-manager` | Boot-time WiFi connectivity check (oneshot) |
 | `framecast-hostname` | First-boot unique hostname from MAC address (oneshot, runs once) |
 | `framecast-update.timer` | OTA update checker (daily, opt-in) |
 | `framecast-health.timer` | Post-update health check with HMAC-validated rollback (90s after boot) |

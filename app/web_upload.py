@@ -239,6 +239,9 @@ try:
 except Exception as e:
     log.warning("AP auto-start failed: %s", e)
 
+# --- WiFi connectivity watchdog (Issue #105) ---
+wifi.start_wifi_watchdog()
+
 # --- Initialize SQLite content model ---
 db.init_db()
 db.vacuum_if_needed()

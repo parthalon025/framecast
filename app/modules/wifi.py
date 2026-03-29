@@ -25,13 +25,27 @@ _ap_timer: threading.Timer | None = None
 _ap_timer_lock = threading.Lock()
 
 # Marker file to persist AP start time across restarts
-_AP_MARKER_FILE = Path(config.get("MEDIA_DIR", "/home/pi/media")).parent / ".ap_started"
+_AP_MARKER_FILE = Path("/var/lib/framecast/ap_started")
+
+# WiFi watchdog: monitor connectivity, fall back to AP if home WiFi lost
+_WATCHDOG_INTERVAL = 60  # seconds between checks
+_WATCHDOG_DISCONNECT_THRESHOLD = 5 * 60  # 5 min before AP fallback
+_disconnect_since: float | None = None
 
 
 def _write_ap_marker() -> None:
-    """Write current timestamp to AP marker file."""
+    """Write current timestamp to AP marker file (atomic)."""
     try:
-        _AP_MARKER_FILE.write_text(str(time.time()))
+        _AP_MARKER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _AP_MARKER_FILE.with_suffix(".tmp")
+        tmp.write_text(str(time.time()))
+        fd = tmp.open("r")
+        try:
+            import os
+            os.fsync(fd.fileno())
+        finally:
+            fd.close()
+        tmp.rename(_AP_MARKER_FILE)
     except OSError as exc:
         log.warning("Failed to write AP marker: %s", exc)
 
@@ -254,9 +268,14 @@ def _ap_timeout_handler() -> None:
     # Try connecting to a known WiFi before restarting AP
     stop_ap()
     time.sleep(2)
-    if not is_connected():
+    if is_connected():
+        ssid = get_current_ssid()
+        log.info("AP timeout: reconnected to known WiFi '%s'", ssid)
+        _notify_sse("wifi:connected", {"ssid": ssid or ""})
+    else:
         # No known WiFi available — restart AP
         start_ap()
+        _notify_sse("wifi:ap_restarted", {"ap_ssid": get_ap_ssid()})
 
 
 def _start_ap_timer(seconds: float | None = None) -> None:
@@ -357,3 +376,49 @@ def is_ap_active() -> bool:
         return False
     # When hotspot is active, connection name is "Hotspot"
     return "Hotspot" in stdout
+
+
+def _notify_sse(event: str, data: dict[str, Any]) -> None:
+    """Emit SSE event. Lazy import to avoid circular dependency."""
+    try:
+        from sse import notify
+        notify(event, data)
+    except Exception as exc:
+        log.warning("Failed to emit SSE event %s: %s", event, exc)
+
+
+def start_wifi_watchdog() -> None:
+    """Spawn daemon thread that monitors WiFi and falls back to AP if lost."""
+    t = threading.Thread(target=_wifi_watchdog_loop, daemon=True, name="wifi-watchdog")
+    t.start()
+    log.info("WiFi watchdog started (interval=%ds, threshold=%ds)",
+             _WATCHDOG_INTERVAL, _WATCHDOG_DISCONNECT_THRESHOLD)
+
+
+def _wifi_watchdog_loop() -> None:
+    """Monitor WiFi connectivity. Start AP if disconnected > threshold."""
+    global _disconnect_since
+    while True:
+        time.sleep(_WATCHDOG_INTERVAL)
+        try:
+            if is_connected():
+                if _disconnect_since is not None:
+                    log.info("WiFi watchdog: connection restored")
+                _disconnect_since = None
+                continue
+            if is_ap_active():
+                _disconnect_since = None
+                continue  # AP already running, nothing to do
+            now = time.time()
+            if _disconnect_since is None:
+                _disconnect_since = now
+                log.warning("WiFi disconnected — monitoring for %ds before AP fallback",
+                            _WATCHDOG_DISCONNECT_THRESHOLD)
+            elif now - _disconnect_since >= _WATCHDOG_DISCONNECT_THRESHOLD:
+                log.warning("WiFi down for %ds — starting AP for recovery",
+                            _WATCHDOG_DISCONNECT_THRESHOLD)
+                _notify_sse("wifi:disconnected", {"reason": "home_wifi_lost"})
+                start_ap()
+                _disconnect_since = None
+        except Exception as exc:
+            log.warning("WiFi watchdog error: %s", exc)

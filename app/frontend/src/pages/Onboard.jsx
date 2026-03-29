@@ -120,6 +120,7 @@ export function Onboard() {
   const [selected, setSelected] = useState(null);
   const [password, setPassword] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(null); // null | ssid string
   const [toast, setToast] = useState(null);
   const [errorStep, setErrorStep] = useState(null);
   const [uploaded, setUploaded] = useState(false);
@@ -182,7 +183,13 @@ export function Onboard() {
     }
   }
 
-  /** Connect to selected network. */
+  /** Connect to selected network.
+   *
+   * Two-phase flow: server responds immediately with {status: "connecting"},
+   * then connects in background (AP stops, phone loses connection).
+   * We show a RECONNECTING state and poll /api/wifi/status until the server
+   * responds with connected=true on the new network.
+   */
   function doConnect(ssid, pass) {
     setConnecting(true);
     setErrorStep(null);
@@ -193,35 +200,69 @@ export function Onboard() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setToast({ type: "info", message: `CONNECTED: ${ssid}` });
-          // Auto-detect timezone from browser and push to Pi
-          try {
-            const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (detectedTz) {
-              fetch("/api/timezone", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ timezone: detectedTz }),
-              }).catch((err) => console.warn("Timezone auto-set failed:", err));
-            }
-          } catch (tzErr) {
-            console.warn("Timezone detection failed:", tzErr);
-          }
-          setStep("TEST");
-          setTestResult(null);
+        if (data.status === "connecting" || data.success) {
+          // Server accepted — AP will stop in ~5s, phone loses connection.
+          // Show reconnecting state and poll for completion.
+          setConnecting(false);
+          setReconnecting(ssid);
+          pollWifiStatus(ssid);
         } else {
           setToast({ type: "error", message: data.message || "CONNECTION FAULT" });
           setErrorStep("WIFI");
+          setConnecting(false);
         }
       })
       .catch((err) => {
         setToast({ type: "error", message: `CONNECTION FAULT: ${err.message}` });
         setErrorStep("WIFI");
-      })
-      .finally(() => {
         setConnecting(false);
       });
+  }
+
+  /** Poll /api/wifi/status until connected or timeout (60s). */
+  function pollWifiStatus(ssid) {
+    const startTime = Date.now();
+    const maxWait = 60000; // 60s
+    const interval = 3000; // 3s
+
+    function check() {
+      if (Date.now() - startTime > maxWait) {
+        // Timeout — show error with retry
+        setReconnecting(null);
+        setToast({ type: "error", message: "RECONNECT TIMEOUT — RETRY OR CHECK WIFI" });
+        setErrorStep("WIFI");
+        return;
+      }
+      fetch("/api/wifi/status")
+        .then((res) => res.ok ? res.json() : Promise.reject(new Error("unreachable")))
+        .then((data) => {
+          if (data.connected) {
+            setReconnecting(null);
+            setToast({ type: "info", message: `CONNECTED: ${ssid}` });
+            // Auto-detect timezone
+            try {
+              const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+              if (detectedTz) {
+                fetch("/api/timezone", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ timezone: detectedTz }),
+                }).catch(() => {});
+              }
+            } catch (_) { /* ignore */ }
+            setStep("TEST");
+            setTestResult(null);
+          } else {
+            setTimeout(check, interval);
+          }
+        })
+        .catch(() => {
+          // Expected during AP→client transition — retry silently
+          setTimeout(check, interval);
+        });
+    }
+    // Start polling after a short delay (AP needs ~5s to stop)
+    setTimeout(check, 5000);
   }
 
   /** Handle connect button click from password form. */
@@ -356,6 +397,25 @@ export function Onboard() {
                 </button>
               </div>
             </form>
+          ) : reconnecting ? (
+            <div style="text-align: center; padding: var(--space-4, 16px) 0;">
+              <div style="margin-bottom: var(--space-3, 12px); color: var(--sh-phosphor);">
+                RECONNECTING
+              </div>
+              <div class="sh-ansi-dim" style="margin-bottom: var(--space-3, 12px);">
+                CONNECTING TO {reconnecting}
+              </div>
+              <div style="margin-bottom: var(--space-4, 16px);">
+                <ShSkeleton rows={1} height="2em" width="60%" />
+              </div>
+              <div class="sh-ansi-dim" style="font-size: 0.75rem; line-height: 1.5;">
+                YOUR PHONE WILL SWITCH NETWORKS AUTOMATICALLY.
+                <br />
+                IF NOT, CONNECT TO {reconnecting} MANUALLY
+                <br />
+                AND VISIT: http://framecast.local:8080
+              </div>
+            </div>
           ) : connecting ? (
             <div style="text-align: center; padding: var(--space-4, 16px) 0;">
               <div style="margin-bottom: var(--space-3, 12px);">CONNECTING</div>
