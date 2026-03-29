@@ -77,8 +77,8 @@ find_rootfs() {
 }
 
 # --- Mode: --app-only (fastest iteration) ---
-# Skip stages 0-2 entirely + our 00-packages, 01-config, 03-system.
-# Only runs 02-app on the existing rootfs.
+# Skip stages 0-2 entirely + 00-packages and 03-system.
+# Runs 01-config (fast — ensures cmdline.txt, .env stay in sync) + 02-app.
 if [ "$APP_ONLY" -eq 1 ]; then
     ROOTFS="$(find_rootfs)"
     if [ -z "$ROOTFS" ]; then
@@ -90,8 +90,8 @@ if [ "$APP_ONLY" -eq 1 ]; then
         touch "${PIGEN_DIR}/${stage}/SKIP"
     done
     touch "${PIGEN_DIR}/stage2-framecast/00-packages/SKIP"
-    touch "${PIGEN_DIR}/stage2-framecast/01-config/SKIP"
     touch "${PIGEN_DIR}/stage2-framecast/03-system/SKIP"
+    rm -f "${PIGEN_DIR}/stage2-framecast/01-config/SKIP"
     rm -f "${PIGEN_DIR}/stage2-framecast/02-app/SKIP"
     CONTINUE=1
 fi
@@ -148,7 +148,6 @@ if [ "$APP_ONLY" -eq 1 ]; then
         rm -f "${PIGEN_DIR}/${stage}/SKIP"
     done
     rm -f "${PIGEN_DIR}/stage2-framecast/00-packages/SKIP"
-    rm -f "${PIGEN_DIR}/stage2-framecast/01-config/SKIP"
     rm -f "${PIGEN_DIR}/stage2-framecast/03-system/SKIP"
 fi
 
