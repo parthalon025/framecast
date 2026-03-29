@@ -350,7 +350,7 @@ class TestSlideshowShowContract:
 class TestUpdateRebootingContract:
     def test_valid(self):
         schema = load_schema("update:rebooting")
-        validate({"version": "v2.1.0"}, schema)
+        validate({"version": "v2.2.1"}, schema)
 
     def test_invalid_missing_version(self):
         schema = load_schema("update:rebooting")
