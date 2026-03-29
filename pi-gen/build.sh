@@ -152,6 +152,7 @@ if [ "$APP_ONLY" -eq 1 ]; then
 fi
 
 # --- Rename output with version (skip if already versioned) ---
+DEPLOY="${PIGEN_DIR}/deploy"
 if [ -d "$DEPLOY" ]; then
     for f in "${DEPLOY}"/*FrameCast*; do
         [ -f "$f" ] || continue
