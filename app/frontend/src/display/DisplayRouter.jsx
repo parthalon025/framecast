@@ -170,6 +170,16 @@ export function DisplayRouter() {
           // Stay in setup — AP will have restarted server-side
           displayState.value = "setup";
         },
+        "wifi:disconnected": () => {
+          if (cancelled) return;
+          // Home WiFi lost — watchdog will start AP for recovery
+          displayState.value = "setup";
+        },
+        "wifi:ap_restarted": () => {
+          if (cancelled) return;
+          // AP timeout fired, AP restarted — show setup screen
+          displayState.value = "setup";
+        },
         "sync": () => {
           if (cancelled) return;
           // Peer lost sync — re-check current state

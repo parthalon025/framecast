@@ -13,7 +13,6 @@ log = logging.getLogger(__name__)
 SERVICE_MAP: dict[str, str] = {
     "app": "framecast",
     "kiosk": "framecast-kiosk",
-    "wifi": "wifi-manager",
     "update": "framecast-update",
 }
 

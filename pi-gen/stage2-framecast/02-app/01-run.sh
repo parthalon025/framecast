@@ -66,7 +66,7 @@ git tag -f "v${VERSION}"
 cd -
 
 # --- Install systemd services ---
-for svc in framecast.service framecast-kiosk.service wifi-manager.service framecast-update.service framecast-update.timer framecast-health.service framecast-health.timer framecast-schedule.service framecast-schedule.timer framecast-hostname.service; do
+for svc in framecast.service framecast-kiosk.service framecast-update.service framecast-update.timer framecast-health.service framecast-health.timer framecast-schedule.service framecast-schedule.timer framecast-hostname.service; do
     install -m 644 "${FRAMECAST_SRC}/systemd/${svc}" "${ROOTFS_DIR}/etc/systemd/system/"
 done
 

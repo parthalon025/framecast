@@ -304,8 +304,7 @@ gh attestation verify image.zip -R parthalon025/framecast
 ```bash
 journalctl -u framecast -n 100        # Web server
 journalctl -u framecast-kiosk -n 50   # Display
-journalctl -u wifi-manager -n 50      # WiFi
-systemctl status framecast framecast-kiosk wifi-manager
+systemctl status framecast framecast-kiosk
 sudo ufw status                       # Firewall
 ```
 

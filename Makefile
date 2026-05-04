@@ -6,7 +6,7 @@
 SHELL := /bin/bash
 INSTALL_DIR := /opt/framecast
 REPO_DIR := $(shell pwd)
-SERVICES := framecast framecast-kiosk wifi-manager
+SERVICES := framecast framecast-kiosk
 TIMERS := framecast-update
 
 .PHONY: install uninstall update status logs test help build-frontend dev run build-image pytest typecheck benchmark mutate test-frontend test-shell test-all

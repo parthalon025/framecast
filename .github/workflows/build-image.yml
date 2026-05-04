@@ -167,7 +167,6 @@ jobs:
           for svc in \
             framecast.service \
             framecast-kiosk.service \
-            wifi-manager.service \
             framecast-update.timer \
             framecast-health.timer \
             framecast-schedule.timer; do
