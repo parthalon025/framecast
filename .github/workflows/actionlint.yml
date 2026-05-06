@@ -19,4 +19,4 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: rhysd/actionlint@a443f344ff32813837fa49f7aa6cbc478d770e62 # v1.7.9
+      - uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
