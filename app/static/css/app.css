@@ -1,0 +1,1110 @@
+/**
+ * FrameCast — Design Tokens
+ * Green phosphor overrides + safe area inset.
+ */
+
+html {
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) 0 env(safe-area-inset-left, 0);
+}
+
+:root,
+[data-sh-monitor="green"] {
+  --sh-phosphor: oklch(85% 0.18 145);
+  --sh-phosphor-glow: oklch(85% 0.18 145 / 0.2);
+
+  /* Override accent to match phosphor (nav active state, links) */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+
+  /* Explicit status overrides for consumers that read these directly */
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}
+
+/**
+ * Light mode — phone-only override for sunlight readability.
+ * TV display always stays dark (data-theme is never set on /display).
+ */
+[data-theme="light"] {
+  --surface-void: #f5f5f0;
+  --sh-phosphor: #1a7a3a;
+  --sh-phosphor-glow: transparent;
+  --sh-bright: #222;
+  --sh-dim: #666;
+  --sh-void: #fff;
+  --sh-threat: #cc2222;
+  --text-muted: #777;
+  --text-tertiary: #999;
+  --border-subtle: rgba(0, 0, 0, 0.12);
+  --font-mono: monospace;
+
+  /* Status tokens follow phosphor */
+  --accent: var(--sh-phosphor);
+  --accent-glow: var(--sh-phosphor-glow);
+  --status-healthy: var(--sh-phosphor);
+  --status-success: var(--sh-phosphor);
+  --status-active: var(--sh-phosphor);
+  --status-healthy-glow: var(--sh-phosphor-glow);
+  --status-success-glow: var(--sh-phosphor-glow);
+}
+
+[data-theme="light"] .sh-terminal-bg {
+  background: #f5f5f0;
+  color: #222;
+}
+/**
+ * FrameCast — Base Components
+ * Dropzone states.
+ */
+
+.sh-dropzone {
+  border: 2px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 0;
+  padding: 24px 16px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* Touch target: entire dropzone is tappable */
+}
+
+.sh-dropzone[data-sh-dropzone="idle"] {
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+}
+
+.sh-dropzone[data-sh-dropzone="hover"] {
+  border-color: var(--sh-phosphor);
+  background: color-mix(in oklch, var(--sh-phosphor) 5%, transparent);
+  box-shadow: 0 0 16px var(--sh-phosphor-glow);
+}
+
+.sh-dropzone[data-sh-dropzone="receiving"] {
+  border-color: var(--sh-phosphor);
+  border-style: solid;
+  background: color-mix(in oklch, var(--sh-phosphor) 8%, transparent);
+  pointer-events: none;
+}
+
+.sh-dropzone[data-sh-dropzone="error"] {
+  border-color: var(--status-critical, #ff4444);
+  background: oklch(50% 0.2 30 / 0.05);
+}
+
+/* Focus indicators for custom interactive elements */
+.fc-day-btn:focus-visible,
+.fc-ctx-item:focus-visible,
+.fc-btn-primary:focus-visible,
+.fc-action-btn:focus-visible {
+    outline: 2px solid var(--sh-phosphor);
+    outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+    .fc-day-btn--active {
+        border: 2px solid ButtonText;
+        background: Highlight;
+        color: HighlightText;
+    }
+    .fc-offline-banner {
+        border: 2px solid Mark;
+    }
+    .fc-otd-label {
+        text-shadow: none;
+        border: 1px solid CanvasText;
+    }
+    .fc-card--favorite {
+        border-color: Highlight;
+    }
+    .fc-btn-primary {
+        border: 2px solid ButtonText;
+    }
+}
+
+/* Prevent iOS auto-zoom on input focus (requires >= 16px) */
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+select,
+textarea,
+.sh-input,
+.sh-select {
+    font-size: max(16px, 1rem);
+}
+/**
+ * FrameCast — Slideshow
+ * Container, transition animations, On This Day overlay.
+ */
+
+/* ── Slideshow container ── */
+
+.slideshow-container {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.slideshow-container img,
+.slideshow-container video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-orientation: from-image;
+}
+
+.slideshow-container video {
+  object-fit: contain;
+}
+
+/* ── Transition Animations ──
+   fc-* classes use --fc-transition-ms custom property (set by JS).
+   ──────────────────────────────────────────────────────────────── */
+
+/* --- Custom property defaults --- */
+.slideshow-layer {
+  --fc-transition-ms: 1000ms;
+  --kb-start: 50% 50%;
+  --kb-end: 50% 0%;
+  --kb-scale: 1.2;
+}
+
+/* --- Fade --- */
+
+@keyframes fcFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fcFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.fc-fade-in {
+  animation: fcFadeIn var(--fc-transition-ms) ease-in forwards;
+}
+
+.fc-fade-out {
+  animation: fcFadeOut var(--fc-transition-ms) ease-out forwards;
+}
+
+/* --- Slide --- */
+
+@keyframes fcSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes fcSlideOut {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+.fc-slide-in {
+  animation: fcSlideIn var(--fc-transition-ms) ease-out forwards;
+}
+
+.fc-slide-out {
+  animation: fcSlideOut var(--fc-transition-ms) ease-in forwards;
+}
+
+/* --- Ken Burns (improved) ---
+   - Randomized start/end via --kb-start, --kb-end (JS sets per slide)
+   - Scale range 1.0 -> --kb-scale (1.15 to 1.3, JS randomizes)
+   - will-change: transform for GPU acceleration
+   - Aspect-aware pan via anchor points (JS selects vertical/horizontal)
+   ---------------------------------------------------------------- */
+
+@keyframes fcKenBurns {
+  0%   {
+    transform: scale(1);
+    transform-origin: var(--kb-start);
+  }
+  100% {
+    transform: scale(var(--kb-scale));
+    transform-origin: var(--kb-end);
+  }
+}
+
+.fc-kenburns-in {
+  will-change: transform;
+  animation: fcFadeIn var(--fc-transition-ms) ease-in forwards,
+             fcKenBurns 12s ease-in-out forwards;
+}
+
+.fc-kenburns-in img {
+  will-change: transform;
+}
+
+.fc-kenburns-out {
+  animation: fcFadeOut var(--fc-transition-ms) ease-out forwards;
+}
+
+/* --- Dissolve (cross-fade with scale shift) --- */
+
+@keyframes fcDissolveIn {
+  from { opacity: 0; filter: brightness(1.2); }
+  to   { opacity: 1; filter: brightness(1);   }
+}
+
+@keyframes fcDissolveOut {
+  from { opacity: 1; filter: brightness(1);   }
+  to   { opacity: 0; filter: brightness(0.8); }
+}
+
+.fc-dissolve-in {
+  animation: fcDissolveIn var(--fc-transition-ms) ease-in-out forwards;
+}
+
+.fc-dissolve-out {
+  animation: fcDissolveOut var(--fc-transition-ms) ease-in-out forwards;
+}
+
+/* --- Photo info overlay --- */
+
+.fc-info-overlay {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+  animation: fcInfoFade 3s ease-in-out forwards;
+}
+
+@keyframes fcInfoFade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.fc-info-text {
+  display: inline-block;
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.65rem, 1.2vw, 1rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--sh-phosphor-glow);
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- "On This Day" overlay --- */
+
+.fc-otd-overlay {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.fc-otd-label {
+  display: inline-block;
+  padding: 8px 20px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.75rem, 1.5vw, 1.25rem);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--sh-phosphor-glow);
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
+}
+/**
+ * FrameCast — Display Components
+ * QR overlay + Boot screen.
+ */
+
+/* ── QR Overlay ── */
+
+.qr-overlay {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid var(--sh-phosphor);
+  border-radius: 2px;
+  box-shadow: 0 0 12px var(--sh-phosphor-glow);
+  z-index: 10;
+}
+
+.qr-overlay img {
+  display: block;
+  width: clamp(80px, 15vw, 160px);
+  height: clamp(80px, 15vw, 160px);
+  image-rendering: pixelated;
+}
+
+/* ── Boot Screen ── */
+
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height — respects mobile browser chrome */
+  background: var(--surface-void, #000);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  padding: 16px;
+  text-align: center;
+  gap: 16px;
+}
+
+.boot-screen .boot-logo {
+  font-size: clamp(1.5rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px var(--sh-phosphor-glow);
+}
+
+.boot-screen .boot-status {
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
+  opacity: 0.7;
+}
+
+/* ── Connection Lost Indicator ── */
+
+.fc-connection-lost {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--sh-font-mono, monospace);
+  font-size: 14px;
+  color: var(--sh-threat);
+  background: var(--sh-void, #000);
+  padding: 8px 16px;
+  border: 1px solid var(--sh-threat);
+  z-index: 30;
+}
+
+/* ── Ambient Clock ── */
+
+.fc-ambient-clock {
+  position: fixed;
+  bottom: 100px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.fc-clock-time {
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(2rem, 8vw, 6rem);
+  font-weight: 700;
+  color: var(--sh-phosphor);
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px var(--sh-phosphor-glow), 0 0 40px var(--sh-phosphor-glow);
+  line-height: 1;
+}
+
+.fc-clock-separator {
+  opacity: 0.6;
+  animation: fcClockBlink 1s step-end infinite;
+}
+
+@keyframes fcClockBlink {
+  50% { opacity: 0.1; }
+}
+
+.fc-clock-digits--seconds {
+  font-size: 0.5em;
+  opacity: 0.5;
+  vertical-align: baseline;
+}
+
+.fc-clock-separator--seconds {
+  font-size: 0.5em;
+  vertical-align: baseline;
+}
+
+.fc-clock-date {
+  font-family: var(--font-mono, monospace);
+  font-size: clamp(0.75rem, 2vw, 1.25rem);
+  color: var(--sh-phosphor);
+  opacity: 0.5;
+  letter-spacing: 0.2em;
+  margin-top: 12px;
+}
+/**
+ * FrameCast — Photos
+ * Favorites, Albums, PhotoCard, Context Menu, Lightbox.
+ */
+
+/* Favorite card — phosphor left border */
+.fc-card--favorite {
+  border-left: 2px solid var(--sh-phosphor);
+}
+
+/* Context menu items */
+.fc-ctx-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 12px 14px;
+  min-height: 44px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.fc-ctx-item:hover {
+  border-left: 2px solid var(--sh-phosphor);
+}
+
+.fc-ctx-item--danger {
+  color: var(--sh-threat, #ff4444);
+}
+
+/* Favorite heart overlay */
+.fc-fav-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Show on card hover or focus */
+.sh-card:hover .fc-fav-btn,
+.fc-fav-btn:focus {
+  opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .fc-fav-btn {
+    opacity: 0.7;
+  }
+}
+
+/* Phosphor green when favorited */
+.fc-fav-btn--active {
+  color: var(--sh-phosphor, #40ff40);
+}
+
+/* Show on TV overlay button */
+.fc-show-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  color: var(--sh-phosphor, #39ff14);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  padding: 4px 6px;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Show on card hover or focus */
+.sh-card:hover .fc-show-btn,
+.fc-show-btn:focus {
+  opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .fc-show-btn {
+    opacity: 0.7;
+  }
+}
+
+/* Hide TV button when selection checkbox occupies the same corner */
+.fc-select-check ~ .fc-show-btn {
+  display: none;
+}
+
+/* Lightbox overlay — capture horizontal swipe, allow vertical scroll */
+.fc-lightbox-overlay {
+  touch-action: pan-y;
+}
+
+/* Lightbox action buttons */
+.fc-action-btn {
+  font-family: var(--font-mono, monospace);
+}
+
+.fc-action-btn--active {
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+}
+
+.fc-action-btn--danger {
+  color: var(--sh-threat, #ff4444);
+  border-color: var(--sh-threat, #ff4444);
+}
+
+/* Upload progress toast — persists across tab switches */
+.fc-upload-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--sh-phosphor);
+  color: var(--sh-phosphor);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  padding: 8px 16px;
+  border-radius: 4px;
+  z-index: 100;
+  min-width: 180px;
+  text-align: center;
+}
+
+.fc-upload-toast-bar {
+  height: 2px;
+  background: var(--sh-phosphor);
+  margin-top: 6px;
+  border-radius: 1px;
+  transition: width 0.3s ease-out;
+}
+
+/* Pull-to-refresh indicator */
+.fc-pull-indicator {
+  text-align: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--sh-phosphor);
+  padding: 8px;
+  transition: transform 0.1s;
+}
+
+/* -----------------------------------------------------------------------
+ * Bulk selection — checkbox overlay + floating action bar
+ * ----------------------------------------------------------------------- */
+
+/* Selection checkbox circle overlay on PhotoCard */
+.fc-select-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  /* Touch target: actual hit area is 44px via padding */
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Expand touch target to 44px without changing visual size */
+.fc-select-check::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+}
+
+.fc-select-check--selected {
+  border-color: var(--sh-phosphor, #39ff14);
+  background: var(--sh-phosphor, #39ff14);
+}
+
+/* Checkmark inside selected circle */
+.fc-select-check__mark {
+  display: none;
+  width: 14px;
+  height: 14px;
+  color: var(--sh-void, #000);
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.fc-select-check--selected .fc-select-check__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hide the native checkbox — we draw our own circle */
+.fc-select-check input[type="checkbox"] {
+  display: none;
+}
+
+/* Floating bulk action bar */
+.fc-bulk-bar {
+  position: fixed;
+  bottom: 68px; /* Above 56px bottom nav + 12px gap */
+  left: 8px;
+  right: 8px;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--sh-phosphor, #39ff14);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.6);
+}
+
+.fc-bulk-bar__count {
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.fc-bulk-bar__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.fc-bulk-bar__btn {
+  background: none;
+  border: 1px solid var(--sh-phosphor, #39ff14);
+  color: var(--sh-phosphor, #39ff14);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 6px 10px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fc-bulk-bar__btn:active {
+  background: var(--sh-phosphor, #39ff14);
+  color: var(--sh-void, #000);
+}
+
+.fc-bulk-bar__btn--danger {
+  border-color: var(--sh-threat, #ff4444);
+  color: var(--sh-threat, #ff4444);
+}
+
+.fc-bulk-bar__btn--danger:active {
+  background: var(--sh-threat, #ff4444);
+  color: var(--sh-void, #000);
+}
+
+.fc-bulk-bar__btn--exit {
+  border-color: var(--text-muted, #888);
+  color: var(--text-muted, #888);
+  min-width: 36px;
+  padding: 6px 8px;
+}
+/**
+ * FrameCast — Settings
+ * Setting rows, day grid, range value, primary button, toast, offline banner, validation.
+ */
+
+/* ── Phone layout (base) ── */
+
+.fc-page {
+  display: grid;
+  gap: var(--space-4, 16px);
+  padding: var(--space-3, 12px);
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); /* clearance for bottom nav + iPhone home indicator */
+}
+
+.fc-page .sh-grid-3 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* ── Settings rows ── */
+
+.fc-setting-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-height: 44px; /* touch target */
+}
+
+.fc-setting-row .sh-input,
+.fc-setting-row .sh-select {
+  width: 100%;
+  max-width: 140px;
+  min-height: 44px; /* touch target */
+  font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+.fc-setting-row .sh-input[type="range"] {
+  max-width: 100%;
+  min-height: 32px;
+}
+
+.fc-setting-row .sh-input[type="time"] {
+  max-width: 120px;
+}
+
+.fc-setting-row .sh-toggle {
+  min-width: 44px;
+  min-height: 44px; /* touch target */
+}
+
+/* ── Settings section inner padding ── */
+
+.fc-settings-section {
+  display: grid;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px) 0;
+}
+
+/* ── Range value display ── */
+
+.fc-range-value {
+  min-width: 48px;
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+}
+
+/* ── Day selector grid ── */
+
+.fc-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1, 4px);
+}
+
+.fc-day-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: var(--space-1, 4px);
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.fc-day-btn--active {
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+  background: color-mix(in oklch, var(--sh-phosphor) 8%, transparent);
+}
+
+/* ── Primary action button ── */
+
+.fc-btn-primary {
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sh-phosphor);
+  border-color: var(--sh-phosphor);
+}
+
+.fc-btn-primary:disabled {
+  cursor: default;
+  opacity: 0.4;
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+}
+
+/* ── Toast container — above nav bar ── */
+
+.fc-toast-container {
+  position: fixed;
+  bottom: 80px;
+  left: var(--space-3, 12px);
+  right: var(--space-3, 12px);
+  z-index: 100;
+}
+
+/* ── Offline banner ── */
+
+.fc-offline-banner {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--status-critical, #ff4444);
+  color: var(--surface-void, #000);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ── Validation error state ── */
+
+.sh-input[aria-invalid="true"],
+.sh-select[aria-invalid="true"] {
+  border-color: var(--status-critical, #ff4444);
+}
+
+/* ── Activity log ── */
+
+.fc-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fc-activity-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+}
+
+/* ── Storage breakdown ── */
+
+.fc-storage-breakdown { display: flex; flex-direction: column; gap: 8px; }
+.fc-storage-row { display: flex; align-items: center; gap: 8px; }
+.fc-storage-bar-bg { flex: 1; height: 8px; background: var(--surface, #111); border-radius: 4px; overflow: hidden; }
+.fc-storage-bar-fill { height: 100%; border-radius: 4px; min-width: 2px; }
+
+/* Boot/display screens — fluid type */
+.boot-screen h1 {
+  font-size: clamp(1.5rem, 5vw, 5rem);
+}
+
+.boot-screen .sh-label {
+  font-size: clamp(0.875rem, 2vw, 1.5rem);
+}
+
+/* ── Schedule timeline ── */
+
+.fc-schedule-timeline {
+  padding: 8px 0;
+}
+
+.fc-timeline-bar {
+  position: relative;
+  height: 12px;
+  background: var(--surface, #111);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fc-timeline-active {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--sh-phosphor, #40ff40);
+  opacity: 0.4;
+  border-radius: 6px;
+}
+
+.fc-timeline-labels {
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.fc-timeline-labels span {
+  position: absolute;
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  transform: translateX(-50%);
+}
+
+/* ── Transition preview ── */
+
+.fc-preview-box {
+  --fc-transition-ms: 800ms;
+}
+
+/* QR — scale with viewport */
+.qr-overlay {
+  bottom: 16px;
+  right: 16px;
+  padding: 8px;
+}
+/**
+ * FrameCast — Responsive Breakpoints
+ * Mobile-first: base = phone. Scale up with min-width only.
+ * Breakpoints: 768px (tablet), 1024px (desktop), 1400px (TV/wide)
+ */
+
+/* ── Tablet (768px+) ── */
+@media (min-width: 768px) {
+  .fc-page {
+    padding: var(--space-5, 20px);
+    padding-bottom: var(--space-5, 20px); /* no bottom nav on tablet — sidebar */
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sh-dropzone {
+    padding: 48px 24px;
+    min-height: 200px;
+  }
+
+  .qr-overlay {
+    bottom: 32px;
+    right: 32px;
+    padding: 12px;
+  }
+
+  .fc-setting-row .sh-input,
+  .fc-setting-row .sh-select {
+    max-width: 180px;
+  }
+
+  .fc-toast-container {
+    left: auto;
+    right: var(--space-5, 20px);
+    max-width: 400px;
+  }
+}
+
+/* ── Desktop (1024px+) ── */
+@media (min-width: 1024px) {
+  .fc-page {
+    max-width: 960px;
+  }
+
+  .fc-page .sh-grid-3 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── TV / Wide (1400px+) ── */
+@media (min-width: 1400px) {
+  .boot-screen {
+    padding: 48px;
+  }
+
+  .qr-overlay {
+    bottom: 48px;
+    right: 48px;
+    padding: 16px;
+  }
+}
+/**
+ * FrameCast — Motion
+ * Reduced motion preferences (single deduplicated section).
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-fade-in,
+  .fc-fade-out,
+  .fc-slide-in,
+  .fc-slide-out,
+  .fc-kenburns-in,
+  .fc-kenburns-out,
+  .fc-dissolve-in,
+  .fc-dissolve-out {
+    animation: none;
+  }
+
+  .fc-fade-in,
+  .fc-slide-in,
+  .fc-kenburns-in,
+  .fc-dissolve-in {
+    opacity: 1;
+  }
+
+  .fc-fade-out,
+  .fc-slide-out,
+  .fc-kenburns-out,
+  .fc-dissolve-out {
+    opacity: 0;
+  }
+
+  .fc-otd-overlay {
+    /* Keep OTD overlay visible but disable any animation */
+  }
+
+  /* Disable page entrance animation */
+  .sh-animate-page-enter {
+    animation: none;
+  }
+
+  /* Static offline banner — no transition */
+  .fc-offline-banner {
+    transition: none;
+  }
+}

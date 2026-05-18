@@ -1,0 +1,450 @@
+/* superhot-ui — SUPERHOT visual effects
+ * CSS-first: all effects driven by data-sh-* attributes.
+ * Include this file, set attributes, effects apply automatically.
+ *
+ * @layer order: base → effects → crt
+ * Consumers override by placing rules OUTSIDE any layer (unlayered wins).
+ */
+@import "./tokens.css";
+@import "./semantic.css";
+@import "./components/advanced-effects.css";
+@import "./components/animations.css";
+@import "./components/announcement.css";
+@import "./components/ansi.css";
+@import "./components/antline.css";
+@import "./components/banner.css";
+@import "./components/boot.css";
+@import "./components/chart.css";
+@import "./components/command-palette.css";
+@import "./components/corruption.css";
+@import "./components/crt-overlay.css";
+@import "./components/crt-toggle.css";
+@import "./components/data-table.css";
+@import "./components/event-timeline.css";
+@import "./components/facility.css";
+@import "./components/filter-panel.css";
+@import "./components/frame.css";
+@import "./components/hero-card.css";
+@import "./components/incident-hud.css";
+@import "./components/matrix-rain.css";
+@import "./components/modal.css";
+@import "./components/nav.css";
+@import "./components/pipeline.css";
+@import "./components/progress-steps.css";
+@import "./components/signal-bars.css";
+@import "./components/skeleton.css";
+@import "./components/stat-card.css";
+@import "./components/status-badge.css";
+@import "./components/terminal-chrome.css";
+@import "./components/test-chamber.css";
+@import "./components/toast.css";
+@import "./components/utilities.css";
+@import "./components/vram-bar.css";
+
+@layer superhot.base, superhot.effects, superhot.crt;
+
+/* ═══════════════════════════════════════
+   KEYFRAMES (outside layers — always available)
+   ═══════════════════════════════════════ */
+
+@keyframes sh-glitch-jitter {
+  0% {
+    transform: translateX(0);
+    filter: none;
+  }
+  25% {
+    transform: translateX(-3px);
+    filter: hue-rotate(90deg);
+  }
+  50% {
+    transform: translateX(2px);
+    filter: hue-rotate(-90deg);
+  }
+  75% {
+    transform: translateX(-1px);
+    filter: hue-rotate(45deg);
+  }
+  100% {
+    transform: translateX(0);
+    filter: none;
+  }
+}
+
+@keyframes sh-shatter-fragment {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--sh-frag-x, 30px), var(--sh-frag-y, -20px))
+      rotate(var(--sh-frag-r, 15deg));
+  }
+}
+
+@keyframes sh-threat-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0px transparent);
+    border-color: var(--sh-threat);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px var(--sh-threat));
+    border-color: var(--sh-threat);
+  }
+}
+
+@keyframes sh-frost-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@keyframes sh-crt-scan {
+  0% {
+    top: -10%;
+  }
+  100% {
+    top: 110%;
+  }
+}
+
+@keyframes sh-crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.85;
+  }
+  94% {
+    opacity: 1;
+  }
+  96% {
+    opacity: 0.9;
+  }
+  97% {
+    opacity: 1;
+  }
+}
+
+/* ═══════════════════════════════════════
+   BASE LAYER — freshness states
+   ═══════════════════════════════════════ */
+
+@layer superhot.base {
+  [data-sh-state] {
+    transition:
+      filter 1s ease,
+      opacity 1s ease;
+    animation-composition: accumulate;
+  }
+
+  [data-sh-state="fresh"] {
+    filter: none;
+    opacity: 1;
+  }
+
+  [data-sh-state="cooling"] {
+    filter: saturate(0.7);
+
+    @starting-style {
+      filter: none;
+    }
+  }
+
+  [data-sh-state="frozen"] {
+    filter: grayscale(0.8) saturate(0.2);
+    opacity: 0.6;
+    border-color: var(--sh-frozen) !important;
+
+    @starting-style {
+      filter: none;
+      opacity: 1;
+    }
+
+    @supports (backdrop-filter: blur(1px)) {
+      backdrop-filter: blur(2px) brightness(0.85);
+    }
+  }
+
+  [data-sh-state="stale"] {
+    filter: grayscale(1);
+    opacity: 0.5;
+    border-color: var(--sh-frozen) !important;
+    position: relative;
+    overflow: hidden;
+    contain: layout style;
+
+    @starting-style {
+      filter: none;
+      opacity: 1;
+    }
+
+    /* Stale watermark via ::after */
+    &::after {
+      content: "STALE  STALE  STALE  STALE  STALE  STALE";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--sh-font);
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.5em;
+      color: var(--sh-frozen);
+      opacity: 0.15;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 1;
+    }
+  }
+
+  /* Reduced motion: disable all animation, keep static indicators */
+  @media (prefers-reduced-motion: reduce) {
+    [data-sh-state] {
+      transition: none !important;
+    }
+  }
+
+  /* High contrast: reduce desaturation so frozen/cooling stay readable */
+  @media (prefers-contrast: more) {
+    [data-sh-state="cooling"] {
+      filter: saturate(0.9);
+    }
+    [data-sh-state="frozen"] {
+      filter: grayscale(0.4) saturate(0.6);
+      opacity: 0.9;
+    }
+    [data-sh-state="stale"] {
+      filter: grayscale(0.6);
+      opacity: 0.8;
+    }
+  }
+
+  /* Windows High Contrast Mode */
+  @media (forced-colors: active) {
+    [data-sh-state="frozen"] {
+      border-color: GrayText !important;
+    }
+    [data-sh-state="stale"] {
+      border-color: GrayText !important;
+    }
+    [data-sh-state="stale"]::after {
+      color: GrayText;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════
+   EFFECTS LAYER — glitch, threat-pulse, mantra, shatter
+   ═══════════════════════════════════════ */
+
+@layer superhot.effects {
+  /* GLITCH */
+  [data-sh-effect="glitch"] {
+    animation: sh-glitch-jitter var(--sh-glitch-duration) steps(4) 2;
+    position: relative;
+    animation-composition: accumulate;
+
+    /* Chromatic aberration via pseudo-element */
+    &::before {
+      content: attr(data-sh-glitch-text);
+      position: absolute;
+      inset: 0;
+      color: var(--sh-threat);
+      opacity: 0.7;
+      clip-path: inset(0 0 50% 0);
+      transform: translateX(2px);
+      pointer-events: none;
+    }
+
+    &[data-sh-glitch-intensity="high"] {
+      animation-duration: calc(var(--sh-glitch-duration) * 1.5);
+      animation-iteration-count: 4;
+    }
+
+    &[data-sh-glitch-intensity="low"] {
+      animation-duration: calc(var(--sh-glitch-duration) * 0.5);
+      animation-iteration-count: 1;
+    }
+
+    /* Tablet: color shift only, no jitter */
+    @media (min-width: 640px) and (max-width: 1023px) {
+      animation: none;
+      color: var(--sh-threat);
+      transition: color var(--sh-glitch-duration) ease;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      animation: none !important;
+      transition: none !important;
+      color: var(--sh-threat);
+    }
+
+    /* High contrast */
+    @media (forced-colors: active) {
+      color: Highlight;
+      &::before {
+        color: Highlight;
+      }
+    }
+  }
+
+  /* THREAT PULSE */
+  [data-sh-effect="threat-pulse"] {
+    animation: sh-threat-glow var(--sh-threat-pulse-duration) ease-in-out 2;
+    border: 2px solid var(--sh-threat);
+    animation-composition: accumulate;
+
+    /* Reduced motion: static indicator */
+    @media (prefers-reduced-motion: reduce) {
+      animation: none !important;
+      border-color: var(--sh-threat);
+      filter: drop-shadow(0 0 4px var(--sh-threat-glow));
+    }
+
+    /* High contrast */
+    @media (forced-colors: active) {
+      border-color: Highlight;
+      filter: none;
+    }
+  }
+
+  /* MANTRA WATERMARK */
+  [data-sh-mantra] {
+    position: relative;
+    overflow: hidden;
+    contain: layout style;
+
+    &::before {
+      content: attr(data-sh-mantra) "  " attr(data-sh-mantra) "  " attr(data-sh-mantra) "  "
+        attr(data-sh-mantra);
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--sh-font);
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: 0.3em;
+      color: var(--sh-void);
+      opacity: 0.06;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 1;
+      transform: rotate(-5deg) scale(1.2);
+      /* Phosphor text glow — CRT terminal feel */
+      text-shadow:
+        0 0 3px var(--sh-phosphor),
+        0 0 8px var(--sh-phosphor-glow);
+    }
+  }
+
+  /* SHATTER (CSS portion — JS creates fragments) */
+  .sh-fragment {
+    position: absolute;
+    animation: sh-shatter-fragment var(--sh-shatter-duration) ease-out forwards;
+    background: var(--sh-glass);
+    pointer-events: none;
+
+    /* NOTE: Container queries require container-type: inline-size on the card wrapper element */
+    /* Phone: simple fade */
+    @container (max-width: 320px) {
+      animation: none;
+      transition: opacity 200ms ease-out;
+      opacity: 0;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      animation: none !important;
+      opacity: 0;
+    }
+  }
+
+  /* NOTE: Container queries require container-type: inline-size on the card wrapper element */
+  /* Phone: disable mantra and stale watermark */
+  @container (max-width: 320px) {
+    [data-sh-mantra]::before {
+      display: none;
+    }
+    [data-sh-state="stale"]::after {
+      display: none;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════
+   CRT LAYER — optional overlays, off by default
+   Enable via: --sh-crt-stripe: block; etc.
+   Apply .sh-crt to wrapper element.
+   ═══════════════════════════════════════ */
+
+@layer superhot.crt {
+  .sh-crt {
+    position: relative;
+    isolation: isolate;
+
+    /* Scanline stripes — static, cheap */
+    &::before {
+      display: var(--sh-crt-stripe, none);
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0, 0, 0, 0.08) 3px,
+        rgba(0, 0, 0, 0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Moving scan beam — performance-intensive, off by default */
+    &::after {
+      display: var(--sh-crt-scanline, none);
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 8%;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        color-mix(in oklch, var(--sh-phosphor) 6%, transparent),
+        transparent
+      );
+      animation: sh-crt-scan 3s linear infinite;
+      pointer-events: none;
+      z-index: 11;
+    }
+
+    /* Phosphor flicker — a11y risk: photosensitivity. Off by default. */
+    &.sh-crt-flicker-on {
+      animation: sh-crt-flicker 4s steps(1) infinite;
+    }
+
+    /* Disable CRT in reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      &::after {
+        animation: none;
+      }
+      &.sh-crt-flicker-on {
+        animation: none;
+      }
+    }
+  }
+}

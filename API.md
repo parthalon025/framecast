@@ -819,10 +819,10 @@ POST /api/update/check
 ```json
 {
   "available": true,
-  "current": "2.0.0",
-  "latest": "2.1.0",
-  "url": "https://github.com/parthalon025/framecast/releases/tag/v2.1.0",
-  "tag_name": "v2.1.0",
+  "current": "2.2.0",
+  "latest": "2.2.1",
+  "url": "https://github.com/parthalon025/framecast/releases/tag/v2.2.1",
+  "tag_name": "v2.2.1",
   "target_commitish": "abc123def456..."
 }
 ```
@@ -838,7 +838,7 @@ POST /api/update/apply
 **Request:**
 ```json
 {
-  "tag": "v2.1.0",
+  "tag": "v2.2.1",
   "expected_sha": "abc123def456..."
 }
 ```
@@ -849,7 +849,7 @@ The `expected_sha` field (from `check_for_update`'s `target_commitish`) is used 
 ```json
 {
   "success": true,
-  "message": "Updated from v2.0.0 to v2.1.0"
+  "message": "Updated from v2.2.0 to v2.2.1"
 }
 ```
 
@@ -913,7 +913,7 @@ data: {"filename": "sunset.jpg", "photo_id": 12}
 | `photo:deleted` | `{"filename": "..."}` | Photo deleted |
 | `photo:favorited` | `{"id": N, "is_favorite": bool}` | Favorite toggled |
 | `settings:changed` | `{...settings object...}` | Settings updated |
-| `update:rebooting` | `{"version": "v2.1.0"}` | OTA update applied, reboot imminent |
+| `update:rebooting` | `{"version": "v2.2.1"}` | OTA update applied, reboot imminent |
 
 **Keepalive:** The server sends `: keepalive\n\n` comments every 20 seconds (configurable via `SSE_KEEPALIVE` env var) to prevent connection timeout.
 

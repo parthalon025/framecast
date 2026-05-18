@@ -1,7 +1,7 @@
 # FrameCast Production Readiness Plan
 
 **Date:** 2026-03-28
-**Current:** v2.2.0 (released), v2.2.1 pending (SD card audit fixes)
+**Current:** v2.2.1 (released 2026-03-29, SD card audit fixes)
 **Scope:** Bug fixes and reliability hardening only (feature freeze enforced)
 **Source:** 36-finding gap analysis from full codebase audit
 

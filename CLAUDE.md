@@ -2,7 +2,7 @@
 
 Turn any TV into a family photo frame — flash an SD card, boot the Pi, done. Browser-based slideshow with CSS transitions, superhot-ui terminal interface, WiFi captive portal, OTA updates.
 
-## Project Status: FEATURE FREEZE (v2.1.0)
+## Project Status: FEATURE FREEZE (v2.2.1)
 
 **No new features.** Only bug fixes, security patches, build fixes, and documentation updates. If a change adds new user-facing behavior, it requires explicit approval. This includes new API endpoints, UI pages, config options, and pi-gen stages.
 
@@ -81,7 +81,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 
 - Frontend: `cd app/frontend && npm install && npm run build`
 - Dev: `cd app && gunicorn -c gunicorn.conf.py web_upload:app`
-- Tests (Python): `make pytest` (363 tests — unit, property, concurrency, fault injection, contracts, benchmarks)
+- Tests (Python): `make pytest` (340 tests — unit, property, concurrency, fault injection, contracts, benchmarks)
 - Tests (Frontend): `make test-frontend` (vitest — SSE client tests)
 - Tests (Shell): `make test-shell` (bats — health-check rollback logic)
 - Tests (All): `make test-all` (runs Python + frontend + shell)
@@ -90,7 +90,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 - Mutation: `make mutate` (on-demand test quality audit)
 - Image build decision tree:
   - First time? → `cd pi-gen && ./build.sh` (native, ~30-40min)
-  - Iterating app only? → `cd pi-gen && ./build.sh --app-only` (~3min, fastest)
+  - Iterating app only? → `cd pi-gen && ./build.sh --app-only` (~3min, fastest). Runs 01-config + 02-app only. Auto-reinstalls pip if purged by prior full build.
   - No Docker? OS first, then app: `./build.sh --base-only` then `./build.sh --continue`
   - On Windows? → `cd pi-gen && ./build.sh --docker`
 - Pi-gen branch: `bookworm-arm64`. Frontend builds on host (native x86), not QEMU chroot.
@@ -105,7 +105,7 @@ Slideshow: server computes weighted 50-photo playlist, client plays locally. Wei
 
 **Automation:** release-please (auto VERSION + CHANGELOG from conventional commits), Dependabot (weekly pip/npm, monthly Actions), branch protection (CI Pass required, enforce admins, linear history, squash-only), commitlint (conventional commit enforcement).
 
-**AI review:** `anthropics/claude-code-action@v1` reads CLAUDE.md conventions. Security review path-triggered on auth.py, wifi.py, updater.py, api.py, web_upload.py, scripts/, pi-gen/.
+**AI review:** `anthropics/claude-code-action@v1.0.81` (SHA-pinned) reads CLAUDE.md conventions. Security review path-triggered on auth.py, wifi.py, updater.py, api.py, web_upload.py, scripts/, pi-gen/. Both workflows require `id-token: write` for OIDC.
 
 **Repo secrets:** `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
 

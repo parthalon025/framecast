@@ -214,7 +214,7 @@ framecast/
 |-- pi-gen/                      # OS image build
 |-- scripts/                     # health-check, HDMI control, post-update, smoke test
 |-- systemd/                     # 6 service/timer units
-|-- tests/                       # 439 Python + vitest + bats tests
+|-- tests/                       # 368 tests (340 Python + 15 vitest + 13 bats)
 ```
 
 ---
