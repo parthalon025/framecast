@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  id-token: write
 
 jobs:
   security:
@@ -21,12 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: anthropics/claude-code-action@d59651bd82c48d81756854675ce4fa4d69722200 # v1
+      - uses: anthropics/claude-code-action@e7b588b6eaa5263c2e7c6c7b34a29e190d32ee68 # v1.0.81
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-sonnet-4-20250514
-          timeout_minutes: 5
-          direct_prompt: |
+          claude_args: "--model claude-sonnet-4-20250514"
+          prompt: |
             Security review of changed files. Check for:
             - OWASP Top 10 (injection, broken auth, XSS, SSRF)
             - Unsafe subprocess/shell execution

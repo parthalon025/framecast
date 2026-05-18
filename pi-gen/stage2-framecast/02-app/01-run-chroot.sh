@@ -76,6 +76,12 @@ rm -f "$SUDOERS_TMP"
 
 # Frontend already built on host — no npm install/build needed here
 
+# Ensure pip is available (purged at end of previous builds to save image size)
+if ! command -v pip3 >/dev/null 2>&1; then
+    echo "Reinstalling pip (purged by previous build)..."
+    apt-get update -qq && apt-get install -y -qq python3-pip >/dev/null
+fi
+
 # Install Python deps — use pre-downloaded wheels if available
 if [ -d /opt/framecast/.wheels ] && [ "$(ls -A /opt/framecast/.wheels 2>/dev/null)" ]; then
     echo "Installing Python deps from pre-downloaded wheels..."

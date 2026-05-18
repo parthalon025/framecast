@@ -117,10 +117,11 @@ def subscribe(last_event_id: str | None = None) -> Generator[str, None, None]:
         pending_event: str | None = None
         pending_data: dict[str, Any] | None = None
         pending_time: float = 0.0
+        last_keepalive: float = time.monotonic()
 
         while True:
             try:
-                eid, event, data = q.get(timeout=min(_KEEPALIVE_INTERVAL, _COALESCE_WINDOW))
+                eid, event, data = q.get(timeout=_COALESCE_WINDOW)
 
                 now = time.monotonic()
                 # Coalesce: if same event type arrives within window, replace
@@ -141,19 +142,22 @@ def subscribe(last_event_id: str | None = None) -> Generator[str, None, None]:
                 pending_time = now
 
             except Empty:
-                # Flush any pending coalesced event before keepalive
+                # Flush any pending coalesced event on timeout
                 if pending_event is not None:
                     yield f"id: {pending_eid}\nevent: {pending_event}\ndata: {json.dumps(pending_data)}\n\n"
                     pending_eid = None
                     pending_event = None
                     pending_data = None
 
-                # Send keepalive comment to prevent connection timeout
-                yield ": keepalive\n\n"
+                # Send keepalive only at the configured interval
+                now = time.monotonic()
+                if (now - last_keepalive) >= _KEEPALIVE_INTERVAL:
+                    last_keepalive = now
+                    yield ": keepalive\n\n"
 
-                # Send heartbeat event (clients use this to detect TV connection)
-                hb_eid = _next_event_id()
-                yield f"id: {hb_eid}\nevent: heartbeat\ndata: {{\"ts\": {int(time.time())}}}\n\n"
+                    # Send heartbeat event (clients use this to detect TV connection)
+                    hb_eid = _next_event_id()
+                    yield f"id: {hb_eid}\nevent: heartbeat\ndata: {{\"ts\": {int(time.time())}}}\n\n"
     except (BrokenPipeError, GeneratorExit):
         # Client disconnected — expected during normal operation (Lesson #36)
         pass

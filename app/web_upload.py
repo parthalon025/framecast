@@ -621,52 +621,62 @@ def _do_upload():
                 skipped += 1
                 continue
 
-        # Post-upload processing
-        gps_lat, gps_lon = None, None
-        file_size = dest.stat().st_size
-        width, height = None, None
-        checksum = None
-
-        if is_vid:
-            _generate_video_thumbnail(dest, filename)
-        else:
-            media.fix_orientation(dest)
-            _auto_resize_image(dest)
-            # Extract GPS
-            coords = media.extract_gps(dest)
-            if coords:
-                gps_lat, gps_lon = coords
-            # Strip EXIF metadata for privacy (GPS already extracted above) (I27)
-            media.strip_exif(dest)
-            # Get dimensions
-            try:
-                from PIL import Image as PILImage
-
-                with PILImage.open(str(dest)) as img:
-                    width, height = img.size
-            except Exception as exc:
-                log.warning("Failed to extract dimensions for %s: %s", filename, exc)
-
-        # Compute checksum
+        # Post-upload processing — wrapped to quarantine on unexpected crashes
+        # (verify() only checks headers; corrupt data can still crash processing)
         try:
-            checksum = db.compute_sha256(str(dest))
-        except Exception as exc:
-            log.warning("Failed to compute checksum for %s: %s", filename, exc)
+            gps_lat, gps_lon = None, None
+            file_size = dest.stat().st_size
+            width, height = None, None
+            checksum = None
 
-        # Compute perceptual hash for duplicate detection
-        dhash = None
-        if not is_vid:
-            dhash = media.compute_dhash(str(dest))
-            if dhash:
-                near_dupes = db.find_near_duplicates(dhash)
-                if near_dupes:
-                    dupe_names = [d["filename"] for d in near_dupes[:3]]
-                    log.info("Near-duplicate detected for %s: %s", filename, dupe_names)
+            if is_vid:
+                _generate_video_thumbnail(dest, filename)
+            else:
+                media.fix_orientation(dest)
+                _auto_resize_image(dest)
+                # Extract GPS
+                coords = media.extract_gps(dest)
+                if coords:
+                    gps_lat, gps_lon = coords
+                # Strip EXIF metadata for privacy (GPS already extracted above) (I27)
+                media.strip_exif(dest)
+                # Get dimensions
+                try:
+                    from PIL import Image as PILImage
 
-        # Unquarantine and update metadata in DB
-        db.unquarantine_photo(
-            photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=dhash
-        )
+                    with PILImage.open(str(dest)) as img:
+                        width, height = img.size
+                except Exception as exc:
+                    log.warning("Failed to extract dimensions for %s: %s", filename, exc)
+
+            # Compute checksum
+            try:
+                checksum = db.compute_sha256(str(dest))
+            except Exception as exc:
+                log.warning("Failed to compute checksum for %s: %s", filename, exc)
+
+            # Compute perceptual hash for duplicate detection
+            dhash = None
+            if not is_vid:
+                dhash = media.compute_dhash(str(dest))
+                if dhash:
+                    near_dupes = db.find_near_duplicates(dhash)
+                    if near_dupes:
+                        dupe_names = [d["filename"] for d in near_dupes[:3]]
+                        log.info("Near-duplicate detected for %s: %s", filename, dupe_names)
+
+            # Unquarantine and update metadata in DB
+            db.unquarantine_photo(
+                photo_id, file_size, width, height, checksum, gps_lat, gps_lon, dhash=dhash
+            )
+        except Exception as proc_exc:
+            log.error(
+                "Post-upload processing failed for %s, quarantining: %s",
+                filename, proc_exc,
+            )
+            db.update_photo_quarantine(photo_id, True, "processing failed")
+            skipped += 1
+            continue
 
         uploaded += 1
         uploaded_names.append(filename)
@@ -753,10 +763,10 @@ def delete_all():
             except OSError as exc:
                 log.warning("Failed to delete %s during delete-all: %s", f.name, exc)
 
-    # Phase 2: Clean up DB records for successfully deleted files
+    # Phase 2: Clean up DB records for successfully deleted files only
     if deleted_filenames:
         try:
-            db.bulk_quarantine_all(reason="bulk delete")
+            db.bulk_quarantine_by_filenames(deleted_filenames, reason="bulk delete")
             log.info(
                 "Bulk-quarantined %d photos in DB after delete-all",
                 len(deleted_filenames),

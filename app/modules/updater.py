@@ -312,8 +312,8 @@ def apply_update(tag: str, expected_sha: str = "") -> tuple[bool, str]:
             timeout=30,
             check=False,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("Failed to stop framecast service before update: %s", exc)
 
     # Checkout the target tag
     ok, msg = _git("checkout", tag)
