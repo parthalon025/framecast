@@ -1,6 +1,7 @@
 """Tests for modules/updater.py — OTA update check, apply, and rollback."""
 
 import json
+import subprocess
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -207,6 +208,47 @@ class TestApplyUpdate:
         success, msg = updater.apply_update("v2.0.0")
         assert success is False
         assert "checkout" in msg.lower()
+
+    @patch("subprocess.run")
+    @patch.object(updater, "_git")
+    @patch.object(updater, "_atomic_write")
+    @patch.object(updater, "get_current_version", return_value="1.0.0")
+    @patch.object(updater, "_hmac_sign", return_value="sig123")
+    def test_apply_runs_post_update_script(self, mock_sign, mock_ver, mock_write,
+                                           mock_git, mock_run):
+        """Post-update script is called after checkout with 300s timeout."""
+        mock_git.return_value = (True, "ok")
+        mock_run.return_value = MagicMock(returncode=0)
+        with patch("pathlib.Path.exists", return_value=True):
+            success, msg = updater.apply_update("v2.0.0")
+        assert success is True
+        # Find the post-update call (not the systemctl stop call)
+        post_calls = [
+            c for c in mock_run.call_args_list
+            if c[0][0][0] == "bash" and "post-update" in str(c[0][0][1])
+        ]
+        assert len(post_calls) == 1
+        assert post_calls[0].kwargs.get("timeout") == 300
+
+    @patch("subprocess.run")
+    @patch.object(updater, "_git")
+    @patch.object(updater, "_atomic_write")
+    @patch.object(updater, "get_current_version", return_value="1.0.0")
+    @patch.object(updater, "_hmac_sign", return_value="sig123")
+    def test_apply_post_update_failure_nonfatal(self, mock_sign, mock_ver,
+                                                mock_write, mock_git, mock_run):
+        """Post-update script failure does not fail the overall update."""
+        mock_git.return_value = (True, "ok")
+
+        def run_side_effect(cmd, **kwargs):
+            if cmd[0] == "bash" and "post-update" in str(cmd[1]):
+                raise subprocess.CalledProcessError(1, cmd)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = run_side_effect
+        with patch("pathlib.Path.exists", return_value=True):
+            success, msg = updater.apply_update("v2.0.0")
+        assert success is True
 
 
 # ---------------------------------------------------------------------------
