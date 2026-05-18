@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2](https://github.com/parthalon025/framecast/compare/v2.2.1...v2.2.2) (2026-03-29)
+
+
+### Bug Fixes
+
+* reinstall pip in chroot if purged by previous build ([#136](https://github.com/parthalon025/framecast/issues/136)) ([7b7a5af](https://github.com/parthalon025/framecast/commit/7b7a5af5b5a342f02a217c9b2e06e0bb025a7838))
+* sync VERSION to 2.2.1 (release-please missed extra-files) ([#134](https://github.com/parthalon025/framecast/issues/134)) ([0a3ac1f](https://github.com/parthalon025/framecast/commit/0a3ac1f867ca7e5f7fbda88d806854c6ed730162))
+
 ## [2.2.1](https://github.com/parthalon025/framecast/compare/v2.2.0...v2.2.1) (2026-03-29)
 
 
